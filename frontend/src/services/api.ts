@@ -1,0 +1,94 @@
+import axios from 'axios';
+
+const API_URL = import.meta.env.VITE_API_URL || '/api';
+
+const api = axios.create({
+  baseURL: API_URL,
+  withCredentials: true,
+  headers: {
+    'Content-Type': 'application/json'
+  }
+});
+
+// Auth API
+export const authAPI = {
+  login: (email: string, password: string) =>
+    api.post('/auth/login', { email, password }),
+  logout: () => api.post('/auth/logout'),
+  getCurrentUser: () => api.get('/auth/me'),
+  checkAuth: () => api.get('/auth/check')
+};
+
+// User API
+export const userAPI = {
+  getAll: () => api.get('/users'),
+  getById: (id: string) => api.get(`/users/${id}`),
+  create: (data: any) => api.post('/users', data),
+  update: (id: string, data: any) => api.put(`/users/${id}`, data),
+  delete: (id: string) => api.delete(`/users/${id}`)
+};
+
+// Team API
+export const teamAPI = {
+  getAll: () => api.get('/teams'),
+  getById: (id: string) => api.get(`/teams/${id}`),
+  create: (data: any) => api.post('/teams', data),
+  update: (id: string, data: any) => api.put(`/teams/${id}`, data)
+};
+
+// Campaign API
+export const campaignAPI = {
+  getAll: (params?: any) => api.get('/campaigns', { params }),
+  getById: (id: string) => api.get(`/campaigns/${id}`),
+  create: (data: any) => api.post('/campaigns', data),
+  update: (id: string, data: any) => api.put(`/campaigns/${id}`, data),
+  delete: (id: string) => api.delete(`/campaigns/${id}`)
+};
+
+// Project API
+export const projectAPI = {
+  getAll: (params?: any) => api.get('/projects', { params }),
+  getById: (id: string) => api.get(`/projects/${id}`),
+  create: (data: any) => api.post('/projects', data),
+  update: (id: string, data: any) => api.put(`/projects/${id}`, data),
+  assignUser: (id: string, data: any) => api.post(`/projects/${id}/assignments`, data),
+  removeUser: (id: string, userId: string) => api.delete(`/projects/${id}/assignments/${userId}`)
+};
+
+// Event API
+export const eventAPI = {
+  getAll: (params?: any) => api.get('/events', { params }),
+  getById: (id: string) => api.get(`/events/${id}`),
+  create: (data: any) => api.post('/events', data),
+  update: (id: string, data: any) => api.put(`/events/${id}`, data),
+  publish: (id: string) => api.post(`/events/${id}/publish`)
+};
+
+// Comment API
+export const commentAPI = {
+  getAll: (params?: any) => api.get('/comments', { params }),
+  create: (data: any) => api.post('/comments', data),
+  update: (id: string, data: any) => api.put(`/comments/${id}`, data),
+  delete: (id: string) => api.delete(`/comments/${id}`)
+};
+
+// Approval API
+export const approvalAPI = {
+  getAll: (params?: any) => api.get('/approvals', { params }),
+  create: (data: any) => api.post('/approvals', data),
+  approve: (id: string, feedback?: string) => api.put(`/approvals/${id}/approve`, { feedback }),
+  reject: (id: string, feedback: string) => api.put(`/approvals/${id}/reject`, { feedback })
+};
+
+// Asset API
+export const assetAPI = {
+  getAll: (params?: any) => api.get('/assets', { params }),
+  getById: (id: string) => api.get(`/assets/${id}`),
+  upload: (formData: FormData) => api.post('/assets', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+  download: (id: string) => api.get(`/assets/${id}/download`, { responseType: 'blob' }),
+  delete: (id: string) => api.delete(`/assets/${id}`)
+};
+
+export default api;
