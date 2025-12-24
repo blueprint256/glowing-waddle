@@ -75,14 +75,12 @@ const projectSchema = new Schema<IProject>(
     campaignId: {
       type: Schema.Types.ObjectId,
       ref: 'Campaign',
-      required: true,
-      index: true
+      required: true
     },
     teamId: {
       type: Schema.Types.ObjectId,
       ref: 'Team',
-      required: true,
-      index: true
+      required: true
     },
     status: {
       type: String,

@@ -175,7 +175,7 @@ router.put('/:id', isAuthenticated, canManageUsers, validateMongoId('id'), valid
     // Handle team change
     if (teamId !== undefined) {
       const oldTeamId = user.teamId;
-      user.teamId = teamId ? new mongoose.Types.ObjectId(teamId) : null;
+      user.teamId = teamId ? new mongoose.Types.ObjectId(teamId) : undefined;
 
       // Log team change
       if (teamId && oldTeamId?.toString() !== teamId) {

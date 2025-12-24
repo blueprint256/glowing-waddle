@@ -37,7 +37,6 @@ const teamSchema = new Schema<ITeam>(
 );
 
 // Index for faster queries
-teamSchema.index({ name: 1 });
 teamSchema.index({ isActive: 1 });
 
 export const Team = mongoose.model<ITeam>('Team', teamSchema);

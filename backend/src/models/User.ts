@@ -97,8 +97,8 @@ userSchema.methods.getFullName = function (): string {
 // Remove password from JSON output
 userSchema.set('toJSON', {
   transform: function (doc, ret) {
-    delete ret.password;
-    return ret;
+    const { password, ...rest } = ret;
+    return rest;
   }
 });
 

@@ -36,8 +36,7 @@ const campaignSchema = new Schema<ICampaign>(
     teamId: {
       type: Schema.Types.ObjectId,
       ref: 'Team',
-      required: true,
-      index: true
+      required: true
     },
     status: {
       type: String,
