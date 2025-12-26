@@ -3,10 +3,7 @@ import bcrypt from 'bcryptjs';
 
 export enum UserRole {
   SYSTEM_ADMIN = 'system_admin',
-  HYBRID = 'hybrid',
-  CLIENT = 'client',
-  MARKETER = 'marketer',
-  DESIGNER = 'designer'
+  HYBRID = 'hybrid'
 }
 
 export interface IUser extends Document {
@@ -52,7 +49,7 @@ const userSchema = new Schema<IUser>(
       type: String,
       enum: Object.values(UserRole),
       required: true,
-      default: UserRole.DESIGNER
+      default: UserRole.HYBRID
     },
     teamId: {
       type: Schema.Types.ObjectId,

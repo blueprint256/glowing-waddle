@@ -3,7 +3,7 @@ import { UserRole } from '../models/User';
 import { User } from '../models/User';
 import { Project } from '../models/Project';
 import { Campaign } from '../models/Campaign';
-import { Event } from '../models/Event';
+import { Task } from '../models/Task';
 import mongoose from 'mongoose';
 
 /**
@@ -89,7 +89,7 @@ export const canManageTeams = (
 
 /**
  * Middleware to check if user can create campaigns
- * Allowed: System Admin, Hybrid, Marketer
+ * Allowed: System Admin, Hybrid
  */
 export const canCreateCampaign = (
   req: Request,
@@ -104,7 +104,7 @@ export const canCreateCampaign = (
     return;
   }
 
-  const allowedRoles = [UserRole.SYSTEM_ADMIN, UserRole.HYBRID, UserRole.MARKETER];
+  const allowedRoles = [UserRole.SYSTEM_ADMIN, UserRole.HYBRID];
 
   if (allowedRoles.includes(req.user.role)) {
     return next();
