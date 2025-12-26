@@ -29,7 +29,7 @@ export const validateUserCreation = [
   body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
   body('firstName').trim().notEmpty().withMessage('First name is required'),
   body('lastName').trim().notEmpty().withMessage('Last name is required'),
-  body('role').isIn(['system_admin', 'hybrid', 'client', 'marketer', 'designer'])
+  body('role').isIn(['system_admin', 'hybrid'])
     .withMessage('Invalid role'),
   handleValidationErrors
 ];
@@ -38,7 +38,7 @@ export const validateUserUpdate = [
   body('email').optional().isEmail().normalizeEmail(),
   body('firstName').optional().trim().notEmpty(),
   body('lastName').optional().trim().notEmpty(),
-  body('role').optional().isIn(['system_admin', 'hybrid', 'client', 'marketer', 'designer']),
+  body('role').optional().isIn(['system_admin', 'hybrid']),
   handleValidationErrors
 ];
 
@@ -60,7 +60,6 @@ export const validateCampaignCreation = [
   body('teamId').isMongoId().withMessage('Valid team ID is required'),
   body('startDate').optional().isISO8601(),
   body('endDate').optional().isISO8601(),
-  body('budget').optional().isNumeric().withMessage('Budget must be a number'),
   handleValidationErrors
 ];
 
@@ -77,15 +76,19 @@ export const validateProjectCreation = [
 ];
 
 /**
- * Event validation rules
+ * Task validation rules
  */
-export const validateEventCreation = [
-  body('name').trim().notEmpty().withMessage('Event name is required'),
+export const validateTaskCreation = [
+  body('name').trim().notEmpty().withMessage('Task name is required'),
   body('description').optional().trim(),
   body('type').isIn(['post', 'launch', 'activation', 'deliverable', 'other'])
-    .withMessage('Invalid event type'),
+    .withMessage('Invalid task type'),
   body('projectId').isMongoId().withMessage('Valid project ID is required'),
   body('scheduledDate').optional().isISO8601(),
+  body('publishDate').optional().isISO8601(),
+  body('content').optional().trim(),
+  body('status').optional().isIn(['Pending', 'In Progress', 'Completed'])
+    .withMessage('Invalid task status'),
   handleValidationErrors
 ];
 
@@ -94,7 +97,7 @@ export const validateEventCreation = [
  */
 export const validateCommentCreation = [
   body('content').trim().notEmpty().withMessage('Comment content is required'),
-  body('eventId').optional().isMongoId(),
+  body('taskId').optional().isMongoId(),
   body('projectId').optional().isMongoId(),
   body('campaignId').optional().isMongoId(),
   handleValidationErrors
@@ -104,7 +107,7 @@ export const validateCommentCreation = [
  * Approval validation rules
  */
 export const validateApprovalRequest = [
-  body('eventId').isMongoId().withMessage('Valid event ID is required'),
+  body('taskId').isMongoId().withMessage('Valid task ID is required'),
   body('reviewerId').isMongoId().withMessage('Valid reviewer ID is required'),
   handleValidationErrors
 ];

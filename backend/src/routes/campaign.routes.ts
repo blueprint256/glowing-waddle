@@ -14,11 +14,11 @@ const router = express.Router();
 /**
  * @route   POST /api/campaigns
  * @desc    Create a new campaign
- * @access  Private (System Admin, Hybrid, Marketer)
+ * @access  Private (System Admin, Hybrid)
  */
 router.post('/', isAuthenticated, canCreateCampaign, validateCampaignCreation, async (req: Request, res: Response) => {
   try {
-    const { name, description, teamId, status, startDate, endDate, budget, goals } = req.body;
+    const { name, description, teamId, status, startDate, endDate, goals } = req.body;
 
     // Verify team exists
     const team = await Team.findById(teamId);
@@ -47,7 +47,6 @@ router.post('/', isAuthenticated, canCreateCampaign, validateCampaignCreation, a
       status: status || CampaignStatus.DRAFT,
       startDate,
       endDate,
-      budget,
       goals,
       createdBy: req.user!._id
     });
@@ -98,6 +97,11 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
         });
       }
       query.teamId = req.user!.teamId;
+    }
+
+    // Filter archived campaigns unless explicitly requested
+    if (req.query.includeArchived !== 'true') {
+      query.archived = false;
     }
 
     // Optional status filter
@@ -167,7 +171,7 @@ router.get('/:id', isAuthenticated, validateMongoId('id'), async (req: Request, 
 /**
  * @route   PUT /api/campaigns/:id
  * @desc    Update campaign
- * @access  Private (System Admin, Hybrid, Marketer)
+ * @access  Private (System Admin, Hybrid)
  */
 router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), async (req: Request, res: Response) => {
   try {
@@ -190,7 +194,7 @@ router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), as
     }
 
     const oldData = { ...campaign.toObject() };
-    const { name, description, status, startDate, endDate, budget, goals } = req.body;
+    const { name, description, status, startDate, endDate, goals } = req.body;
 
     // Update fields
     if (name) campaign.name = name;
@@ -198,7 +202,6 @@ router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), as
     if (status) campaign.status = status;
     if (startDate !== undefined) campaign.startDate = startDate;
     if (endDate !== undefined) campaign.endDate = endDate;
-    if (budget !== undefined) campaign.budget = budget;
     if (goals !== undefined) campaign.goals = goals;
 
     await campaign.save();
@@ -232,6 +235,63 @@ router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), as
 });
 
 /**
+ * @route   PUT /api/campaigns/:id/archive
+ * @desc    Archive campaign
+ * @access  Private (System Admin, Hybrid)
+ */
+router.put('/:id/archive', isAuthenticated, canCreateCampaign, validateMongoId('id'), async (req: Request, res: Response) => {
+  try {
+    const campaign = await Campaign.findById(req.params.id);
+    if (!campaign) {
+      return res.status(404).json({
+        success: false,
+        message: 'Campaign not found'
+      });
+    }
+
+    // Check access permissions
+    if (req.user!.role !== UserRole.SYSTEM_ADMIN) {
+      if (!req.user!.teamId || campaign.teamId.toString() !== req.user!.teamId.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied'
+        });
+      }
+    }
+
+    // Archive campaign
+    campaign.archived = true;
+    await campaign.save();
+
+    // Log archive action
+    await logAudit({
+      action: AuditAction.CAMPAIGN_UPDATED,
+      userId: req.user!._id,
+      targetType: 'Campaign',
+      targetId: campaign._id,
+      metadata: { archived: true },
+      req
+    });
+
+    const archivedCampaign = await Campaign.findById(campaign._id)
+      .populate('teamId', 'name')
+      .populate('createdBy', 'firstName lastName');
+
+    res.json({
+      success: true,
+      message: 'Campaign archived successfully',
+      campaign: archivedCampaign
+    });
+  } catch (error: any) {
+    console.error('Error archiving campaign:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error archiving campaign'
+    });
+  }
+});
+
+/**
  * @route   DELETE /api/campaigns/:id
  * @desc    Delete campaign (archive)
  * @access  Private (System Admin, Hybrid)
@@ -254,8 +314,8 @@ router.delete('/:id', isAuthenticated, validateMongoId('id'), async (req: Reques
       });
     }
 
-    // Archive campaign
-    campaign.status = CampaignStatus.ARCHIVED;
+    // Archive campaign (soft delete)
+    campaign.archived = true;
     await campaign.save();
 
     // Log deletion
