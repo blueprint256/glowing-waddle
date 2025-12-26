@@ -2,6 +2,32 @@
 
 A full-stack collaborative campaign management and content production platform with role-based access control, hierarchical project organization, and comprehensive approval workflows.
 
+## Recent Updates (2025)
+
+### Simplified Role System
+- **Reduced from 5 roles to 2 roles**: System Admin and Hybrid
+- System Admin: Full platform access including user/team management
+- Hybrid: Campaign, project, and task management capabilities
+- Removed: Client, Marketer, and Designer roles
+
+### Task Management Updates
+- **Events renamed to Tasks** throughout the platform
+- Added **designed image upload** with S3 integration for task assets
+- Added **publish date** field for task scheduling
+- Enhanced **status management** with dropdown (Pending, In Progress, Completed)
+
+### New Features
+- **Details Sheet**: New hierarchical view showing all campaigns, projects, and tasks in a single collapsible accordion interface with:
+  - Campaign progress tracking
+  - Project summaries
+  - Comprehensive task tables with photo counts, notes, and last updated timestamps
+  - Progressive data loading for performance
+
+### Navigation Updates
+- Removed Teams navigation link
+- Added Details Sheet to main navigation
+- Streamlined UI focused on campaign and task management
+
 ## Architecture Overview
 
 ### Tech Stack
@@ -21,14 +47,15 @@ A full-stack collaborative campaign management and content production platform w
 - Vite for build tooling
 
 **Key Features:**
-- Hierarchical structure: Campaigns → Projects → Events
-- 5 user roles with granular permissions (System Admin, Hybrid, Client, Marketer, Designer)
+- Hierarchical structure: Campaigns → Projects → Tasks
+- 2 user roles with granular permissions (System Admin, Hybrid)
 - RBAC enforcement at API and UI levels
 - Team-based organization
-- Project assignment with Assignment Authority Matrix
+- Task management with image uploads and scheduling
 - Approval workflows
 - Comments and collaboration
-- Asset management with file uploads
+- Asset management with S3 file storage
+- Details Sheet for comprehensive campaign overview
 - Audit logging for all critical actions
 - Rate limiting and security headers
 
@@ -40,7 +67,7 @@ A full-stack collaborative campaign management and content production platform w
 Team
  └─ Campaign
      └─ Project
-         └─ Event
+         └─ Task
              ├─ Comments
              ├─ Approvals
              └─ Assets
@@ -50,7 +77,7 @@ Team
 - Users belong to Teams
 - Campaigns are owned by Teams
 - Projects belong to Campaigns (inherit teamId)
-- Events belong to Projects (inherit campaignId and teamId)
+- Tasks belong to Projects (inherit campaignId and teamId)
 - Project Assignments link Users to Projects with roles
 
 ---
@@ -62,31 +89,15 @@ Team
 - Create/manage users and teams
 - Override all restrictions
 - Access audit logs
+- Manage all campaigns, projects, and tasks
 
 ### 2. Hybrid User
-- Manage campaigns, projects, and events
+- Manage campaigns, projects, and tasks
 - Assign users to projects (from existing team members)
+- Upload task images and assets
+- Manage task scheduling and status
 - **Cannot** create users or add users to teams
 - Approve and publish content
-
-### 3. Client
-- View assigned campaigns/projects/events
-- Comment and provide feedback
-- Approve/reject content (where enabled)
-- **Cannot** edit or create content
-
-### 4. Marketer
-- Create and manage campaigns/projects
-- Create and edit events
-- Assign Designers to projects (optional configuration)
-- Request approvals
-- **Cannot** create users
-
-### 5. Designer
-- Edit events assigned to them
-- Upload assets
-- Update event status
-- **Cannot** publish or approve (by default)
 
 ---
 
@@ -130,10 +141,7 @@ npm run seed
 **Seed Data Creates:**
 - System Admin: `admin@example.com / password123`
 - Hybrid User: `hybrid@example.com / password123`
-- Marketer: `marketer@example.com / password123`
-- Designer: `designer@example.com / password123`
-- Client: `client@example.com / password123`
-- One team, campaign, project, and sample events
+- One team, campaign, project, and sample tasks
 
 ### 3. Frontend Setup
 
@@ -188,9 +196,8 @@ npm run preview
 Open http://localhost:3000 in your browser.
 
 **Login with demo credentials:**
-- Admin: `admin@example.com / password123`
-- Hybrid: `hybrid@example.com / password123`
-- Marketer: `marketer@example.com / password123`
+- System Admin: `admin@example.com / password123`
+- Hybrid User: `hybrid@example.com / password123`
 
 ---
 
@@ -199,62 +206,64 @@ Open http://localhost:3000 in your browser.
 ### Scenario: Creating a Campaign End-to-End
 
 1. **Login as System Admin**
-   - Navigate to Users → Create users (Marketer, Designer, Client)
+   - Navigate to Users → Create Hybrid users
    - Navigate to Teams → Create team "Acme Marketing"
-   - Assign all users to the team
+   - Assign users to the team
 
-2. **Switch to Hybrid User**
+2. **Create Campaign**
    - Navigate to Campaigns → Create New Campaign
-   - Enter: Name, Description, Budget, select Team
+   - Enter: Name, Description, Goals, select Team
    - Campaign created (status: Draft)
 
 3. **Create Project**
    - Open campaign → New Project
    - Enter: Name, Description, Dates
-   - Assign Marketer and Designer from team members
+   - Assign Hybrid users from team members
 
-4. **Create Events (as Marketer)**
-   - Open project → New Event
-   - Enter: Name, Type (Post/Launch), Description, Schedule
-   - Assign to Designer
+4. **Create Tasks**
+   - Open project → New Task
+   - Enter: Name, Type (Post/Launch/Activation/Deliverable), Description
+   - Set scheduled date and publish date
+   - Task created (status: Pending)
 
-5. **Designer works on Event**
-   - Login as Designer
-   - Open assigned event → Edit content
-   - Upload assets (images, videos)
-   - Mark as "Pending Approval"
+5. **Work on Task**
+   - Open task → Edit content
+   - Upload designed image
+   - Update status to "In Progress"
+   - Add task description and notes
 
-6. **Approval Workflow**
-   - Create approval request (assign to Client or Hybrid)
-   - Reviewer receives notification
-   - Approve/Reject with feedback
+6. **Complete Task**
+   - Review task details
+   - Ensure image is uploaded
+   - Update status to "Completed"
+   - Set final publish date
 
-7. **Publish Event**
-   - Once approved, Marketer publishes event
-   - Status: Published
+7. **View Progress**
+   - Navigate to Details Sheet
+   - View hierarchical campaign → project → task overview
+   - Monitor campaign progress bar
+   - Review task status and photo counts
 
 8. **Collaboration**
-   - Team members add comments
-   - @mention others for notifications
+   - Team members add comments on tasks
    - Track changes via audit log (Admin only)
 
 ---
 
 ## Assignment Authority Matrix
 
-The system enforces strict rules for who can assign whom to projects:
+The system enforces strict rules for who can assign users to projects:
 
-| Assigning Role | Can Assign Marketer | Can Assign Designer |
-|----------------|---------------------|---------------------|
-| System Admin   | ✅ Yes              | ✅ Yes              |
-| Hybrid         | ✅ Yes              | ✅ Yes              |
-| Marketer       | ❌ No               | ✅ Yes (optional)   |
-| Designer       | ❌ No               | ❌ No               |
+| Assigning Role | Can Assign Users | Can Manage Teams |
+|----------------|------------------|------------------|
+| System Admin   | ✅ Yes           | ✅ Yes           |
+| Hybrid         | ✅ Yes           | ❌ No            |
 
 **Key Rules:**
 - Users can only be assigned to projects if they're already team members
 - Only System Admin can add users to teams
-- Hybrid and Marketer assign from existing team pool
+- Hybrid users assign from existing team pool
+- Both roles can manage campaigns, projects, and tasks
 
 ---
 
@@ -273,11 +282,11 @@ The system enforces strict rules for who can assign whom to projects:
 - `/api/campaigns` - Campaign management
 - `/api/projects` - Project management
   - `POST /api/projects/:id/assignments` - Assign user to project
-- `/api/events` - Event management
-  - `POST /api/events/:id/publish` - Publish event
-- `/api/comments` - Comments on events/projects/campaigns
+- `/api/tasks` - Task management
+  - `POST /api/tasks/:id/upload-image` - Upload designed image to task
+- `/api/comments` - Comments on tasks/projects/campaigns
 - `/api/approvals` - Approval requests and responses
-- `/api/assets` - File uploads and downloads
+- `/api/assets` - File uploads and downloads (S3 integration)
 
 All endpoints require authentication except `/api/auth/login`.
 
@@ -315,25 +324,15 @@ Use the seeded demo accounts to test each role:
 - Create users, assign to teams
 - Override permissions
 - View audit logs
+- Manage all campaigns, projects, and tasks
 
-**Hybrid:**
+**Hybrid User:**
 - Create campaigns and projects
+- Create and manage tasks
+- Upload task images
+- Set task scheduling and status
 - Assign users to projects
-- Approve and publish
-
-**Marketer:**
-- Create campaigns
-- Manage events
-- Request approvals
-
-**Designer:**
-- Edit assigned events
-- Upload assets
-
-**Client:**
-- View content
-- Provide feedback
-- Approve/reject
+- View Details Sheet for comprehensive overview
 
 ### Automated Testing (Future)
 
@@ -341,11 +340,13 @@ Add unit tests for:
 - RBAC middleware functions
 - Assignment authority validation
 - Approval workflow state transitions
+- Task image upload validation
 
 Integration tests for:
 - Complete campaign creation workflow
 - Project assignment flow
-- Event approval and publish flow
+- Task creation and status management
+- Details Sheet data loading
 
 ---
 
@@ -369,6 +370,10 @@ Integration tests for:
 │   ├── src/
 │   │   ├── components/     # Reusable components
 │   │   ├── pages/          # Route pages
+│   │   │   ├── Tasks/      # Task management pages
+│   │   │   ├── Projects/   # Project management pages
+│   │   │   ├── Campaigns/  # Campaign management pages
+│   │   │   └── DetailsSheet.tsx  # Hierarchical overview
 │   │   ├── services/       # API client
 │   │   ├── store/          # Zustand stores
 │   │   ├── types/          # TypeScript types
@@ -386,24 +391,25 @@ Integration tests for:
 
 ### Current Limitations (Prototype)
 
-1. **File Storage**: Assets stored locally; use AWS S3/Cloud Storage for production
+1. **AWS S3 Configuration Required**: Task image uploads require AWS S3 credentials in environment variables
 2. **No Email Notifications**: Mentions and approvals don't send emails
-3. **Basic Analytics**: Limited to simple counts; add charts and metrics
+3. **Basic Analytics**: Limited to simple counts in Details Sheet; add charts and metrics
 4. **No Real-time Updates**: Refresh required; add WebSocket support
 5. **Limited Validation**: Basic validation; enhance with comprehensive rules
 6. **No Undo/Versioning**: Content changes are not versioned
 
 ### Future Enhancements
 
-- [ ] Calendar view for scheduled events
-- [ ] Drag-and-drop Kanban boards
-- [ ] Advanced search and filtering
-- [ ] Export reports (PDF/CSV)
+- [ ] Calendar view for scheduled tasks
+- [ ] Drag-and-drop Kanban boards for task management
+- [ ] Advanced search and filtering in Details Sheet
+- [ ] Export reports (PDF/CSV) from Details Sheet
 - [ ] Mobile app (React Native)
-- [ ] Integration with social media platforms
+- [ ] Integration with social media platforms for task publishing
 - [ ] Automated workflows and triggers
 - [ ] Multi-language support
 - [ ] Dark mode theme
+- [ ] Real-time collaboration features
 
 ---
 
@@ -411,12 +417,14 @@ Integration tests for:
 
 1. **Session-based Auth**: Chose sessions over JWT for simplicity and server-side control
 2. **MongoDB**: Selected for flexible schema and hierarchical data modeling
-3. **Team Membership Required**: Users must belong to a team before project assignment
-4. **Soft Deletes**: Users and teams marked inactive rather than hard deleted
-5. **Single Team per User**: Users belong to one team at a time (can be extended)
-6. **Local File Storage**: Simplified for prototype; production should use cloud storage
-7. **No Email Verification**: Demo purposes only; add in production
-8. **Password Requirements**: Minimum 6 characters (increase in production)
+3. **Two-Role System**: Simplified from 5 roles to System Admin and Hybrid for clearer permissions
+4. **AWS S3 Integration**: Task images stored in S3 for scalability and reliability
+5. **Team Membership Required**: Users must belong to a team before project assignment
+6. **Soft Deletes**: Users and teams marked inactive rather than hard deleted
+7. **Single Team per User**: Users belong to one team at a time (can be extended)
+8. **Progressive Data Loading**: Details Sheet loads data on-demand for performance
+9. **No Email Verification**: Demo purposes only; add in production
+10. **Password Requirements**: Minimum 6 characters (increase in production)
 
 ---
 
