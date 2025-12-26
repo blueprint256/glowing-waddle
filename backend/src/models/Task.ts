@@ -20,7 +20,6 @@ export interface ITask extends Document {
   type: TaskType;
   projectId: mongoose.Types.ObjectId;
   campaignId: mongoose.Types.ObjectId; // Inherited from project
-  teamId: mongoose.Types.ObjectId; // Inherited from project
   status: TaskStatus;
   scheduledDate?: Date;
   publishDate?: Date;
@@ -56,11 +55,6 @@ const taskSchema = new Schema<ITask>(
     campaignId: {
       type: Schema.Types.ObjectId,
       ref: 'Campaign',
-      required: true
-    },
-    teamId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Team',
       required: true
     },
     status: {

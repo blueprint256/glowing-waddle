@@ -57,7 +57,6 @@ export const validateTeamCreation = [
 export const validateCampaignCreation = [
   body('name').trim().notEmpty().withMessage('Campaign name is required'),
   body('description').optional().trim(),
-  body('teamId').isMongoId().withMessage('Valid team ID is required'),
   body('startDate').optional().isISO8601(),
   body('endDate').optional().isISO8601(),
   handleValidationErrors

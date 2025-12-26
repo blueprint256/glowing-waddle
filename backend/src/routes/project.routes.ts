@@ -1,9 +1,9 @@
 import express, { Request, Response } from 'express';
 import { Project, ProjectRole, ProjectStatus } from '../models/Project';
 import { Campaign } from '../models/Campaign';
-import { User, UserRole } from '../models/User';
+import { UserRole } from '../models/User';
 import { isAuthenticated } from '../middleware/auth';
-import { canCreateCampaign, canAssignToProject, verifyTeamMembership } from '../middleware/rbac';
+import { canCreateCampaign, canAssignToProject } from '../middleware/rbac';
 import { validateProjectCreation, validateMongoId } from '../middleware/validation';
 import { logAudit, logProjectAssignment } from '../utils/auditLogger';
 import { AuditAction } from '../models/AuditLog';
@@ -14,13 +14,13 @@ const router = express.Router();
 /**
  * @route   POST /api/projects
  * @desc    Create a new project
- * @access  Private (System Admin, Hybrid, Marketer)
+ * @access  Private (System Admin, Hybrid)
  */
 router.post('/', isAuthenticated, canCreateCampaign, validateProjectCreation, async (req: Request, res: Response) => {
   try {
     const { name, description, campaignId, startDate, dueDate } = req.body;
 
-    // Verify campaign exists and get team info
+    // Verify campaign exists
     const campaign = await Campaign.findById(campaignId);
     if (!campaign) {
       return res.status(404).json({
@@ -29,22 +29,11 @@ router.post('/', isAuthenticated, canCreateCampaign, validateProjectCreation, as
       });
     }
 
-    // Check access permissions
-    if (req.user!.role !== UserRole.SYSTEM_ADMIN) {
-      if (!req.user!.teamId || campaign.teamId.toString() !== req.user!.teamId.toString()) {
-        return res.status(403).json({
-          success: false,
-          message: 'You can only create projects for campaigns in your team'
-        });
-      }
-    }
-
-    // Create project (inherit teamId from campaign)
+    // Create project
     const project = await Project.create({
       name,
       description,
       campaignId: new mongoose.Types.ObjectId(campaignId),
-      teamId: campaign.teamId,
       status: ProjectStatus.PLANNING,
       startDate,
       dueDate,
@@ -64,7 +53,6 @@ router.post('/', isAuthenticated, canCreateCampaign, validateProjectCreation, as
 
     const populatedProject = await Project.findById(project._id)
       .populate('campaignId', 'name')
-      .populate('teamId', 'name')
       .populate('createdBy', 'firstName lastName');
 
     res.status(201).json({
@@ -83,7 +71,7 @@ router.post('/', isAuthenticated, canCreateCampaign, validateProjectCreation, as
 
 /**
  * @route   GET /api/projects
- * @desc    Get all projects (filtered by team/campaign)
+ * @desc    Get all projects
  * @access  Private
  */
 router.get('/', isAuthenticated, async (req: Request, res: Response) => {
@@ -95,20 +83,8 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
       query.campaignId = req.query.campaignId;
     }
 
-    // Non-admins can only see projects from their team
-    if (req.user!.role !== UserRole.SYSTEM_ADMIN) {
-      if (!req.user!.teamId) {
-        return res.json({
-          success: true,
-          projects: []
-        });
-      }
-      query.teamId = req.user!.teamId;
-    }
-
     const projects = await Project.find(query)
       .populate('campaignId', 'name status')
-      .populate('teamId', 'name')
       .populate('createdBy', 'firstName lastName')
       .populate('assignments.userId', 'firstName lastName email role')
       .populate('assignments.assignedBy', 'firstName lastName')
@@ -136,7 +112,6 @@ router.get('/:id', isAuthenticated, validateMongoId('id'), async (req: Request, 
   try {
     const project = await Project.findById(req.params.id)
       .populate('campaignId', 'name status description')
-      .populate('teamId', 'name description')
       .populate('createdBy', 'firstName lastName email')
       .populate('assignments.userId', 'firstName lastName email role')
       .populate('assignments.assignedBy', 'firstName lastName');
@@ -146,16 +121,6 @@ router.get('/:id', isAuthenticated, validateMongoId('id'), async (req: Request, 
         success: false,
         message: 'Project not found'
       });
-    }
-
-    // Check access permissions
-    if (req.user!.role !== UserRole.SYSTEM_ADMIN) {
-      if (!req.user!.teamId || project.teamId._id.toString() !== req.user!.teamId.toString()) {
-        return res.status(403).json({
-          success: false,
-          message: 'Access denied'
-        });
-      }
     }
 
     res.json({
@@ -174,7 +139,7 @@ router.get('/:id', isAuthenticated, validateMongoId('id'), async (req: Request, 
 /**
  * @route   PUT /api/projects/:id
  * @desc    Update project
- * @access  Private (System Admin, Hybrid, Marketer)
+ * @access  Private (System Admin, Hybrid)
  */
 router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), async (req: Request, res: Response) => {
   try {
@@ -184,16 +149,6 @@ router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), as
         success: false,
         message: 'Project not found'
       });
-    }
-
-    // Check access permissions
-    if (req.user!.role !== UserRole.SYSTEM_ADMIN) {
-      if (!req.user!.teamId || project.teamId.toString() !== req.user!.teamId.toString()) {
-        return res.status(403).json({
-          success: false,
-          message: 'Access denied'
-        });
-      }
     }
 
     const oldData = { ...project.toObject() };
@@ -220,7 +175,6 @@ router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), as
 
     const updatedProject = await Project.findById(project._id)
       .populate('campaignId', 'name')
-      .populate('teamId', 'name')
       .populate('createdBy', 'firstName lastName');
 
     res.json({
@@ -239,13 +193,12 @@ router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), as
 
 /**
  * @route   POST /api/projects/:id/assignments
- * @desc    Assign user to project (implements Assignment Authority Matrix)
- * @access  Private (System Admin, Hybrid, Marketer with restrictions)
+ * @desc    Assign user to project
+ * @access  Private (System Admin, Hybrid)
  */
 router.post('/:id/assignments',
   isAuthenticated,
   validateMongoId('id'),
-  verifyTeamMembership,
   canAssignToProject,
   async (req: Request, res: Response) => {
     try {
@@ -319,7 +272,7 @@ router.post('/:id/assignments',
 /**
  * @route   DELETE /api/projects/:id/assignments/:userId
  * @desc    Remove user from project
- * @access  Private (System Admin, Hybrid, Marketer with restrictions)
+ * @access  Private (System Admin, Hybrid)
  */
 router.delete('/:id/assignments/:userId',
   isAuthenticated,

@@ -13,29 +13,25 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField,
-  MenuItem
+  TextField
 } from '@mui/material';
 import { Add as AddIcon } from '@mui/icons-material';
 import { useAuthStore } from '../../store/authStore';
-import { campaignAPI, teamAPI } from '../../services/api';
-import { Campaign, UserRole, Team } from '../../types';
+import { campaignAPI } from '../../services/api';
+import { Campaign, UserRole } from '../../types';
 
 export default function CampaignsList() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [teams, setTeams] = useState<Team[]>([]);
   const [open, setOpen] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
-    description: '',
-    teamId: ''
+    description: ''
   });
 
   useEffect(() => {
     loadCampaigns();
-    loadTeams();
   }, []);
 
   const loadCampaigns = async () => {
@@ -47,45 +43,15 @@ export default function CampaignsList() {
     }
   };
 
-  const loadTeams = async () => {
-    try {
-      const res = await teamAPI.getAll();
-      setTeams(res.data.teams || []);
-    } catch (error) {
-      console.error('Error loading teams:', error);
-    }
-  };
-
   const handleCreate = async () => {
     try {
-      // Use user's teamId if not SYSTEM_ADMIN, otherwise use selected teamId
-      const dataToSubmit = {
-        ...formData,
-        teamId: formData.teamId || user?.teamId
-      };
-
-      if (!dataToSubmit.teamId) {
-        alert('Please select a team');
-        return;
-      }
-
-      await campaignAPI.create(dataToSubmit);
+      await campaignAPI.create(formData);
       setOpen(false);
-      setFormData({ name: '', description: '', teamId: '' });
+      setFormData({ name: '', description: '' });
       loadCampaigns();
     } catch (error: any) {
       alert(error.response?.data?.message || 'Failed to create campaign');
     }
-  };
-
-  const handleOpenDialog = () => {
-    // Auto-populate teamId for HYBRID users
-    if (user?.role === UserRole.HYBRID && user?.teamId) {
-      setFormData({ name: '', description: '', teamId: user.teamId });
-    } else {
-      setFormData({ name: '', description: '', teamId: '' });
-    }
-    setOpen(true);
   };
 
   const canCreate = [UserRole.SYSTEM_ADMIN, UserRole.HYBRID].includes(
@@ -97,7 +63,7 @@ export default function CampaignsList() {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
         <Typography variant="h4">Campaigns</Typography>
         {canCreate && (
-          <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenDialog}>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setOpen(true)}>
             New Campaign
           </Button>
         )}
@@ -153,29 +119,6 @@ export default function CampaignsList() {
             multiline
             rows={3}
           />
-          {user?.role === UserRole.SYSTEM_ADMIN && (
-            <TextField
-              fullWidth
-              select
-              label="Team"
-              value={formData.teamId}
-              onChange={(e) => setFormData({ ...formData, teamId: e.target.value })}
-              margin="normal"
-              required
-              helperText="Select the team for this campaign"
-            >
-              {teams.map((team) => (
-                <MenuItem key={team._id} value={team._id}>
-                  {team.name}
-                </MenuItem>
-              ))}
-            </TextField>
-          )}
-          {user?.role === UserRole.HYBRID && (
-            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-              Campaign will be created for your team
-            </Typography>
-          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Cancel</Button>

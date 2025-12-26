@@ -11,7 +11,6 @@ export enum CampaignStatus {
 export interface ICampaign extends Document {
   name: string;
   description?: string;
-  teamId: mongoose.Types.ObjectId;
   status: CampaignStatus;
   startDate?: Date;
   endDate?: Date;
@@ -32,11 +31,6 @@ const campaignSchema = new Schema<ICampaign>(
     description: {
       type: String,
       trim: true
-    },
-    teamId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Team',
-      required: true
     },
     status: {
       type: String,
@@ -68,7 +62,7 @@ const campaignSchema = new Schema<ICampaign>(
 );
 
 // Indexes for performance
-campaignSchema.index({ teamId: 1, status: 1 });
+campaignSchema.index({ status: 1 });
 campaignSchema.index({ createdAt: -1 });
 
 export const Campaign = mongoose.model<ICampaign>('Campaign', campaignSchema);
