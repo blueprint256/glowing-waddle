@@ -20,7 +20,7 @@ import {
   Dashboard as DashboardIcon,
   Campaign as CampaignIcon,
   People as PeopleIcon,
-  Group as GroupIcon,
+  ListAlt as ListAltIcon,
   Logout as LogoutIcon
 } from '@mui/icons-material';
 import { useAuthStore } from '../../store/authStore';
@@ -45,8 +45,8 @@ export default function DashboardLayout() {
   const menuItems = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/', roles: ['all'] },
     { text: 'Campaigns', icon: <CampaignIcon />, path: '/campaigns', roles: ['all'] },
-    { text: 'Users', icon: <PeopleIcon />, path: '/admin/users', roles: [UserRole.SYSTEM_ADMIN] },
-    { text: 'Teams', icon: <GroupIcon />, path: '/admin/teams', roles: [UserRole.SYSTEM_ADMIN] }
+    { text: 'Details Sheet', icon: <ListAltIcon />, path: '/details-sheet', roles: ['all'] },
+    { text: 'Users', icon: <PeopleIcon />, path: '/admin/users', roles: [UserRole.SYSTEM_ADMIN] }
   ];
 
   const filteredMenuItems = menuItems.filter(
