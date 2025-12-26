@@ -11,19 +11,19 @@ import {
   Breadcrumbs,
   Link
 } from '@mui/material';
-import { projectAPI, eventAPI } from '../../services/api';
-import { Project, Event } from '../../types';
+import { projectAPI, taskAPI } from '../../services/api';
+import { Project, Task } from '../../types';
 
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [project, setProject] = useState<Project | null>(null);
-  const [events, setEvents] = useState<Event[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
 
   useEffect(() => {
     if (id) {
       loadProject();
-      loadEvents();
+      loadTasks();
     }
   }, [id]);
 
@@ -36,12 +36,12 @@ export default function ProjectDetail() {
     }
   };
 
-  const loadEvents = async () => {
+  const loadTasks = async () => {
     try {
-      const res = await eventAPI.getAll({ projectId: id });
-      setEvents(res.data.events || []);
+      const res = await taskAPI.getAll({ projectId: id });
+      setTasks(res.data.tasks || []);
     } catch (error) {
-      console.error('Error loading events:', error);
+      console.error('Error loading tasks:', error);
     }
   };
 
@@ -89,24 +89,24 @@ export default function ProjectDetail() {
       </Paper>
 
       <Typography variant="h5" gutterBottom>
-        Events
+        Tasks
       </Typography>
       <List>
-        {events.map((event) => (
+        {tasks.map((task) => (
           <ListItem
-            key={event._id}
+            key={task._id}
             button
-            onClick={() => navigate(`/events/${event._id}`)}
+            onClick={() => navigate(`/tasks/${task._id}`)}
           >
             <ListItemText
-              primary={event.name}
-              secondary={`Type: ${event.type} | Status: ${event.status}`}
+              primary={task.name}
+              secondary={`Type: ${task.type} | Status: ${task.status}`}
             />
-            <Chip label={event.status} size="small" />
+            <Chip label={task.status} size="small" />
           </ListItem>
         ))}
-        {events.length === 0 && (
-          <Typography color="text.secondary">No events found</Typography>
+        {tasks.length === 0 && (
+          <Typography color="text.secondary">No tasks found</Typography>
         )}
       </List>
     </Box>

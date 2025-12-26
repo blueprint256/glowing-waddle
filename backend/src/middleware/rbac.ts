@@ -3,7 +3,7 @@ import { UserRole } from '../models/User';
 import { User } from '../models/User';
 import { Project } from '../models/Project';
 import { Campaign } from '../models/Campaign';
-import { Event } from '../models/Event';
+import { Task } from '../models/Task';
 import mongoose from 'mongoose';
 
 /**
@@ -89,7 +89,7 @@ export const canManageTeams = (
 
 /**
  * Middleware to check if user can create campaigns
- * Allowed: System Admin, Hybrid, Marketer
+ * Allowed: System Admin, Hybrid
  */
 export const canCreateCampaign = (
   req: Request,
@@ -104,7 +104,7 @@ export const canCreateCampaign = (
     return;
   }
 
-  const allowedRoles = [UserRole.SYSTEM_ADMIN, UserRole.HYBRID, UserRole.MARKETER];
+  const allowedRoles = [UserRole.SYSTEM_ADMIN, UserRole.HYBRID];
 
   if (allowedRoles.includes(req.user.role)) {
     return next();
@@ -118,13 +118,13 @@ export const canCreateCampaign = (
 
 /**
  * Middleware to check if user can assign team members to projects
- * Implements Assignment Authority Matrix
+ * Simplified: Both System Admin and Hybrid can assign
  */
-export const canAssignToProject = async (
+export const canAssignToProject = (
   req: Request,
   res: Response,
   next: NextFunction
-): Promise<void> => {
+): void => {
   if (!req.user) {
     res.status(401).json({
       success: false,
@@ -133,48 +133,10 @@ export const canAssignToProject = async (
     return;
   }
 
-  const { userId, role: projectRole } = req.body;
-  const assigningUserRole = req.user.role;
+  const allowedRoles = [UserRole.SYSTEM_ADMIN, UserRole.HYBRID];
 
-  // System Admin can assign anyone
-  if (assigningUserRole === UserRole.SYSTEM_ADMIN) {
+  if (allowedRoles.includes(req.user.role)) {
     return next();
-  }
-
-  // Hybrid can assign Marketers and Designers
-  if (assigningUserRole === UserRole.HYBRID) {
-    return next();
-  }
-
-  // Marketer can only assign Designers (optional - configurable)
-  if (assigningUserRole === UserRole.MARKETER) {
-    try {
-      const targetUser = await User.findById(userId);
-      if (!targetUser) {
-        res.status(404).json({
-          success: false,
-          message: 'Target user not found'
-        });
-        return;
-      }
-
-      // Marketers can only assign Designers
-      if (targetUser.role === UserRole.DESIGNER) {
-        return next();
-      }
-
-      res.status(403).json({
-        success: false,
-        message: 'Marketers can only assign Designers to projects'
-      });
-      return;
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: 'Error checking assignment permissions'
-      });
-      return;
-    }
   }
 
   res.status(403).json({
@@ -184,61 +146,10 @@ export const canAssignToProject = async (
 };
 
 /**
- * Middleware to check if user can edit content
- * Clients cannot edit
+ * Middleware to check if user can manage tasks
+ * Allowed: System Admin, Hybrid
  */
-export const canEditContent = (
-  req: Request,
-  res: Response,
-  next: NextFunction
-): void => {
-  if (!req.user) {
-    res.status(401).json({
-      success: false,
-      message: 'Authentication required'
-    });
-    return;
-  }
-
-  if (req.user.role === UserRole.CLIENT) {
-    res.status(403).json({
-      success: false,
-      message: 'Clients cannot edit content'
-    });
-    return;
-  }
-
-  next();
-};
-
-/**
- * Middleware to check if user can publish events
- * Clients and Designers (by default) cannot publish
- */
-export const canPublishEvent = (
-  req: Request,
-  res: Response,
-  next: NextFunction
-): void => {
-  if (!req.user) {
-    res.status(401).json({
-      success: false,
-      message: 'Authentication required'
-    });
-    return;
-  }
-
-  const allowedRoles = [UserRole.SYSTEM_ADMIN, UserRole.HYBRID, UserRole.MARKETER];
-
-  if (allowedRoles.includes(req.user.role)) {
-    return next();
-  }
-
-  res.status(403).json({
-    success: false,
-    message: 'Insufficient permissions to publish events'
-  });
-};
+export const canManageTasks = hasRole(UserRole.SYSTEM_ADMIN, UserRole.HYBRID);
 
 /**
  * Middleware to verify user belongs to team before project assignment

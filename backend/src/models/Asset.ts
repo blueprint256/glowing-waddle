@@ -14,7 +14,8 @@ export interface IAsset extends Document {
   size: number;
   type: AssetType;
   path: string;
-  eventId?: mongoose.Types.ObjectId;
+  location: string; // S3 URL
+  taskId?: mongoose.Types.ObjectId;
   projectId?: mongoose.Types.ObjectId;
   campaignId?: mongoose.Types.ObjectId;
   uploadedBy: mongoose.Types.ObjectId;
@@ -51,10 +52,13 @@ const assetSchema = new Schema<IAsset>(
       type: String,
       required: true
     },
-    eventId: {
+    location: {
+      type: String,
+      required: true
+    },
+    taskId: {
       type: Schema.Types.ObjectId,
-      ref: 'Event',
-      index: true
+      ref: 'Task'
     },
     projectId: {
       type: Schema.Types.ObjectId,
@@ -86,7 +90,7 @@ const assetSchema = new Schema<IAsset>(
 );
 
 // Indexes
-assetSchema.index({ eventId: 1, version: -1 });
+assetSchema.index({ taskId: 1, version: -1 });
 assetSchema.index({ uploadedBy: 1 });
 
 export const Asset = mongoose.model<IAsset>('Asset', assetSchema);

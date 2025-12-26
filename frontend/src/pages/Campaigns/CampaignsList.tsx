@@ -30,8 +30,7 @@ export default function CampaignsList() {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    teamId: '',
-    budget: ''
+    teamId: ''
   });
 
   useEffect(() => {
@@ -61,14 +60,14 @@ export default function CampaignsList() {
     try {
       await campaignAPI.create(formData);
       setOpen(false);
-      setFormData({ name: '', description: '', teamId: '', budget: '' });
+      setFormData({ name: '', description: '', teamId: '' });
       loadCampaigns();
     } catch (error: any) {
       alert(error.response?.data?.message || 'Failed to create campaign');
     }
   };
 
-  const canCreate = [UserRole.SYSTEM_ADMIN, UserRole.HYBRID, UserRole.MARKETER].includes(
+  const canCreate = [UserRole.SYSTEM_ADMIN, UserRole.HYBRID].includes(
     user?.role as UserRole
   );
 
@@ -95,11 +94,6 @@ export default function CampaignsList() {
                   {campaign.description}
                 </Typography>
                 <Chip label={campaign.status} size="small" color="primary" />
-                {campaign.budget && (
-                  <Typography variant="caption" display="block" sx={{ mt: 1 }}>
-                    Budget: ${campaign.budget.toLocaleString()}
-                  </Typography>
-                )}
               </CardContent>
               <CardActions>
                 <Button size="small" onClick={() => navigate(`/campaigns/${campaign._id}`)}>
@@ -153,14 +147,6 @@ export default function CampaignsList() {
               </MenuItem>
             ))}
           </TextField>
-          <TextField
-            fullWidth
-            label="Budget"
-            type="number"
-            value={formData.budget}
-            onChange={(e) => setFormData({ ...formData, budget: e.target.value })}
-            margin="normal"
-          />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Cancel</Button>

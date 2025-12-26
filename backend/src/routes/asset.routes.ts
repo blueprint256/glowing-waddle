@@ -3,35 +3,18 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { Asset, AssetType } from '../models/Asset';
-import { Event } from '../models/Event';
+import { Task } from '../models/Task';
 import { Project } from '../models/Project';
 import { Campaign } from '../models/Campaign';
 import { UserRole } from '../models/User';
 import { isAuthenticated } from '../middleware/auth';
-import { canEditContent } from '../middleware/rbac';
+import { canManageTasks } from '../middleware/rbac';
 import { logAudit } from '../utils/auditLogger';
 import { AuditAction } from '../models/AuditLog';
+import { uploadToS3, deleteFromS3, getSignedDownloadUrl } from '../utils/s3Service';
 import mongoose from 'mongoose';
 
 const router = express.Router();
-
-// Configure multer storage
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadDir = process.env.UPLOAD_DIR || './uploads';
-
-    // Create directory if it doesn't exist
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
-});
 
 // File filter
 const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
@@ -59,8 +42,9 @@ const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCa
   }
 };
 
+// Configure multer for S3 uploads (using memory storage)
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   fileFilter,
   limits: {
     fileSize: parseInt(process.env.MAX_FILE_SIZE || '10485760') // 10MB default
@@ -82,9 +66,9 @@ const getAssetType = (mimetype: string): AssetType => {
 /**
  * @route   POST /api/assets
  * @desc    Upload asset
- * @access  Private (not Client by default)
+ * @access  Private (System Admin, Hybrid)
  */
-router.post('/', isAuthenticated, canEditContent, upload.single('file'), async (req: Request, res: Response) => {
+router.post('/', isAuthenticated, canManageTasks, upload.single('file'), async (req: Request, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -93,32 +77,28 @@ router.post('/', isAuthenticated, canEditContent, upload.single('file'), async (
       });
     }
 
-    const { eventId, projectId, campaignId } = req.body;
+    const { taskId, projectId, campaignId } = req.body;
 
     // At least one association is required
-    if (!eventId && !projectId && !campaignId) {
-      // Delete uploaded file
-      fs.unlinkSync(req.file.path);
+    if (!taskId && !projectId && !campaignId) {
       return res.status(400).json({
         success: false,
-        message: 'Asset must be associated with an event, project, or campaign'
+        message: 'Asset must be associated with a task, project, or campaign'
       });
     }
 
     // Verify access to associated entity
     if (req.user!.role !== UserRole.SYSTEM_ADMIN) {
       if (!req.user!.teamId) {
-        fs.unlinkSync(req.file.path);
         return res.status(403).json({
           success: false,
           message: 'Access denied'
         });
       }
 
-      if (eventId) {
-        const event = await Event.findById(eventId);
-        if (!event || event.teamId.toString() !== req.user!.teamId.toString()) {
-          fs.unlinkSync(req.file.path);
+      if (taskId) {
+        const task = await Task.findById(taskId);
+        if (!task || task.teamId.toString() !== req.user!.teamId.toString()) {
           return res.status(403).json({
             success: false,
             message: 'Access denied'
@@ -127,7 +107,6 @@ router.post('/', isAuthenticated, canEditContent, upload.single('file'), async (
       } else if (projectId) {
         const project = await Project.findById(projectId);
         if (!project || project.teamId.toString() !== req.user!.teamId.toString()) {
-          fs.unlinkSync(req.file.path);
           return res.status(403).json({
             success: false,
             message: 'Access denied'
@@ -136,7 +115,6 @@ router.post('/', isAuthenticated, canEditContent, upload.single('file'), async (
       } else if (campaignId) {
         const campaign = await Campaign.findById(campaignId);
         if (!campaign || campaign.teamId.toString() !== req.user!.teamId.toString()) {
-          fs.unlinkSync(req.file.path);
           return res.status(403).json({
             success: false,
             message: 'Access denied'
@@ -145,15 +123,19 @@ router.post('/', isAuthenticated, canEditContent, upload.single('file'), async (
       }
     }
 
+    // Upload to S3
+    const { location, key } = await uploadToS3(req.file, 'assets');
+
     // Create asset record
     const asset = await Asset.create({
-      filename: req.file.filename,
+      filename: key.split('/').pop() || req.file.originalname,
       originalName: req.file.originalname,
       mimeType: req.file.mimetype,
       size: req.file.size,
       type: getAssetType(req.file.mimetype),
-      path: req.file.path,
-      eventId: eventId ? new mongoose.Types.ObjectId(eventId) : undefined,
+      path: key,
+      location,
+      taskId: taskId ? new mongoose.Types.ObjectId(taskId) : undefined,
       projectId: projectId ? new mongoose.Types.ObjectId(projectId) : undefined,
       campaignId: campaignId ? new mongoose.Types.ObjectId(campaignId) : undefined,
       uploadedBy: req.user!._id,
@@ -179,11 +161,6 @@ router.post('/', isAuthenticated, canEditContent, upload.single('file'), async (
       asset: populatedAsset
     });
   } catch (error: any) {
-    // Delete file if database operation fails
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
-
     console.error('Error uploading asset:', error);
     res.status(500).json({
       success: false,
@@ -194,15 +171,15 @@ router.post('/', isAuthenticated, canEditContent, upload.single('file'), async (
 
 /**
  * @route   GET /api/assets
- * @desc    Get assets (filtered by event/project/campaign)
+ * @desc    Get assets (filtered by task/project/campaign)
  * @access  Private
  */
 router.get('/', isAuthenticated, async (req: Request, res: Response) => {
   try {
     let query: any = {};
 
-    if (req.query.eventId) {
-      query.eventId = req.query.eventId;
+    if (req.query.taskId) {
+      query.taskId = req.query.taskId;
     } else if (req.query.projectId) {
       query.projectId = req.query.projectId;
     } else if (req.query.campaignId) {
@@ -273,15 +250,27 @@ router.get('/:id/download', isAuthenticated, async (req: Request, res: Response)
       });
     }
 
-    // Check if file exists
-    if (!fs.existsSync(asset.path)) {
-      return res.status(404).json({
-        success: false,
-        message: 'File not found on server'
-      });
+    // If location exists (S3 URL), redirect to it or generate signed URL
+    if (asset.location) {
+      // For private S3 buckets, generate signed URL
+      try {
+        const signedUrl = await getSignedDownloadUrl(asset.path);
+        res.redirect(signedUrl);
+      } catch (error) {
+        // If signed URL fails, try direct location (for public buckets)
+        res.redirect(asset.location);
+      }
+    } else {
+      // Fallback for local storage (if path is local file)
+      if (fs.existsSync(asset.path)) {
+        res.download(asset.path, asset.originalName);
+      } else {
+        return res.status(404).json({
+          success: false,
+          message: 'File not found'
+        });
+      }
     }
-
-    res.download(asset.path, asset.originalName);
   } catch (error: any) {
     console.error('Error downloading asset:', error);
     res.status(500).json({
@@ -294,9 +283,9 @@ router.get('/:id/download', isAuthenticated, async (req: Request, res: Response)
 /**
  * @route   DELETE /api/assets/:id
  * @desc    Delete asset
- * @access  Private (not Client)
+ * @access  Private (System Admin, Hybrid)
  */
-router.delete('/:id', isAuthenticated, canEditContent, async (req: Request, res: Response) => {
+router.delete('/:id', isAuthenticated, canManageTasks, async (req: Request, res: Response) => {
   try {
     const asset = await Asset.findById(req.params.id);
 
@@ -316,8 +305,17 @@ router.delete('/:id', isAuthenticated, canEditContent, async (req: Request, res:
       });
     }
 
-    // Delete file from filesystem
-    if (fs.existsSync(asset.path)) {
+    // Delete file from S3 or local filesystem
+    if (asset.location) {
+      // S3 file
+      try {
+        await deleteFromS3(asset.path);
+      } catch (error) {
+        console.error('Error deleting from S3:', error);
+        // Continue with database deletion even if S3 deletion fails
+      }
+    } else if (fs.existsSync(asset.path)) {
+      // Local file
       fs.unlinkSync(asset.path);
     }
 

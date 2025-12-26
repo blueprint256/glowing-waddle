@@ -16,8 +16,8 @@ export interface ICampaign extends Document {
   startDate?: Date;
   endDate?: Date;
   createdBy: mongoose.Types.ObjectId;
-  budget?: number;
   goals?: string[];
+  archived: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -54,13 +54,13 @@ const campaignSchema = new Schema<ICampaign>(
       ref: 'User',
       required: true
     },
-    budget: {
-      type: Number,
-      min: 0
-    },
     goals: [{
       type: String
-    }]
+    }],
+    archived: {
+      type: Boolean,
+      default: false
+    }
   },
   {
     timestamps: true

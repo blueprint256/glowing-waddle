@@ -31,7 +31,7 @@ export default function UserManagement() {
     password: '',
     firstName: '',
     lastName: '',
-    role: UserRole.DESIGNER,
+    role: UserRole.HYBRID,
     teamId: ''
   });
 
@@ -67,7 +67,7 @@ export default function UserManagement() {
         password: '',
         firstName: '',
         lastName: '',
-        role: UserRole.DESIGNER,
+        role: UserRole.HYBRID,
         teamId: ''
       });
       loadUsers();

@@ -8,9 +8,10 @@ import Dashboard from './pages/Dashboard';
 import CampaignsList from './pages/Campaigns/CampaignsList';
 import CampaignDetail from './pages/Campaigns/CampaignDetail';
 import ProjectDetail from './pages/Projects/ProjectDetail';
-import EventDetail from './pages/Events/EventDetail';
+import TaskDetail from './pages/Tasks/TaskDetail';
 import UserManagement from './pages/Admin/UserManagement';
 import TeamManagement from './pages/Admin/TeamManagement';
+import DetailsSheet from './pages/DetailsSheet';
 
 function ProtectedRoute({ children }: { children: JSX.Element }) {
   const { isAuthenticated, isLoading } = useAuthStore();
@@ -49,7 +50,8 @@ function App() {
         <Route path="campaigns" element={<CampaignsList />} />
         <Route path="campaigns/:id" element={<CampaignDetail />} />
         <Route path="projects/:id" element={<ProjectDetail />} />
-        <Route path="events/:id" element={<EventDetail />} />
+        <Route path="tasks/:id" element={<TaskDetail />} />
+        <Route path="details-sheet" element={<DetailsSheet />} />
         <Route path="admin/users" element={<UserManagement />} />
         <Route path="admin/teams" element={<TeamManagement />} />
       </Route>

@@ -18,14 +18,14 @@ import {
 } from '@mui/material';
 import { Add as AddIcon } from '@mui/icons-material';
 import { useAuthStore } from '../store/authStore';
-import { campaignAPI, eventAPI } from '../services/api';
-import { Campaign, Event, UserRole } from '../types';
+import { campaignAPI, taskAPI } from '../services/api';
+import { Campaign, Task, UserRole } from '../types';
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [recentEvents, setRecentEvents] = useState<Event[]>([]);
+  const [recentTasks, setRecentTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -34,12 +34,12 @@ export default function Dashboard() {
 
   const loadData = async () => {
     try {
-      const [campaignsRes, eventsRes] = await Promise.all([
+      const [campaignsRes, tasksRes] = await Promise.all([
         campaignAPI.getAll(),
-        eventAPI.getAll()
+        taskAPI.getAll()
       ]);
       setCampaigns(campaignsRes.data.campaigns || []);
-      setRecentEvents((eventsRes.data.events || []).slice(0, 5));
+      setRecentTasks((tasksRes.data.tasks || []).slice(0, 5));
     } catch (error) {
       console.error('Error loading dashboard data:', error);
     } finally {
@@ -48,8 +48,7 @@ export default function Dashboard() {
   };
 
   const canCreateCampaign = user?.role === UserRole.SYSTEM_ADMIN ||
-    user?.role === UserRole.HYBRID ||
-    user?.role === UserRole.MARKETER;
+    user?.role === UserRole.HYBRID;
 
   return (
     <Box>
@@ -93,9 +92,9 @@ export default function Dashboard() {
           <Card>
             <CardContent>
               <Typography color="textSecondary" gutterBottom>
-                Recent Events
+                Recent Tasks
               </Typography>
-              <Typography variant="h3">{recentEvents.length}</Typography>
+              <Typography variant="h3">{recentTasks.length}</Typography>
             </CardContent>
           </Card>
         </Grid>
@@ -103,7 +102,7 @@ export default function Dashboard() {
         <Grid item xs={12}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="h6" gutterBottom>
-              Recent Events
+              Recent Tasks
             </Typography>
             <TableContainer>
               <Table>
@@ -112,45 +111,45 @@ export default function Dashboard() {
                     <TableCell>Name</TableCell>
                     <TableCell>Type</TableCell>
                     <TableCell>Status</TableCell>
-                    <TableCell>Scheduled Date</TableCell>
+                    <TableCell>Publish Date</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {recentEvents.map((event) => (
+                  {recentTasks.map((task) => (
                     <TableRow
-                      key={event._id}
+                      key={task._id}
                       hover
                       sx={{ cursor: 'pointer' }}
-                      onClick={() => navigate(`/events/${event._id}`)}
+                      onClick={() => navigate(`/tasks/${task._id}`)}
                     >
-                      <TableCell>{event.name}</TableCell>
+                      <TableCell>{task.name}</TableCell>
                       <TableCell>
-                        <Chip label={event.type} size="small" />
+                        <Chip label={task.type} size="small" />
                       </TableCell>
                       <TableCell>
                         <Chip
-                          label={event.status}
+                          label={task.status}
                           size="small"
                           color={
-                            event.status === 'published'
+                            task.status === 'Completed'
                               ? 'success'
-                              : event.status === 'approved'
-                              ? 'info'
-                              : 'default'
+                              : task.status === 'In Progress'
+                              ? 'warning'
+                              : 'error'
                           }
                         />
                       </TableCell>
                       <TableCell>
-                        {event.scheduledDate
-                          ? new Date(event.scheduledDate).toLocaleDateString()
+                        {task.publishDate
+                          ? new Date(task.publishDate).toLocaleDateString()
                           : 'Not scheduled'}
                       </TableCell>
                     </TableRow>
                   ))}
-                  {recentEvents.length === 0 && (
+                  {recentTasks.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={4} align="center">
-                        No recent events
+                        No recent tasks
                       </TableCell>
                     </TableRow>
                   )}
