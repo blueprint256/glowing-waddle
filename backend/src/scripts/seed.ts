@@ -1,9 +1,8 @@
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import { User, UserRole } from '../models/User';
-import { Team } from '../models/Team';
 import { Campaign, CampaignStatus } from '../models/Campaign';
-import { Project, ProjectStatus, ProjectRole } from '../models/Project';
+import { Project, ProjectStatus } from '../models/Project';
 import { Task, TaskStatus, TaskType } from '../models/Task';
 
 dotenv.config();
@@ -19,7 +18,6 @@ async function seed() {
     // Clear existing data
     console.log('🗑️  Clearing existing data...');
     await User.deleteMany({});
-    await Team.deleteMany({});
     await Campaign.deleteMany({});
     await Project.deleteMany({});
     await Task.deleteMany({});
@@ -38,34 +36,31 @@ async function seed() {
 
     console.log('✅ Created System Admin:', admin.email);
 
-    // Create Team
-    const team1 = await Team.create({
-      name: 'Acme Corp Marketing',
-      description: 'Marketing team for Acme Corporation',
-      createdBy: admin._id,
-      isActive: true
-    });
-
-    console.log('✅ Created Team:', team1.name);
-
-    // Create Hybrid User
-    const hybrid = await User.create({
-      email: 'hybrid@example.com',
+    // Create Hybrid Users (two different users to test ownership)
+    const hybridA = await User.create({
+      email: 'hybrid-a@example.com',
       password: 'password123',
-      firstName: 'Sarah',
+      firstName: 'Alice',
       lastName: 'Johnson',
       role: UserRole.HYBRID,
-      teamId: team1._id,
       isActive: true
     });
 
-    console.log('✅ Created Hybrid User:', hybrid.email);
+    const hybridB = await User.create({
+      email: 'hybrid-b@example.com',
+      password: 'password123',
+      firstName: 'Bob',
+      lastName: 'Smith',
+      role: UserRole.HYBRID,
+      isActive: true
+    });
 
-    // Create Campaign
-    const campaign = await Campaign.create({
+    console.log('✅ Created Hybrid Users:', hybridA.email, ',', hybridB.email);
+
+    // Create Campaign for Hybrid User A
+    const campaignA = await Campaign.create({
       name: 'Summer Product Launch 2025',
       description: 'Marketing campaign for summer product line launch',
-      teamId: team1._id,
       status: CampaignStatus.ACTIVE,
       startDate: new Date('2025-06-01'),
       endDate: new Date('2025-08-31'),
@@ -74,21 +69,48 @@ async function seed() {
         'Generate 1000 qualified leads',
         'Achieve 10% conversion rate'
       ],
-      createdBy: hybrid._id
+      createdBy: hybridA._id
     });
 
-    console.log('✅ Created Campaign:', campaign.name);
+    console.log('✅ Created Campaign for Hybrid A:', campaignA.name);
 
-    // Create Project
+    // Create Campaign for Hybrid User B
+    const campaignB = await Campaign.create({
+      name: 'Fall Product Collection 2025',
+      description: 'Fall season marketing initiatives',
+      status: CampaignStatus.DRAFT,
+      startDate: new Date('2025-09-01'),
+      endDate: new Date('2025-11-30'),
+      goals: [
+        'Launch new product line',
+        'Increase market share by 15%'
+      ],
+      createdBy: hybridB._id
+    });
+
+    console.log('✅ Created Campaign for Hybrid B:', campaignB.name);
+
+    // Create Campaign for System Admin
+    const campaignAdmin = await Campaign.create({
+      name: 'Company Rebrand Initiative',
+      description: 'Corporate rebranding campaign managed by admin',
+      status: CampaignStatus.PLANNING,
+      startDate: new Date('2025-12-01'),
+      endDate: new Date('2026-02-28'),
+      createdBy: admin._id
+    });
+
+    console.log('✅ Created Campaign for Admin:', campaignAdmin.name);
+
+    // Create Project for Campaign A
     const project = await Project.create({
       name: 'Social Media Campaign',
       description: 'Instagram and Facebook content series for product launch',
-      campaignId: campaign._id,
-      teamId: team1._id,
+      campaignId: campaignA._id,
       status: ProjectStatus.IN_PROGRESS,
       startDate: new Date('2025-06-01'),
       dueDate: new Date('2025-07-31'),
-      createdBy: hybrid._id
+      createdBy: hybridA._id
     });
 
     console.log('✅ Created Project:', project.name);
@@ -99,13 +121,12 @@ async function seed() {
       description: 'Instagram teaser post announcing the summer collection',
       type: TaskType.POST,
       projectId: project._id,
-      campaignId: campaign._id,
-      teamId: team1._id,
+      campaignId: campaignA._id,
       status: TaskStatus.IN_PROGRESS,
       scheduledDate: new Date('2025-06-05'),
       publishDate: new Date('2025-06-05'),
       content: 'Check out our stunning new summer collection! 🌞 Coming soon...',
-      createdBy: hybrid._id
+      createdBy: hybridA._id
     });
 
     const task2 = await Task.create({
@@ -113,20 +134,26 @@ async function seed() {
       description: 'Official product launch announcement with carousel images',
       type: TaskType.LAUNCH,
       projectId: project._id,
-      campaignId: campaign._id,
-      teamId: team1._id,
+      campaignId: campaignA._id,
       status: TaskStatus.PENDING,
       scheduledDate: new Date('2025-06-15'),
       publishDate: new Date('2025-06-15'),
-      createdBy: hybrid._id
+      createdBy: hybridA._id
     });
 
     console.log('✅ Created Tasks:', task1.name, ',', task2.name);
 
     console.log('\n✨ Seed data created successfully!\n');
     console.log('📝 Test Credentials:');
-    console.log('   System Admin: admin@example.com / password123');
-    console.log('   Hybrid User: hybrid@example.com / password123\n');
+    console.log('   System Admin: admin@example.com / password123 (sees ALL campaigns)');
+    console.log('   Hybrid User A: hybrid-a@example.com / password123 (sees only their campaigns)');
+    console.log('   Hybrid User B: hybrid-b@example.com / password123 (sees only their campaigns)\n');
+    console.log('🔍 Ownership Test:');
+    console.log('   - Hybrid A owns: "Summer Product Launch 2025"');
+    console.log('   - Hybrid B owns: "Fall Product Collection 2025"');
+    console.log('   - Admin owns: "Company Rebrand Initiative"');
+    console.log('   - System Admin can see all three campaigns');
+    console.log('   - Hybrid users can ONLY see their own campaigns\n');
 
     await mongoose.connection.close();
     console.log('✅ Database connection closed');

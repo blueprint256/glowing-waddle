@@ -18,7 +18,7 @@ router.post('/', isAuthenticated, canCreateCampaign, validateCampaignCreation, a
   try {
     const { name, description, status, startDate, endDate, goals } = req.body;
 
-    // Create campaign
+    // Create campaign owned by the creator
     const campaign = await Campaign.create({
       name,
       description,
@@ -58,12 +58,18 @@ router.post('/', isAuthenticated, canCreateCampaign, validateCampaignCreation, a
 
 /**
  * @route   GET /api/campaigns
- * @desc    Get all campaigns
+ * @desc    Get all campaigns (System Admin) or owned campaigns (Hybrid User)
  * @access  Private
  */
 router.get('/', isAuthenticated, async (req: Request, res: Response) => {
   try {
     let query: any = {};
+
+    // CRITICAL: Hybrid Users can ONLY see campaigns they created
+    if (req.user!.role === UserRole.HYBRID) {
+      query.createdBy = req.user!._id;
+    }
+    // System Admins see all campaigns (no filter)
 
     // Filter archived campaigns unless explicitly requested
     if (req.query.includeArchived !== 'true') {
@@ -94,7 +100,7 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
 
 /**
  * @route   GET /api/campaigns/:id
- * @desc    Get campaign by ID
+ * @desc    Get campaign by ID (with ownership check for Hybrid Users)
  * @access  Private
  */
 router.get('/:id', isAuthenticated, validateMongoId('id'), async (req: Request, res: Response) => {
@@ -107,6 +113,16 @@ router.get('/:id', isAuthenticated, validateMongoId('id'), async (req: Request, 
         success: false,
         message: 'Campaign not found'
       });
+    }
+
+    // CRITICAL: Hybrid Users can ONLY access campaigns they own
+    if (req.user!.role === UserRole.HYBRID) {
+      if (campaign.createdBy._id.toString() !== req.user!._id.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied: You can only view campaigns you created'
+        });
+      }
     }
 
     res.json({
@@ -124,7 +140,7 @@ router.get('/:id', isAuthenticated, validateMongoId('id'), async (req: Request, 
 
 /**
  * @route   PUT /api/campaigns/:id
- * @desc    Update campaign
+ * @desc    Update campaign (with ownership check for Hybrid Users)
  * @access  Private (System Admin, Hybrid)
  */
 router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), async (req: Request, res: Response) => {
@@ -135,6 +151,16 @@ router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), as
         success: false,
         message: 'Campaign not found'
       });
+    }
+
+    // CRITICAL: Hybrid Users can ONLY update campaigns they own
+    if (req.user!.role === UserRole.HYBRID) {
+      if (campaign.createdBy.toString() !== req.user!._id.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied: You can only update campaigns you created'
+        });
+      }
     }
 
     const oldData = { ...campaign.toObject() };
@@ -179,7 +205,7 @@ router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), as
 
 /**
  * @route   PUT /api/campaigns/:id/archive
- * @desc    Archive campaign
+ * @desc    Archive campaign (with ownership check for Hybrid Users)
  * @access  Private (System Admin, Hybrid)
  */
 router.put('/:id/archive', isAuthenticated, canCreateCampaign, validateMongoId('id'), async (req: Request, res: Response) => {
@@ -190,6 +216,16 @@ router.put('/:id/archive', isAuthenticated, canCreateCampaign, validateMongoId('
         success: false,
         message: 'Campaign not found'
       });
+    }
+
+    // CRITICAL: Hybrid Users can ONLY archive campaigns they own
+    if (req.user!.role === UserRole.HYBRID) {
+      if (campaign.createdBy.toString() !== req.user!._id.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied: You can only archive campaigns you created'
+        });
+      }
     }
 
     // Archive campaign
@@ -225,7 +261,7 @@ router.put('/:id/archive', isAuthenticated, canCreateCampaign, validateMongoId('
 
 /**
  * @route   DELETE /api/campaigns/:id
- * @desc    Delete campaign (archive)
+ * @desc    Delete campaign (with ownership check for Hybrid Users)
  * @access  Private (System Admin, Hybrid)
  */
 router.delete('/:id', isAuthenticated, validateMongoId('id'), async (req: Request, res: Response) => {
@@ -244,6 +280,16 @@ router.delete('/:id', isAuthenticated, validateMongoId('id'), async (req: Reques
         success: false,
         message: 'Campaign not found'
       });
+    }
+
+    // CRITICAL: Hybrid Users can ONLY delete campaigns they own
+    if (req.user!.role === UserRole.HYBRID) {
+      if (campaign.createdBy.toString() !== req.user!._id.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied: You can only delete campaigns you created'
+        });
+      }
     }
 
     // Archive campaign (soft delete)

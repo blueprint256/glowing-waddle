@@ -12,7 +12,6 @@ export interface IUser extends Document {
   firstName: string;
   lastName: string;
   role: UserRole;
-  teamId?: mongoose.Types.ObjectId;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -50,11 +49,6 @@ const userSchema = new Schema<IUser>(
       enum: Object.values(UserRole),
       required: true,
       default: UserRole.HYBRID
-    },
-    teamId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Team',
-      default: null
     },
     isActive: {
       type: Boolean,
