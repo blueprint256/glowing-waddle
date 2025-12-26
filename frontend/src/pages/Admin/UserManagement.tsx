@@ -43,7 +43,12 @@ export default function UserManagement() {
   const loadUsers = async () => {
     try {
       const res = await userAPI.getAll();
-      setUsers(res.data.users || []);
+      // Only update state if we have valid data
+      if (res.data && Array.isArray(res.data.users)) {
+        setUsers(res.data.users);
+      } else {
+        console.warn('Received invalid user data:', res.data);
+      }
     } catch (error) {
       console.error('Error loading users:', error);
     }

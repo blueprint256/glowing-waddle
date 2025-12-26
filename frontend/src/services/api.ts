@@ -6,9 +6,27 @@ const api = axios.create({
   baseURL: API_URL,
   withCredentials: true,
   headers: {
-    'Content-Type': 'application/json'
+    'Content-Type': 'application/json',
+    // Prevent browser caching by requesting fresh data
+    'Cache-Control': 'no-cache'
   }
 });
+
+// Response interceptor to handle edge cases with cached/empty responses
+api.interceptors.response.use(
+  (response) => {
+    // Ensure response data exists for successful requests
+    if (response.status === 200 && !response.data) {
+      console.warn('Received empty response data for:', response.config.url);
+      response.data = {};
+    }
+    return response;
+  },
+  (error) => {
+    // Handle errors gracefully
+    return Promise.reject(error);
+  }
+);
 
 // Auth API
 export const authAPI = {

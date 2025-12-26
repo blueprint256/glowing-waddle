@@ -48,6 +48,11 @@ if (process.env.NODE_ENV !== 'production') {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Disable ETags for API routes to prevent 304 caching issues
+// ETags can cause problems with client-side state management when
+// using conditional requests with dynamic JSON data
+app.set('etag', false);
+
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
