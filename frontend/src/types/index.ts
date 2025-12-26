@@ -1,10 +1,7 @@
 // User types
 export enum UserRole {
   SYSTEM_ADMIN = 'system_admin',
-  HYBRID = 'hybrid',
-  CLIENT = 'client',
-  MARKETER = 'marketer',
-  DESIGNER = 'designer'
+  HYBRID = 'hybrid'
 }
 
 export interface User {
@@ -44,8 +41,8 @@ export interface Campaign {
   status: CampaignStatus;
   startDate?: string;
   endDate?: string;
-  budget?: number;
   goals?: string[];
+  archived: boolean;
   createdBy: any;
   createdAt: string;
   updatedAt: string;
@@ -89,18 +86,14 @@ export interface Project {
   updatedAt: string;
 }
 
-// Event types
-export enum EventStatus {
-  DRAFT = 'draft',
-  IN_PROGRESS = 'in_progress',
-  PENDING_APPROVAL = 'pending_approval',
-  APPROVED = 'approved',
-  REJECTED = 'rejected',
-  PUBLISHED = 'published',
-  COMPLETED = 'completed'
+// Task types
+export enum TaskStatus {
+  PENDING = 'Pending',
+  IN_PROGRESS = 'In Progress',
+  COMPLETED = 'Completed'
 }
 
-export enum EventType {
+export enum TaskType {
   POST = 'post',
   LAUNCH = 'launch',
   ACTIVATION = 'activation',
@@ -108,18 +101,19 @@ export enum EventType {
   OTHER = 'other'
 }
 
-export interface Event {
+export interface Task {
   _id: string;
   name: string;
   description?: string;
-  type: EventType;
+  type: TaskType;
   projectId: any;
   campaignId: any;
   teamId: any;
-  status: EventStatus;
-  assignedTo?: any;
+  status: TaskStatus;
   scheduledDate?: string;
+  publishDate?: string;
   content?: string;
+  designedImage?: string;
   createdBy: any;
   lastModifiedBy?: any;
   createdAt: string;
@@ -130,7 +124,7 @@ export interface Event {
 export interface Comment {
   _id: string;
   content: string;
-  eventId?: string;
+  taskId?: string;
   projectId?: string;
   campaignId?: string;
   authorId: any;
@@ -151,7 +145,7 @@ export enum ApprovalStatus {
 
 export interface Approval {
   _id: string;
-  eventId: any;
+  taskId: any;
   requestedBy: any;
   reviewerId: any;
   status: ApprovalStatus;
@@ -177,7 +171,8 @@ export interface Asset {
   size: number;
   type: AssetType;
   path: string;
-  eventId?: string;
+  location: string;
+  taskId?: string;
   projectId?: string;
   campaignId?: string;
   uploadedBy: any;

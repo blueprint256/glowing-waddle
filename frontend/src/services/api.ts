@@ -42,6 +42,7 @@ export const campaignAPI = {
   getById: (id: string) => api.get(`/campaigns/${id}`),
   create: (data: any) => api.post('/campaigns', data),
   update: (id: string, data: any) => api.put(`/campaigns/${id}`, data),
+  archive: (id: string) => api.put(`/campaigns/${id}/archive`),
   delete: (id: string) => api.delete(`/campaigns/${id}`)
 };
 
@@ -55,13 +56,16 @@ export const projectAPI = {
   removeUser: (id: string, userId: string) => api.delete(`/projects/${id}/assignments/${userId}`)
 };
 
-// Event API
-export const eventAPI = {
-  getAll: (params?: any) => api.get('/events', { params }),
-  getById: (id: string) => api.get(`/events/${id}`),
-  create: (data: any) => api.post('/events', data),
-  update: (id: string, data: any) => api.put(`/events/${id}`, data),
-  publish: (id: string) => api.post(`/events/${id}/publish`)
+// Task API
+export const taskAPI = {
+  getAll: (params?: any) => api.get('/tasks', { params }),
+  getById: (id: string) => api.get(`/tasks/${id}`),
+  create: (data: any) => api.post('/tasks', data),
+  update: (id: string, data: any) => api.put(`/tasks/${id}`, data),
+  uploadImage: (id: string, formData: FormData) => api.post(`/tasks/${id}/upload-image`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+  delete: (id: string) => api.delete(`/tasks/${id}`)
 };
 
 // Comment API
