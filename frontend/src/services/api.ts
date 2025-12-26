@@ -6,9 +6,27 @@ const api = axios.create({
   baseURL: API_URL,
   withCredentials: true,
   headers: {
-    'Content-Type': 'application/json'
+    'Content-Type': 'application/json',
+    // Prevent browser caching by requesting fresh data
+    'Cache-Control': 'no-cache'
   }
 });
+
+// Response interceptor to handle edge cases with cached/empty responses
+api.interceptors.response.use(
+  (response) => {
+    // Ensure response data exists for successful requests
+    if (response.status === 200 && !response.data) {
+      console.warn('Received empty response data for:', response.config.url);
+      response.data = {};
+    }
+    return response;
+  },
+  (error) => {
+    // Handle errors gracefully
+    return Promise.reject(error);
+  }
+);
 
 // Auth API
 export const authAPI = {
@@ -26,14 +44,6 @@ export const userAPI = {
   create: (data: any) => api.post('/users', data),
   update: (id: string, data: any) => api.put(`/users/${id}`, data),
   delete: (id: string) => api.delete(`/users/${id}`)
-};
-
-// Team API
-export const teamAPI = {
-  getAll: () => api.get('/teams'),
-  getById: (id: string) => api.get(`/teams/${id}`),
-  create: (data: any) => api.post('/teams', data),
-  update: (id: string, data: any) => api.put(`/teams/${id}`, data)
 };
 
 // Campaign API

@@ -10,7 +10,6 @@ import CampaignDetail from './pages/Campaigns/CampaignDetail';
 import ProjectDetail from './pages/Projects/ProjectDetail';
 import TaskDetail from './pages/Tasks/TaskDetail';
 import UserManagement from './pages/Admin/UserManagement';
-import TeamManagement from './pages/Admin/TeamManagement';
 import DetailsSheet from './pages/DetailsSheet';
 
 function ProtectedRoute({ children }: { children: JSX.Element }) {
@@ -32,7 +31,8 @@ function App() {
 
   useEffect(() => {
     checkAuth();
-  }, [checkAuth]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <Routes>
@@ -53,7 +53,6 @@ function App() {
         <Route path="tasks/:id" element={<TaskDetail />} />
         <Route path="details-sheet" element={<DetailsSheet />} />
         <Route path="admin/users" element={<UserManagement />} />
-        <Route path="admin/teams" element={<TeamManagement />} />
       </Route>
     </Routes>
   );

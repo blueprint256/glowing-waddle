@@ -12,7 +12,6 @@ import { connectDatabase } from './config/database';
 // Import routes
 import authRoutes from './routes/auth.routes';
 import userRoutes from './routes/user.routes';
-import teamRoutes from './routes/team.routes';
 import campaignRoutes from './routes/campaign.routes';
 import projectRoutes from './routes/project.routes';
 import taskRoutes from './routes/task.routes';
@@ -47,6 +46,11 @@ if (process.env.NODE_ENV !== 'production') {
 // Body parsing middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Disable ETags for API routes to prevent 304 caching issues
+// ETags can cause problems with client-side state management when
+// using conditional requests with dynamic JSON data
+app.set('etag', false);
 
 // Rate limiting
 const limiter = rateLimit({
@@ -83,7 +87,6 @@ app.use(passport.session());
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/teams', teamRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/tasks', taskRoutes);

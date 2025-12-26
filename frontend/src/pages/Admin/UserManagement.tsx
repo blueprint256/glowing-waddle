@@ -19,42 +19,35 @@ import {
   Chip
 } from '@mui/material';
 import { Add as AddIcon } from '@mui/icons-material';
-import { userAPI, teamAPI } from '../../services/api';
+import { userAPI } from '../../services/api';
 import { User, UserRole } from '../../types';
 
 export default function UserManagement() {
   const [users, setUsers] = useState<User[]>([]);
-  const [teams, setTeams] = useState<any[]>([]);
   const [open, setOpen] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
     firstName: '',
     lastName: '',
-    role: UserRole.HYBRID,
-    teamId: ''
+    role: UserRole.HYBRID
   });
 
   useEffect(() => {
     loadUsers();
-    loadTeams();
   }, []);
 
   const loadUsers = async () => {
     try {
       const res = await userAPI.getAll();
-      setUsers(res.data.users || []);
+      // Only update state if we have valid data
+      if (res.data && Array.isArray(res.data.users)) {
+        setUsers(res.data.users);
+      } else {
+        console.warn('Received invalid user data:', res.data);
+      }
     } catch (error) {
       console.error('Error loading users:', error);
-    }
-  };
-
-  const loadTeams = async () => {
-    try {
-      const res = await teamAPI.getAll();
-      setTeams(res.data.teams || []);
-    } catch (error) {
-      console.error('Error loading teams:', error);
     }
   };
 
@@ -67,8 +60,7 @@ export default function UserManagement() {
         password: '',
         firstName: '',
         lastName: '',
-        role: UserRole.HYBRID,
-        teamId: ''
+        role: UserRole.HYBRID
       });
       loadUsers();
     } catch (error: any) {
@@ -92,7 +84,6 @@ export default function UserManagement() {
               <TableCell>Name</TableCell>
               <TableCell>Email</TableCell>
               <TableCell>Role</TableCell>
-              <TableCell>Team</TableCell>
               <TableCell>Status</TableCell>
             </TableRow>
           </TableHead>
@@ -106,7 +97,6 @@ export default function UserManagement() {
                 <TableCell>
                   <Chip label={user.role} size="small" />
                 </TableCell>
-                <TableCell>{user.teamId || 'No team'}</TableCell>
                 <TableCell>
                   <Chip
                     label={user.isActive ? 'Active' : 'Inactive'}
@@ -169,21 +159,6 @@ export default function UserManagement() {
             {Object.values(UserRole).map((role) => (
               <MenuItem key={role} value={role}>
                 {role}
-              </MenuItem>
-            ))}
-          </TextField>
-          <TextField
-            fullWidth
-            select
-            label="Team (Optional)"
-            value={formData.teamId}
-            onChange={(e) => setFormData({ ...formData, teamId: e.target.value })}
-            margin="normal"
-          >
-            <MenuItem value="">None</MenuItem>
-            {teams.map((team) => (
-              <MenuItem key={team._id} value={team._id}>
-                {team.name}
               </MenuItem>
             ))}
           </TextField>
