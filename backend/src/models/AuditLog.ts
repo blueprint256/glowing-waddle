@@ -6,6 +6,7 @@ export enum AuditAction {
   USER_DELETED = 'user_deleted',
   TEAM_CREATED = 'team_created',
   TEAM_UPDATED = 'team_updated',
+  TEAM_DELETED = 'team_deleted',
   USER_ADDED_TO_TEAM = 'user_added_to_team',
   USER_REMOVED_FROM_TEAM = 'user_removed_from_team',
   CAMPAIGN_CREATED = 'campaign_created',

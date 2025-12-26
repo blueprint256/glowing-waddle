@@ -26,7 +26,6 @@ export interface IProject extends Document {
   name: string;
   description?: string;
   campaignId: mongoose.Types.ObjectId;
-  teamId: mongoose.Types.ObjectId; // Inherited from campaign
   status: ProjectStatus;
   assignments: IProjectAssignment[];
   startDate?: Date;
@@ -77,11 +76,6 @@ const projectSchema = new Schema<IProject>(
       ref: 'Campaign',
       required: true
     },
-    teamId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Team',
-      required: true
-    },
     status: {
       type: String,
       enum: Object.values(ProjectStatus),
@@ -107,7 +101,6 @@ const projectSchema = new Schema<IProject>(
 
 // Indexes
 projectSchema.index({ campaignId: 1, status: 1 });
-projectSchema.index({ teamId: 1 });
 projectSchema.index({ 'assignments.userId': 1 });
 
 export const Project = mongoose.model<IProject>('Project', projectSchema);

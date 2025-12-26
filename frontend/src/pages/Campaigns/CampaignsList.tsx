@@ -13,13 +13,12 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField,
-  MenuItem
+  TextField
 } from '@mui/material';
 import { Add as AddIcon } from '@mui/icons-material';
 import { useAuthStore } from '../../store/authStore';
 import { campaignAPI } from '../../services/api';
-import { Campaign, UserRole, CampaignStatus } from '../../types';
+import { Campaign, UserRole } from '../../types';
 
 export default function CampaignsList() {
   const navigate = useNavigate();

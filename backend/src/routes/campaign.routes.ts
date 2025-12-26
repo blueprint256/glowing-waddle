@@ -1,13 +1,11 @@
 import express, { Request, Response } from 'express';
 import { Campaign, CampaignStatus } from '../models/Campaign';
-import { Team } from '../models/Team';
 import { UserRole } from '../models/User';
 import { isAuthenticated } from '../middleware/auth';
 import { canCreateCampaign } from '../middleware/rbac';
 import { validateCampaignCreation, validateMongoId } from '../middleware/validation';
 import { logAudit } from '../utils/auditLogger';
 import { AuditAction } from '../models/AuditLog';
-import mongoose from 'mongoose';
 
 const router = express.Router();
 
@@ -18,32 +16,12 @@ const router = express.Router();
  */
 router.post('/', isAuthenticated, canCreateCampaign, validateCampaignCreation, async (req: Request, res: Response) => {
   try {
-    const { name, description, teamId, status, startDate, endDate, goals } = req.body;
-
-    // Verify team exists
-    const team = await Team.findById(teamId);
-    if (!team) {
-      return res.status(404).json({
-        success: false,
-        message: 'Team not found'
-      });
-    }
-
-    // Non-admins can only create campaigns for their own team
-    if (req.user!.role !== UserRole.SYSTEM_ADMIN) {
-      if (!req.user!.teamId || req.user!.teamId.toString() !== teamId) {
-        return res.status(403).json({
-          success: false,
-          message: 'You can only create campaigns for your team'
-        });
-      }
-    }
+    const { name, description, status, startDate, endDate, goals } = req.body;
 
     // Create campaign
     const campaign = await Campaign.create({
       name,
       description,
-      teamId: new mongoose.Types.ObjectId(teamId),
       status: status || CampaignStatus.DRAFT,
       startDate,
       endDate,
@@ -57,12 +35,11 @@ router.post('/', isAuthenticated, canCreateCampaign, validateCampaignCreation, a
       userId: req.user!._id,
       targetType: 'Campaign',
       targetId: campaign._id,
-      metadata: { name, teamId },
+      metadata: { name },
       req
     });
 
     const populatedCampaign = await Campaign.findById(campaign._id)
-      .populate('teamId', 'name')
       .populate('createdBy', 'firstName lastName');
 
     res.status(201).json({
@@ -81,23 +58,12 @@ router.post('/', isAuthenticated, canCreateCampaign, validateCampaignCreation, a
 
 /**
  * @route   GET /api/campaigns
- * @desc    Get all campaigns (filtered by team for non-admins)
+ * @desc    Get all campaigns
  * @access  Private
  */
 router.get('/', isAuthenticated, async (req: Request, res: Response) => {
   try {
     let query: any = {};
-
-    // Non-admins can only see campaigns from their team
-    if (req.user!.role !== UserRole.SYSTEM_ADMIN) {
-      if (!req.user!.teamId) {
-        return res.json({
-          success: true,
-          campaigns: []
-        });
-      }
-      query.teamId = req.user!.teamId;
-    }
 
     // Filter archived campaigns unless explicitly requested
     if (req.query.includeArchived !== 'true') {
@@ -110,7 +76,6 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
     }
 
     const campaigns = await Campaign.find(query)
-      .populate('teamId', 'name')
       .populate('createdBy', 'firstName lastName')
       .sort({ createdAt: -1 });
 
@@ -135,7 +100,6 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
 router.get('/:id', isAuthenticated, validateMongoId('id'), async (req: Request, res: Response) => {
   try {
     const campaign = await Campaign.findById(req.params.id)
-      .populate('teamId', 'name description')
       .populate('createdBy', 'firstName lastName email');
 
     if (!campaign) {
@@ -143,16 +107,6 @@ router.get('/:id', isAuthenticated, validateMongoId('id'), async (req: Request, 
         success: false,
         message: 'Campaign not found'
       });
-    }
-
-    // Check access permissions
-    if (req.user!.role !== UserRole.SYSTEM_ADMIN) {
-      if (!req.user!.teamId || campaign.teamId._id.toString() !== req.user!.teamId.toString()) {
-        return res.status(403).json({
-          success: false,
-          message: 'Access denied'
-        });
-      }
     }
 
     res.json({
@@ -183,16 +137,6 @@ router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), as
       });
     }
 
-    // Check access permissions
-    if (req.user!.role !== UserRole.SYSTEM_ADMIN) {
-      if (!req.user!.teamId || campaign.teamId.toString() !== req.user!.teamId.toString()) {
-        return res.status(403).json({
-          success: false,
-          message: 'Access denied'
-        });
-      }
-    }
-
     const oldData = { ...campaign.toObject() };
     const { name, description, status, startDate, endDate, goals } = req.body;
 
@@ -217,7 +161,6 @@ router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), as
     });
 
     const updatedCampaign = await Campaign.findById(campaign._id)
-      .populate('teamId', 'name')
       .populate('createdBy', 'firstName lastName');
 
     res.json({
@@ -249,16 +192,6 @@ router.put('/:id/archive', isAuthenticated, canCreateCampaign, validateMongoId('
       });
     }
 
-    // Check access permissions
-    if (req.user!.role !== UserRole.SYSTEM_ADMIN) {
-      if (!req.user!.teamId || campaign.teamId.toString() !== req.user!.teamId.toString()) {
-        return res.status(403).json({
-          success: false,
-          message: 'Access denied'
-        });
-      }
-    }
-
     // Archive campaign
     campaign.archived = true;
     await campaign.save();
@@ -274,7 +207,6 @@ router.put('/:id/archive', isAuthenticated, canCreateCampaign, validateMongoId('
     });
 
     const archivedCampaign = await Campaign.findById(campaign._id)
-      .populate('teamId', 'name')
       .populate('createdBy', 'firstName lastName');
 
     res.json({
