@@ -46,14 +46,6 @@ export const userAPI = {
   delete: (id: string) => api.delete(`/users/${id}`)
 };
 
-// Team API
-export const teamAPI = {
-  getAll: () => api.get('/teams'),
-  getById: (id: string) => api.get(`/teams/${id}`),
-  create: (data: any) => api.post('/teams', data),
-  update: (id: string, data: any) => api.put(`/teams/${id}`, data)
-};
-
 // Campaign API
 export const campaignAPI = {
   getAll: (params?: any) => api.get('/campaigns', { params }),
