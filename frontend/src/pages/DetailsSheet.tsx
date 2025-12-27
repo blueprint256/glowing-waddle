@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -15,14 +16,21 @@ import {
   Chip,
   LinearProgress,
   CircularProgress,
-  Alert
+  Alert,
+  Button,
+  IconButton,
+  Tooltip
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
-  PhotoCamera as PhotoCameraIcon
+  PhotoCamera as PhotoCameraIcon,
+  Add as AddIcon,
+  Edit as EditIcon,
+  Delete as DeleteIcon
 } from '@mui/icons-material';
 import { campaignAPI, projectAPI, taskAPI } from '../services/api';
 import { Campaign, Project, Task, TaskStatus } from '../types';
+import CreateTaskModal from '../components/CreateTaskModal';
 
 interface CampaignWithProjects extends Campaign {
   projects?: Project[];
@@ -35,11 +43,14 @@ interface ProjectWithTasks extends Project {
 }
 
 export default function DetailsSheet() {
+  const navigate = useNavigate();
   const [campaigns, setCampaigns] = useState<CampaignWithProjects[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedCampaigns, setExpandedCampaigns] = useState<Set<string>>(new Set());
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
+  const [createTaskModalOpen, setCreateTaskModalOpen] = useState(false);
+  const [selectedProjectForTask, setSelectedProjectForTask] = useState<{ projectId: string; campaignId: string } | null>(null);
 
   useEffect(() => {
     loadCampaigns();
@@ -208,6 +219,37 @@ export default function DetailsSheet() {
     return count;
   };
 
+  const handleOpenCreateTaskModal = (projectId: string, campaignId: string) => {
+    setSelectedProjectForTask({ projectId, campaignId });
+    setCreateTaskModalOpen(true);
+  };
+
+  const handleCloseCreateTaskModal = () => {
+    setCreateTaskModalOpen(false);
+    setSelectedProjectForTask(null);
+  };
+
+  const handleTaskCreated = async () => {
+    // Reload tasks for the project
+    if (selectedProjectForTask) {
+      await loadTasksForProject(selectedProjectForTask.campaignId, selectedProjectForTask.projectId);
+    }
+    handleCloseCreateTaskModal();
+  };
+
+  const handleDeleteTask = async (taskId: string, campaignId: string, projectId: string) => {
+    if (!window.confirm('Are you sure you want to delete this task?')) return;
+
+    try {
+      await taskAPI.delete(taskId);
+      // Reload tasks for the project
+      await loadTasksForProject(campaignId, projectId);
+    } catch (error: any) {
+      console.error('Error deleting task:', error);
+      alert(error.response?.data?.message || 'Failed to delete task');
+    }
+  };
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
@@ -302,6 +344,16 @@ export default function DetailsSheet() {
                           </Box>
                         </AccordionSummary>
                         <AccordionDetails>
+                          <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+                            <Button
+                              variant="contained"
+                              size="small"
+                              startIcon={<AddIcon />}
+                              onClick={() => handleOpenCreateTaskModal(project._id, campaign._id)}
+                            >
+                              Add Task
+                            </Button>
+                          </Box>
                           {!project.tasksLoaded ? (
                             <Box display="flex" justifyContent="center" py={2}>
                               <CircularProgress size={24} />
@@ -317,6 +369,7 @@ export default function DetailsSheet() {
                                     <TableCell>Photos</TableCell>
                                     <TableCell>Notes</TableCell>
                                     <TableCell>Last Updated</TableCell>
+                                    <TableCell align="right">Actions</TableCell>
                                   </TableRow>
                                 </TableHead>
                                 <TableBody>
@@ -331,7 +384,17 @@ export default function DetailsSheet() {
                                       >
                                         <TableCell>{formatDate(task.publishDate)}</TableCell>
                                         <TableCell>
-                                          <Typography variant="body2">{task.name}</Typography>
+                                          <Typography
+                                            variant="body2"
+                                            sx={{
+                                              cursor: 'pointer',
+                                              color: 'primary.main',
+                                              '&:hover': { textDecoration: 'underline' }
+                                            }}
+                                            onClick={() => navigate(`/tasks/${task._id}`)}
+                                          >
+                                            {task.name}
+                                          </Typography>
                                         </TableCell>
                                         <TableCell>
                                           <Chip
@@ -358,6 +421,17 @@ export default function DetailsSheet() {
                                             {formatDate(task.updatedAt)}
                                           </Typography>
                                         </TableCell>
+                                        <TableCell align="right">
+                                          <Tooltip title="Delete Task">
+                                            <IconButton
+                                              size="small"
+                                              color="error"
+                                              onClick={() => handleDeleteTask(task._id, campaign._id, project._id)}
+                                            >
+                                              <DeleteIcon fontSize="small" />
+                                            </IconButton>
+                                          </Tooltip>
+                                        </TableCell>
                                       </TableRow>
                                     );
                                   })}
@@ -382,6 +456,17 @@ export default function DetailsSheet() {
             </Accordion>
           );
         })
+      )}
+
+      {/* Create Task Modal */}
+      {selectedProjectForTask && (
+        <CreateTaskModal
+          open={createTaskModalOpen}
+          onClose={handleCloseCreateTaskModal}
+          projectId={selectedProjectForTask.projectId}
+          campaignId={selectedProjectForTask.campaignId}
+          onTaskCreated={handleTaskCreated}
+        />
       )}
     </Box>
   );
