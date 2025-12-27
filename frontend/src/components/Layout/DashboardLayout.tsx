@@ -21,6 +21,8 @@ import {
   Campaign as CampaignIcon,
   People as PeopleIcon,
   ListAlt as ListAltIcon,
+  CalendarMonth as CalendarIcon,
+  TableChart as TableChartIcon,
   Logout as LogoutIcon
 } from '@mui/icons-material';
 import { useAuthStore } from '../../store/authStore';
@@ -46,6 +48,8 @@ export default function DashboardLayout() {
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/', roles: ['all'] },
     { text: 'Campaigns', icon: <CampaignIcon />, path: '/campaigns', roles: ['all'] },
     { text: 'Details Sheet', icon: <ListAltIcon />, path: '/details-sheet', roles: ['all'] },
+    { text: 'Calendar', icon: <CalendarIcon />, path: '/calendar', roles: ['all'] },
+    { text: 'Tasks Sheet', icon: <TableChartIcon />, path: '/tasks-sheet', roles: ['all'] },
     { text: 'Users', icon: <PeopleIcon />, path: '/admin/users', roles: [UserRole.SYSTEM_ADMIN] }
   ];
 

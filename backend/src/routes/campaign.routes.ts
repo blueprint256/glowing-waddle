@@ -58,7 +58,7 @@ router.post('/', isAuthenticated, canCreateCampaign, validateCampaignCreation, a
 
 /**
  * @route   GET /api/campaigns
- * @desc    Get all campaigns (System Admin) or owned campaigns (Hybrid User) with pagination
+ * @desc    Get all campaigns (System Admin) or owned campaigns (Hybrid User) with pagination and comprehensive filtering
  * @access  Private
  */
 router.get('/', isAuthenticated, async (req: Request, res: Response) => {
@@ -76,14 +76,53 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
       query.archived = false;
     }
 
-    // Optional status filter
+    // Optional status filter (supports multi-select)
     if (req.query.status) {
-      query.status = req.query.status;
+      const statuses = Array.isArray(req.query.status)
+        ? req.query.status
+        : req.query.status.split(',');
+      query.status = { $in: statuses };
+    }
+
+    // Filter by creator (System Admin only)
+    if (req.query.createdBy && req.user!.role === UserRole.SYSTEM_ADMIN) {
+      const creatorIds = Array.isArray(req.query.createdBy)
+        ? req.query.createdBy
+        : req.query.createdBy.split(',');
+      query.createdBy = { $in: creatorIds };
+    }
+
+    // Global search across campaign names and descriptions
+    if (req.query.search) {
+      const searchRegex = new RegExp(req.query.search as string, 'i');
+      query.$or = [
+        { name: searchRegex },
+        { description: searchRegex }
+      ];
+    }
+
+    // Filter by date range (startDate or endDate)
+    if (req.query.dateFrom || req.query.dateTo) {
+      const dateQuery: any = {};
+      if (req.query.dateFrom) {
+        dateQuery.$gte = new Date(req.query.dateFrom as string);
+      }
+      if (req.query.dateTo) {
+        dateQuery.$lte = new Date(req.query.dateTo as string);
+      }
+      // Match campaigns where either startDate or endDate falls in range
+      query.$and = query.$and || [];
+      query.$and.push({
+        $or: [
+          { startDate: dateQuery },
+          { endDate: dateQuery }
+        ]
+      });
     }
 
     // Pagination parameters
     const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
+    const limit = parseInt(req.query.limit as string) || 1000; // Higher default for comprehensive views
     const skip = (page - 1) * limit;
 
     // Get total count for pagination metadata
