@@ -167,7 +167,7 @@ export default function TaskDetail() {
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
-        <CircularProgress />
+        <CircularProgress sx={{ color: '#2563EB' }} />
       </Box>
     );
   }

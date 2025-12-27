@@ -11,7 +11,8 @@ import {
   CardActions,
   Chip,
   Breadcrumbs,
-  Link
+  Link,
+  CircularProgress
 } from '@mui/material';
 import { Add as AddIcon } from '@mui/icons-material';
 import { campaignAPI, projectAPI } from '../../services/api';
@@ -25,6 +26,7 @@ export default function CampaignDetail() {
   const { user } = useAuthStore();
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
 
   useEffect(() => {
@@ -36,10 +38,13 @@ export default function CampaignDetail() {
 
   const loadCampaign = async () => {
     try {
+      setLoading(true);
       const res = await campaignAPI.getById(id!);
       setCampaign(res.data.campaign);
     } catch (error) {
       console.error('Error loading campaign:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -68,6 +73,14 @@ export default function CampaignDetail() {
     // Hybrid users can only create projects in campaigns they own
     return campaign.createdBy === user.id || campaign.createdBy?._id === user.id;
   };
+
+  if (loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+        <CircularProgress sx={{ color: '#2563EB' }} />
+      </Box>
+    );
+  }
 
   if (!campaign) return <Typography>Loading...</Typography>;
 

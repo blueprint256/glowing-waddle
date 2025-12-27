@@ -16,15 +16,20 @@ import {
   DialogActions,
   TextField,
   MenuItem,
-  Chip
+  Chip,
+  CircularProgress
 } from '@mui/material';
 import { Add as AddIcon } from '@mui/icons-material';
 import { userAPI } from '../../services/api';
 import { User, UserRole } from '../../types';
+import Pagination from '../../components/Pagination';
 
 export default function UserManagement() {
   const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ total: 0, pages: 0, limit: 10 });
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -35,19 +40,23 @@ export default function UserManagement() {
 
   useEffect(() => {
     loadUsers();
-  }, []);
+  }, [page]);
 
   const loadUsers = async () => {
     try {
-      const res = await userAPI.getAll();
+      setLoading(true);
+      const res = await userAPI.getAll({ params: { page, limit: 10 } });
       // Only update state if we have valid data
       if (res.data && Array.isArray(res.data.users)) {
         setUsers(res.data.users);
+        setPagination(res.data.pagination || { total: 0, pages: 0, limit: 10 });
       } else {
         console.warn('Received invalid user data:', res.data);
       }
     } catch (error) {
       console.error('Error loading users:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -67,6 +76,14 @@ export default function UserManagement() {
       alert(error.response?.data?.message || 'Failed to create user');
     }
   };
+
+  if (loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+        <CircularProgress sx={{ color: '#2563EB' }} />
+      </Box>
+    );
+  }
 
   return (
     <Box>
@@ -109,6 +126,14 @@ export default function UserManagement() {
           </TableBody>
         </Table>
       </TableContainer>
+
+      <Pagination
+        currentPage={page}
+        totalPages={pagination.pages}
+        totalItems={pagination.total}
+        itemsPerPage={pagination.limit}
+        onPageChange={(newPage) => setPage(newPage)}
+      />
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Create New User</DialogTitle>

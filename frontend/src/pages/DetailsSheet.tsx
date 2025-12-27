@@ -37,11 +37,13 @@ import {
   Check as CheckIcon,
   Close as CloseIcon
 } from '@mui/icons-material';
+import { useAuthStore } from '../store/authStore';
 import { campaignAPI, projectAPI, taskAPI } from '../services/api';
-import { Campaign, Project, Task, TaskStatus, CampaignStatus, ProjectStatus } from '../types';
+import { Campaign, Project, Task, TaskStatus, CampaignStatus, ProjectStatus, UserRole, User } from '../types';
 import CreateTaskModal from '../components/CreateTaskModal';
 import CampaignFormModal from '../components/CampaignFormModal';
 import ProjectFormDialog from '../components/Projects/ProjectFormDialog';
+import Pagination from '../components/Pagination';
 
 interface CampaignWithProjects extends Campaign {
   projects?: ProjectWithTasks[];
@@ -61,11 +63,15 @@ interface EditingCell {
 
 export default function DetailsSheet() {
   const navigate = useNavigate();
+  const { user } = useAuthStore();
   const [campaigns, setCampaigns] = useState<CampaignWithProjects[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ total: 0, pages: 0, limit: 10 });
   const [expandedCampaigns, setExpandedCampaigns] = useState<Set<string>>(new Set());
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
+  const [expandedCreators, setExpandedCreators] = useState<Set<string>>(new Set());
   const [createTaskModalOpen, setCreateTaskModalOpen] = useState(false);
   const [createCampaignModalOpen, setCreateCampaignModalOpen] = useState(false);
   const [createProjectModalOpen, setCreateProjectModalOpen] = useState(false);
@@ -84,10 +90,34 @@ export default function DetailsSheet() {
   const PROJECT_HOVER = '#C7D2FE';   // Lighter purple hover
   const TASK_COLOR = '#C7D2FE';      // Lighter violet-blue
   const TASK_HOVER = '#E0E7FF';      // Very light violet hover
+  const CREATOR_COLOR = '#F0F9FF';   // Very light blue for creator grouping
+  const CREATOR_BORDER = '#0284C7';  // Sky blue border
+
+  // Group campaigns by creator for System Admins
+  const groupedCampaigns = (() => {
+    if (user?.role !== UserRole.SYSTEM_ADMIN) {
+      return null;
+    }
+
+    const groups: Record<string, { user: User; campaigns: CampaignWithProjects[] }> = {};
+
+    campaigns.forEach((campaign) => {
+      const creator = campaign.createdBy as User;
+      if (!creator || typeof creator === 'string') return;
+
+      const key = creator._id || creator.email;
+      if (!groups[key]) {
+        groups[key] = { user: creator, campaigns: [] };
+      }
+      groups[key].campaigns.push(campaign);
+    });
+
+    return groups;
+  })();
 
   useEffect(() => {
     loadCampaigns();
-  }, []);
+  }, [page]);
 
   useEffect(() => {
     if (editingCell && editInputRef.current) {
@@ -100,7 +130,7 @@ export default function DetailsSheet() {
     try {
       setLoading(true);
       setError(null);
-      const res = await campaignAPI.getAll({ includeArchived: false });
+      const res = await campaignAPI.getAll({ page, limit: 10, includeArchived: false });
       const campaignsData = res.data.campaigns || [];
       setCampaigns(
         campaignsData.map((c: Campaign) => ({
@@ -109,6 +139,7 @@ export default function DetailsSheet() {
           projectsLoaded: false
         }))
       );
+      setPagination(res.data.pagination || { total: 0, pages: 0, limit: 10 });
     } catch (error: any) {
       console.error('Error loading campaigns:', error);
       setError(error.response?.data?.message || 'Failed to load campaigns');
@@ -438,6 +469,424 @@ export default function DetailsSheet() {
     }
   };
 
+  // Helper function to render a single campaign with its hierarchical structure
+  const renderCampaign = (campaign: CampaignWithProjects) => {
+    const progress = expandedCampaigns.has(campaign._id)
+      ? calculateCampaignProgress(campaign)
+      : 0;
+
+    return (
+      <Accordion
+        key={campaign._id}
+        expanded={expandedCampaigns.has(campaign._id)}
+        onChange={handleCampaignExpand(campaign._id)}
+        sx={{
+          mb: 2,
+          '& .MuiAccordionSummary-root': {
+            backgroundColor: CAMPAIGN_COLOR,
+            borderLeft: `4px solid ${CAMPAIGN_BORDER}`,
+            '&:hover': {
+              backgroundColor: CAMPAIGN_HOVER
+            }
+          }
+        }}
+      >
+        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <Box sx={{ width: '100%', pr: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+              {editingCell?.type === 'campaign' && editingCell?.id === campaign._id && editingCell?.field === 'name' ? (
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flex: 1 }}>
+                  <TextField
+                    inputRef={editInputRef}
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') saveEdit();
+                      if (e.key === 'Escape') cancelEditing();
+                    }}
+                    size="small"
+                    onClick={(e) => e.stopPropagation()}
+                    sx={{ flex: 1 }}
+                  />
+                  <IconButton size="small" onClick={(e) => { e.stopPropagation(); saveEdit(); }} color="primary">
+                    <CheckIcon fontSize="small" />
+                  </IconButton>
+                  <IconButton size="small" onClick={(e) => { e.stopPropagation(); cancelEditing(); }}>
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              ) : (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 600 }}>{campaign.name}</Typography>
+                  <IconButton
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      startEditing('campaign', campaign._id, 'name', campaign.name);
+                    }}
+                  >
+                    <EditIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              )}
+              <FormControl size="small" sx={{ minWidth: 120 }} onClick={(e) => e.stopPropagation()}>
+                <Select
+                  value={campaign.status}
+                  onChange={(e) => handleCampaignStatusChange(campaign._id, e.target.value as CampaignStatus)}
+                  sx={{ fontSize: '0.875rem' }}
+                >
+                  <MenuItem value={CampaignStatus.DRAFT}>Draft</MenuItem>
+                  <MenuItem value={CampaignStatus.ACTIVE}>Active</MenuItem>
+                  <MenuItem value={CampaignStatus.PAUSED}>Paused</MenuItem>
+                  <MenuItem value={CampaignStatus.COMPLETED}>Completed</MenuItem>
+                  <MenuItem value={CampaignStatus.ARCHIVED}>Archived</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+            {expandedCampaigns.has(campaign._id) && (
+              <Box sx={{ mt: 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <LinearProgress
+                    variant="determinate"
+                    value={progress}
+                    sx={{ flex: 1, height: 8, borderRadius: 1 }}
+                  />
+                  <Typography variant="body2" color="text.secondary" fontWeight={600}>
+                    {progress}%
+                  </Typography>
+                </Box>
+                <Typography variant="caption" color="text.secondary">
+                  {campaign.projects?.length || 0} project(s)
+                </Typography>
+              </Box>
+            )}
+          </Box>
+        </AccordionSummary>
+        <AccordionDetails sx={{ pl: 4, backgroundColor: '#FAFAFA' }}>
+          {/* Create Project Button */}
+          <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<AddIcon />}
+              onClick={() => handleOpenCreateProjectModal(campaign._id)}
+              sx={{
+                backgroundColor: PROJECT_BORDER,
+                '&:hover': { backgroundColor: '#4F46E5' }
+              }}
+            >
+              Create Project
+            </Button>
+          </Box>
+
+          {!campaign.projectsLoaded ? (
+            <Box display="flex" justifyContent="center" py={2}>
+              <CircularProgress size={30} />
+            </Box>
+          ) : campaign.projects && campaign.projects.length > 0 ? (
+            campaign.projects.map((project) => {
+              const { completed, total } = getTaskCounts(project);
+
+              return (
+                <Accordion
+                  key={project._id}
+                  expanded={expandedProjects.has(project._id)}
+                  onChange={handleProjectExpand(campaign._id, project._id)}
+                  sx={{
+                    mb: 1,
+                    '& .MuiAccordionSummary-root': {
+                      backgroundColor: PROJECT_COLOR,
+                      borderLeft: `4px solid ${PROJECT_BORDER}`,
+                      '&:hover': {
+                        backgroundColor: PROJECT_HOVER
+                      }
+                    }
+                  }}
+                >
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Box sx={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      {editingCell?.type === 'project' && editingCell?.id === project._id && editingCell?.field === 'name' ? (
+                        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flex: 1 }}>
+                          <TextField
+                            inputRef={editInputRef}
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') saveEdit();
+                              if (e.key === 'Escape') cancelEditing();
+                            }}
+                            size="small"
+                            onClick={(e) => e.stopPropagation()}
+                            sx={{ flex: 1 }}
+                          />
+                          <IconButton size="small" onClick={(e) => { e.stopPropagation(); saveEdit(); }} color="primary">
+                            <CheckIcon fontSize="small" />
+                          </IconButton>
+                          <IconButton size="small" onClick={(e) => { e.stopPropagation(); cancelEditing(); }}>
+                            <CloseIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
+                      ) : (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
+                          <Typography variant="subtitle1" fontWeight={600}>{project.name}</Typography>
+                          <IconButton
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              startEditing('project', project._id, 'name', project.name);
+                            }}
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                          {expandedProjects.has(project._id) && (
+                            <Typography variant="caption" color="text.secondary">
+                              {completed} / {total} tasks completed
+                            </Typography>
+                          )}
+                        </Box>
+                      )}
+                      <FormControl size="small" sx={{ minWidth: 120 }} onClick={(e) => e.stopPropagation()}>
+                        <Select
+                          value={project.status}
+                          onChange={(e) => handleProjectStatusChange(project._id, e.target.value as ProjectStatus)}
+                          sx={{ fontSize: '0.875rem' }}
+                        >
+                          <MenuItem value={ProjectStatus.PLANNING}>Planning</MenuItem>
+                          <MenuItem value={ProjectStatus.IN_PROGRESS}>In Progress</MenuItem>
+                          <MenuItem value={ProjectStatus.REVIEW}>Review</MenuItem>
+                          <MenuItem value={ProjectStatus.COMPLETED}>Completed</MenuItem>
+                          <MenuItem value={ProjectStatus.ON_HOLD}>On Hold</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Box>
+                  </AccordionSummary>
+                  <AccordionDetails sx={{ backgroundColor: '#F5F5F5' }}>
+                    <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+                      <Button
+                        variant="contained"
+                        size="small"
+                        startIcon={<AddIcon />}
+                        onClick={() => handleOpenCreateTaskModal(project._id, campaign._id)}
+                        sx={{
+                          backgroundColor: '#6366F1',
+                          '&:hover': { backgroundColor: '#4F46E5' }
+                        }}
+                      >
+                        Add Task
+                      </Button>
+                    </Box>
+                    {!project.tasksLoaded ? (
+                      <Box display="flex" justifyContent="center" py={2}>
+                        <CircularProgress size={24} />
+                      </Box>
+                    ) : project.tasks && project.tasks.length > 0 ? (
+                      <TableContainer component={Paper} sx={{ boxShadow: 2 }}>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow sx={{ backgroundColor: TASK_COLOR }}>
+                              <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
+                              <TableCell sx={{ fontWeight: 600 }}>Task Name</TableCell>
+                              <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                              <TableCell sx={{ fontWeight: 600 }}>Photos</TableCell>
+                              <TableCell sx={{ fontWeight: 600 }}>Notes</TableCell>
+                              <TableCell sx={{ fontWeight: 600 }}>Last Updated</TableCell>
+                              <TableCell align="right" sx={{ fontWeight: 600 }}>Actions</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {project.tasks.map((task) => {
+                              const photoCount = getPhotoCount(task);
+
+                              return (
+                                <TableRow
+                                  key={task._id}
+                                  hover
+                                  sx={{
+                                    '&:last-child td, &:last-child th': { border: 0 },
+                                    '&:hover': { backgroundColor: TASK_HOVER }
+                                  }}
+                                >
+                                  <TableCell>{formatDate(task.taskDate)}</TableCell>
+                                  <TableCell>
+                                    {editingCell?.type === 'task' && editingCell?.id === task._id && editingCell?.field === 'name' ? (
+                                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                                        <TextField
+                                          inputRef={editInputRef}
+                                          value={editValue}
+                                          onChange={(e) => setEditValue(e.target.value)}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') saveEdit();
+                                            if (e.key === 'Escape') cancelEditing();
+                                          }}
+                                          size="small"
+                                          fullWidth
+                                        />
+                                        <IconButton size="small" onClick={saveEdit} color="primary">
+                                          <CheckIcon fontSize="small" />
+                                        </IconButton>
+                                        <IconButton size="small" onClick={cancelEditing}>
+                                          <CloseIcon fontSize="small" />
+                                        </IconButton>
+                                      </Box>
+                                    ) : (
+                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                        <Typography
+                                          variant="body2"
+                                          sx={{
+                                            cursor: 'pointer',
+                                            color: 'primary.main',
+                                            '&:hover': { textDecoration: 'underline' }
+                                          }}
+                                          onClick={() => navigate(`/tasks/${task._id}`)}
+                                        >
+                                          {task.name}
+                                        </Typography>
+                                        <IconButton
+                                          size="small"
+                                          onClick={() => startEditing('task', task._id, 'name', task.name)}
+                                        >
+                                          <EditIcon fontSize="small" />
+                                        </IconButton>
+                                      </Box>
+                                    )}
+                                  </TableCell>
+                                  <TableCell>
+                                    <FormControl size="small" fullWidth>
+                                      <Select
+                                        value={task.status}
+                                        onChange={(e) => handleTaskStatusChange(task._id, e.target.value as TaskStatus)}
+                                        sx={{ fontSize: '0.875rem' }}
+                                      >
+                                        <MenuItem value={TaskStatus.PENDING}>Pending</MenuItem>
+                                        <MenuItem value={TaskStatus.IN_PROGRESS}>In Progress</MenuItem>
+                                        <MenuItem value={TaskStatus.COMPLETED}>Completed</MenuItem>
+                                      </Select>
+                                    </FormControl>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                      {photoCount > 0 && (
+                                        <>
+                                          <PhotoCameraIcon fontSize="small" color="action" />
+                                          <Typography variant="caption">{photoCount}</Typography>
+                                        </>
+                                      )}
+                                      <Tooltip title="Upload Photo">
+                                        <IconButton
+                                          size="small"
+                                          onClick={() => handlePhotoUpload(task._id, campaign._id, project._id)}
+                                          color="primary"
+                                        >
+                                          <UploadIcon fontSize="small" />
+                                        </IconButton>
+                                      </Tooltip>
+                                    </Box>
+                                  </TableCell>
+                                  <TableCell>
+                                    {editingCell?.type === 'task' && editingCell?.id === task._id && editingCell?.field === 'description' ? (
+                                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                                        <TextField
+                                          inputRef={editInputRef}
+                                          value={editValue}
+                                          onChange={(e) => setEditValue(e.target.value)}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') saveEdit();
+                                            if (e.key === 'Escape') cancelEditing();
+                                          }}
+                                          size="small"
+                                          multiline
+                                          fullWidth
+                                        />
+                                        <IconButton size="small" onClick={saveEdit} color="primary">
+                                          <CheckIcon fontSize="small" />
+                                        </IconButton>
+                                        <IconButton size="small" onClick={cancelEditing}>
+                                          <CloseIcon fontSize="small" />
+                                        </IconButton>
+                                      </Box>
+                                    ) : (
+                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                        <Typography
+                                          variant="body2"
+                                          noWrap
+                                          sx={{ maxWidth: 200, cursor: 'pointer' }}
+                                          onClick={() => startEditing('task', task._id, 'description', task.description || '')}
+                                        >
+                                          {task.description || '-'}
+                                        </Typography>
+                                        {!task.description && (
+                                          <IconButton
+                                            size="small"
+                                            onClick={() => startEditing('task', task._id, 'description', '')}
+                                          >
+                                            <EditIcon fontSize="small" />
+                                          </IconButton>
+                                        )}
+                                      </Box>
+                                    )}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Typography variant="caption" color="text.secondary">
+                                      {formatDate(task.updatedAt)}
+                                    </Typography>
+                                  </TableCell>
+                                  <TableCell align="right">
+                                    <Tooltip title="Delete Task">
+                                      <IconButton
+                                        size="small"
+                                        color="error"
+                                        onClick={() => handleDeleteTask(task._id, campaign._id, project._id)}
+                                      >
+                                        <DeleteIcon fontSize="small" />
+                                      </IconButton>
+                                    </Tooltip>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    ) : (
+                      <Paper sx={{ py: 3, textAlign: 'center', backgroundColor: '#FAFAFA' }}>
+                        <Typography variant="body2" color="text.secondary">
+                          No tasks assigned to this project yet.
+                        </Typography>
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          startIcon={<AddIcon />}
+                          onClick={() => handleOpenCreateTaskModal(project._id, campaign._id)}
+                          sx={{
+                            mt: 2,
+                            borderColor: '#6366F1',
+                            color: '#6366F1',
+                            '&:hover': {
+                              borderColor: '#4F46E5',
+                              backgroundColor: '#EEF2FF'
+                            }
+                          }}
+                        >
+                          Create First Task
+                        </Button>
+                      </Paper>
+                    )}
+                  </AccordionDetails>
+                </Accordion>
+              );
+            })
+          ) : (
+            <Paper sx={{ py: 3, textAlign: 'center', backgroundColor: '#FAFAFA' }}>
+              <Typography variant="body2" color="text.secondary">
+                No projects in this campaign yet.
+              </Typography>
+            </Paper>
+          )}
+        </AccordionDetails>
+      </Accordion>
+    );
+  };
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
@@ -485,427 +934,88 @@ export default function DetailsSheet() {
         </Button>
       </Box>
 
-      {campaigns.length === 0 ? (
-        <Paper sx={{ p: 3, textAlign: 'center' }}>
-          <Typography color="text.secondary">No campaigns found</Typography>
-        </Paper>
-      ) : (
-        campaigns.map((campaign) => {
-          const progress = expandedCampaigns.has(campaign._id)
-            ? calculateCampaignProgress(campaign)
-            : 0;
+      {/* Hybrid Users: Flat list of campaigns */}
+      {user?.role === UserRole.HYBRID && (
+        <>
+          {campaigns.length === 0 ? (
+            <Paper sx={{ p: 3, textAlign: 'center' }}>
+              <Typography color="text.secondary">No campaigns found</Typography>
+            </Paper>
+          ) : (
+            campaigns.map(renderCampaign)
+          )}
 
-          return (
-            <Accordion
-              key={campaign._id}
-              expanded={expandedCampaigns.has(campaign._id)}
-              onChange={handleCampaignExpand(campaign._id)}
-              sx={{
-                mb: 2,
-                '& .MuiAccordionSummary-root': {
-                  backgroundColor: CAMPAIGN_COLOR,
-                  borderLeft: `4px solid ${CAMPAIGN_BORDER}`,
-                  '&:hover': {
-                    backgroundColor: CAMPAIGN_HOVER
-                  }
-                }
-              }}
-            >
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Box sx={{ width: '100%', pr: 2 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                    {editingCell?.type === 'campaign' && editingCell?.id === campaign._id && editingCell?.field === 'name' ? (
-                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flex: 1 }}>
-                        <TextField
-                          inputRef={editInputRef}
-                          value={editValue}
-                          onChange={(e) => setEditValue(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') saveEdit();
-                            if (e.key === 'Escape') cancelEditing();
-                          }}
-                          size="small"
-                          onClick={(e) => e.stopPropagation()}
-                          sx={{ flex: 1 }}
-                        />
-                        <IconButton size="small" onClick={(e) => { e.stopPropagation(); saveEdit(); }} color="primary">
-                          <CheckIcon fontSize="small" />
-                        </IconButton>
-                        <IconButton size="small" onClick={(e) => { e.stopPropagation(); cancelEditing(); }}>
-                          <CloseIcon fontSize="small" />
-                        </IconButton>
-                      </Box>
-                    ) : (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography variant="h6" sx={{ fontWeight: 600 }}>{campaign.name}</Typography>
-                        <IconButton
-                          size="small"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            startEditing('campaign', campaign._id, 'name', campaign.name);
-                          }}
-                        >
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                      </Box>
-                    )}
-                    <FormControl size="small" sx={{ minWidth: 120 }} onClick={(e) => e.stopPropagation()}>
-                      <Select
-                        value={campaign.status}
-                        onChange={(e) => handleCampaignStatusChange(campaign._id, e.target.value as CampaignStatus)}
-                        sx={{ fontSize: '0.875rem' }}
-                      >
-                        <MenuItem value={CampaignStatus.DRAFT}>Draft</MenuItem>
-                        <MenuItem value={CampaignStatus.ACTIVE}>Active</MenuItem>
-                        <MenuItem value={CampaignStatus.PAUSED}>Paused</MenuItem>
-                        <MenuItem value={CampaignStatus.COMPLETED}>Completed</MenuItem>
-                        <MenuItem value={CampaignStatus.ARCHIVED}>Archived</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Box>
-                  {expandedCampaigns.has(campaign._id) && (
-                    <Box sx={{ mt: 1 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <LinearProgress
-                          variant="determinate"
-                          value={progress}
-                          sx={{ flex: 1, height: 8, borderRadius: 1 }}
-                        />
-                        <Typography variant="body2" color="text.secondary" fontWeight={600}>
-                          {progress}%
-                        </Typography>
-                      </Box>
-                      <Typography variant="caption" color="text.secondary">
-                        {campaign.projects?.length || 0} project(s)
+          <Pagination
+            currentPage={page}
+            totalPages={pagination.pages}
+            totalItems={pagination.total}
+            itemsPerPage={pagination.limit}
+            onPageChange={(newPage) => setPage(newPage)}
+          />
+        </>
+      )}
+
+      {/* System Admins: Grouped by creator */}
+      {user?.role === UserRole.SYSTEM_ADMIN && (
+        <>
+          <Box>
+            {groupedCampaigns && Object.keys(groupedCampaigns).length > 0 ? (
+              Object.entries(groupedCampaigns).map(([key, { user: creator, campaigns: userCampaigns }]) => (
+                <Accordion
+                  key={key}
+                  defaultExpanded={false}
+                  sx={{
+                    mb: 3,
+                    '& .MuiAccordionSummary-root': {
+                      backgroundColor: CREATOR_COLOR,
+                      borderLeft: `4px solid ${CREATOR_BORDER}`,
+                      '&:hover': {
+                        backgroundColor: '#E0F2FE'
+                      }
+                    }
+                  }}
+                >
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
+                      <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                        Campaigns by {creator.firstName} {creator.lastName}
+                      </Typography>
+                      <Chip
+                        label={`${userCampaigns.length} campaign${userCampaigns.length !== 1 ? 's' : ''}`}
+                        size="small"
+                        sx={{
+                          backgroundColor: CREATOR_BORDER,
+                          color: 'white',
+                          fontWeight: 600
+                        }}
+                      />
+                      <Typography variant="body2" color="text.secondary" sx={{ ml: 'auto' }}>
+                        {creator.email}
                       </Typography>
                     </Box>
-                  )}
-                </Box>
-              </AccordionSummary>
-              <AccordionDetails sx={{ pl: 4, backgroundColor: '#FAFAFA' }}>
-                {/* Create Project Button */}
-                <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
-                  <Button
-                    variant="contained"
-                    size="small"
-                    startIcon={<AddIcon />}
-                    onClick={() => handleOpenCreateProjectModal(campaign._id)}
-                    sx={{
-                      backgroundColor: PROJECT_BORDER,
-                      '&:hover': { backgroundColor: '#4F46E5' }
-                    }}
-                  >
-                    Create Project
-                  </Button>
-                </Box>
+                  </AccordionSummary>
+                  <AccordionDetails sx={{ backgroundColor: '#FAFAFA' }}>
+                    <Box>
+                      {userCampaigns.map(renderCampaign)}
+                    </Box>
+                  </AccordionDetails>
+                </Accordion>
+              ))
+            ) : (
+              <Paper sx={{ p: 3, textAlign: 'center' }}>
+                <Typography color="text.secondary">No campaigns found</Typography>
+              </Paper>
+            )}
+          </Box>
 
-                {!campaign.projectsLoaded ? (
-                  <Box display="flex" justifyContent="center" py={2}>
-                    <CircularProgress size={30} />
-                  </Box>
-                ) : campaign.projects && campaign.projects.length > 0 ? (
-                  campaign.projects.map((project) => {
-                    const { completed, total } = getTaskCounts(project);
-
-                    return (
-                      <Accordion
-                        key={project._id}
-                        expanded={expandedProjects.has(project._id)}
-                        onChange={handleProjectExpand(campaign._id, project._id)}
-                        sx={{
-                          mb: 1,
-                          '& .MuiAccordionSummary-root': {
-                            backgroundColor: PROJECT_COLOR,
-                            borderLeft: `4px solid ${PROJECT_BORDER}`,
-                            '&:hover': {
-                              backgroundColor: PROJECT_HOVER
-                            }
-                          }
-                        }}
-                      >
-                        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                          <Box sx={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            {editingCell?.type === 'project' && editingCell?.id === project._id && editingCell?.field === 'name' ? (
-                              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flex: 1 }}>
-                                <TextField
-                                  inputRef={editInputRef}
-                                  value={editValue}
-                                  onChange={(e) => setEditValue(e.target.value)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') saveEdit();
-                                    if (e.key === 'Escape') cancelEditing();
-                                  }}
-                                  size="small"
-                                  onClick={(e) => e.stopPropagation()}
-                                  sx={{ flex: 1 }}
-                                />
-                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); saveEdit(); }} color="primary">
-                                  <CheckIcon fontSize="small" />
-                                </IconButton>
-                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); cancelEditing(); }}>
-                                  <CloseIcon fontSize="small" />
-                                </IconButton>
-                              </Box>
-                            ) : (
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
-                                <Typography variant="subtitle1" fontWeight={600}>{project.name}</Typography>
-                                <IconButton
-                                  size="small"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    startEditing('project', project._id, 'name', project.name);
-                                  }}
-                                >
-                                  <EditIcon fontSize="small" />
-                                </IconButton>
-                                {expandedProjects.has(project._id) && (
-                                  <Typography variant="caption" color="text.secondary">
-                                    {completed} / {total} tasks completed
-                                  </Typography>
-                                )}
-                              </Box>
-                            )}
-                            <FormControl size="small" sx={{ minWidth: 120 }} onClick={(e) => e.stopPropagation()}>
-                              <Select
-                                value={project.status}
-                                onChange={(e) => handleProjectStatusChange(project._id, e.target.value as ProjectStatus)}
-                                sx={{ fontSize: '0.875rem' }}
-                              >
-                                <MenuItem value={ProjectStatus.PLANNING}>Planning</MenuItem>
-                                <MenuItem value={ProjectStatus.IN_PROGRESS}>In Progress</MenuItem>
-                                <MenuItem value={ProjectStatus.REVIEW}>Review</MenuItem>
-                                <MenuItem value={ProjectStatus.COMPLETED}>Completed</MenuItem>
-                                <MenuItem value={ProjectStatus.ON_HOLD}>On Hold</MenuItem>
-                              </Select>
-                            </FormControl>
-                          </Box>
-                        </AccordionSummary>
-                        <AccordionDetails sx={{ backgroundColor: '#F5F5F5' }}>
-                          <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
-                            <Button
-                              variant="contained"
-                              size="small"
-                              startIcon={<AddIcon />}
-                              onClick={() => handleOpenCreateTaskModal(project._id, campaign._id)}
-                              sx={{
-                                backgroundColor: '#6366F1',
-                                '&:hover': { backgroundColor: '#4F46E5' }
-                              }}
-                            >
-                              Add Task
-                            </Button>
-                          </Box>
-                          {!project.tasksLoaded ? (
-                            <Box display="flex" justifyContent="center" py={2}>
-                              <CircularProgress size={24} />
-                            </Box>
-                          ) : project.tasks && project.tasks.length > 0 ? (
-                            <TableContainer component={Paper} sx={{ boxShadow: 2 }}>
-                              <Table size="small">
-                                <TableHead>
-                                  <TableRow sx={{ backgroundColor: TASK_COLOR }}>
-                                    <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
-                                    <TableCell sx={{ fontWeight: 600 }}>Task Name</TableCell>
-                                    <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-                                    <TableCell sx={{ fontWeight: 600 }}>Photos</TableCell>
-                                    <TableCell sx={{ fontWeight: 600 }}>Notes</TableCell>
-                                    <TableCell sx={{ fontWeight: 600 }}>Last Updated</TableCell>
-                                    <TableCell align="right" sx={{ fontWeight: 600 }}>Actions</TableCell>
-                                  </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                  {project.tasks.map((task) => {
-                                    const photoCount = getPhotoCount(task);
-
-                                    return (
-                                      <TableRow
-                                        key={task._id}
-                                        hover
-                                        sx={{
-                                          '&:last-child td, &:last-child th': { border: 0 },
-                                          '&:hover': { backgroundColor: TASK_HOVER }
-                                        }}
-                                      >
-                                        <TableCell>{formatDate(task.taskDate)}</TableCell>
-                                        <TableCell>
-                                          {editingCell?.type === 'task' && editingCell?.id === task._id && editingCell?.field === 'name' ? (
-                                            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                                              <TextField
-                                                inputRef={editInputRef}
-                                                value={editValue}
-                                                onChange={(e) => setEditValue(e.target.value)}
-                                                onKeyDown={(e) => {
-                                                  if (e.key === 'Enter') saveEdit();
-                                                  if (e.key === 'Escape') cancelEditing();
-                                                }}
-                                                size="small"
-                                                fullWidth
-                                              />
-                                              <IconButton size="small" onClick={saveEdit} color="primary">
-                                                <CheckIcon fontSize="small" />
-                                              </IconButton>
-                                              <IconButton size="small" onClick={cancelEditing}>
-                                                <CloseIcon fontSize="small" />
-                                              </IconButton>
-                                            </Box>
-                                          ) : (
-                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                              <Typography
-                                                variant="body2"
-                                                sx={{
-                                                  cursor: 'pointer',
-                                                  color: 'primary.main',
-                                                  '&:hover': { textDecoration: 'underline' }
-                                                }}
-                                                onClick={() => navigate(`/tasks/${task._id}`)}
-                                              >
-                                                {task.name}
-                                              </Typography>
-                                              <IconButton
-                                                size="small"
-                                                onClick={() => startEditing('task', task._id, 'name', task.name)}
-                                              >
-                                                <EditIcon fontSize="small" />
-                                              </IconButton>
-                                            </Box>
-                                          )}
-                                        </TableCell>
-                                        <TableCell>
-                                          <FormControl size="small" fullWidth>
-                                            <Select
-                                              value={task.status}
-                                              onChange={(e) => handleTaskStatusChange(task._id, e.target.value as TaskStatus)}
-                                              sx={{ fontSize: '0.875rem' }}
-                                            >
-                                              <MenuItem value={TaskStatus.PENDING}>Pending</MenuItem>
-                                              <MenuItem value={TaskStatus.IN_PROGRESS}>In Progress</MenuItem>
-                                              <MenuItem value={TaskStatus.COMPLETED}>Completed</MenuItem>
-                                            </Select>
-                                          </FormControl>
-                                        </TableCell>
-                                        <TableCell>
-                                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                            {photoCount > 0 && (
-                                              <>
-                                                <PhotoCameraIcon fontSize="small" color="action" />
-                                                <Typography variant="caption">{photoCount}</Typography>
-                                              </>
-                                            )}
-                                            <Tooltip title="Upload Photo">
-                                              <IconButton
-                                                size="small"
-                                                onClick={() => handlePhotoUpload(task._id, campaign._id, project._id)}
-                                                color="primary"
-                                              >
-                                                <UploadIcon fontSize="small" />
-                                              </IconButton>
-                                            </Tooltip>
-                                          </Box>
-                                        </TableCell>
-                                        <TableCell>
-                                          {editingCell?.type === 'task' && editingCell?.id === task._id && editingCell?.field === 'description' ? (
-                                            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                                              <TextField
-                                                inputRef={editInputRef}
-                                                value={editValue}
-                                                onChange={(e) => setEditValue(e.target.value)}
-                                                onKeyDown={(e) => {
-                                                  if (e.key === 'Enter') saveEdit();
-                                                  if (e.key === 'Escape') cancelEditing();
-                                                }}
-                                                size="small"
-                                                multiline
-                                                fullWidth
-                                              />
-                                              <IconButton size="small" onClick={saveEdit} color="primary">
-                                                <CheckIcon fontSize="small" />
-                                              </IconButton>
-                                              <IconButton size="small" onClick={cancelEditing}>
-                                                <CloseIcon fontSize="small" />
-                                              </IconButton>
-                                            </Box>
-                                          ) : (
-                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                              <Typography
-                                                variant="body2"
-                                                noWrap
-                                                sx={{ maxWidth: 200, cursor: 'pointer' }}
-                                                onClick={() => startEditing('task', task._id, 'description', task.description || '')}
-                                              >
-                                                {task.description || '-'}
-                                              </Typography>
-                                              {!task.description && (
-                                                <IconButton
-                                                  size="small"
-                                                  onClick={() => startEditing('task', task._id, 'description', '')}
-                                                >
-                                                  <EditIcon fontSize="small" />
-                                                </IconButton>
-                                              )}
-                                            </Box>
-                                          )}
-                                        </TableCell>
-                                        <TableCell>
-                                          <Typography variant="caption" color="text.secondary">
-                                            {formatDate(task.updatedAt)}
-                                          </Typography>
-                                        </TableCell>
-                                        <TableCell align="right">
-                                          <Tooltip title="Delete Task">
-                                            <IconButton
-                                              size="small"
-                                              color="error"
-                                              onClick={() => handleDeleteTask(task._id, campaign._id, project._id)}
-                                            >
-                                              <DeleteIcon fontSize="small" />
-                                            </IconButton>
-                                          </Tooltip>
-                                        </TableCell>
-                                      </TableRow>
-                                    );
-                                  })}
-                                </TableBody>
-                              </Table>
-                            </TableContainer>
-                          ) : (
-                            <Paper sx={{ py: 3, textAlign: 'center', backgroundColor: '#FAFAFA' }}>
-                              <Typography variant="body2" color="text.secondary">
-                                No tasks assigned to this project yet.
-                              </Typography>
-                              <Button
-                                variant="outlined"
-                                size="small"
-                                startIcon={<AddIcon />}
-                                onClick={() => handleOpenCreateTaskModal(project._id, campaign._id)}
-                                sx={{
-                                  mt: 2,
-                                  borderColor: '#6366F1',
-                                  color: '#6366F1',
-                                  '&:hover': {
-                                    borderColor: '#4F46E5',
-                                    backgroundColor: '#EEF2FF'
-                                  }
-                                }}
-                              >
-                                Create First Task
-                              </Button>
-                            </Paper>
-                          )}
-                        </AccordionDetails>
-                      </Accordion>
-                    );
-                  })
-                ) : (
-                  <Paper sx={{ py: 3, textAlign: 'center', backgroundColor: '#FAFAFA' }}>
-                    <Typography variant="body2" color="text.secondary">
-                      No projects in this campaign yet.
-                    </Typography>
-                  </Paper>
-                )}
-              </AccordionDetails>
-            </Accordion>
-          );
-        })
+          <Pagination
+            currentPage={page}
+            totalPages={pagination.pages}
+            totalItems={pagination.total}
+            itemsPerPage={pagination.limit}
+            onPageChange={(newPage) => setPage(newPage)}
+          />
+        </>
       )}
 
       {/* Create Task Modal */}
