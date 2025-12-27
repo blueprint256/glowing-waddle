@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import { Approval, ApprovalStatus } from '../models/Approval';
 import { Event, EventStatus } from '../models/Event';
+import { Campaign } from '../models/Campaign';
 import { UserRole } from '../models/User';
 import { isAuthenticated } from '../middleware/auth';
 import { validateApprovalRequest, validateMongoId } from '../middleware/validation';
@@ -28,12 +29,20 @@ router.post('/', isAuthenticated, validateApprovalRequest, async (req: Request, 
       });
     }
 
-    // Check access
-    if (req.user!.role !== UserRole.SYSTEM_ADMIN) {
-      if (!req.user!.teamId || event.teamId.toString() !== req.user!.teamId.toString()) {
+    // CRITICAL: Check ownership through parent campaign (Hybrid users only)
+    if (req.user!.role === UserRole.HYBRID) {
+      const campaign = await Campaign.findById(event.campaignId);
+      if (!campaign) {
+        return res.status(404).json({
+          success: false,
+          message: 'Campaign not found'
+        });
+      }
+
+      if (campaign.createdBy.toString() !== req.user!._id.toString()) {
         return res.status(403).json({
           success: false,
-          message: 'Access denied'
+          message: 'Access denied: You can only request approvals for events under campaigns you created'
         });
       }
     }

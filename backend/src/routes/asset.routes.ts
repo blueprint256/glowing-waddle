@@ -87,39 +87,46 @@ router.post('/', isAuthenticated, canManageTasks, upload.single('file'), async (
       });
     }
 
-    // Verify access to associated entity
-    if (req.user!.role !== UserRole.SYSTEM_ADMIN) {
-      if (!req.user!.teamId) {
-        return res.status(403).json({
-          success: false,
-          message: 'Access denied'
-        });
-      }
+    // CRITICAL: Verify ownership through parent campaign (Hybrid users only)
+    if (req.user!.role === UserRole.HYBRID) {
+      let targetCampaignId = null;
 
       if (taskId) {
         const task = await Task.findById(taskId);
-        if (!task || task.teamId.toString() !== req.user!.teamId.toString()) {
-          return res.status(403).json({
+        if (!task) {
+          return res.status(404).json({
             success: false,
-            message: 'Access denied'
+            message: 'Task not found'
           });
         }
+        targetCampaignId = task.campaignId;
       } else if (projectId) {
         const project = await Project.findById(projectId);
-        if (!project || project.teamId.toString() !== req.user!.teamId.toString()) {
-          return res.status(403).json({
+        if (!project) {
+          return res.status(404).json({
             success: false,
-            message: 'Access denied'
+            message: 'Project not found'
           });
         }
+        targetCampaignId = project.campaignId;
       } else if (campaignId) {
-        const campaign = await Campaign.findById(campaignId);
-        if (!campaign || campaign.teamId.toString() !== req.user!.teamId.toString()) {
-          return res.status(403).json({
-            success: false,
-            message: 'Access denied'
-          });
-        }
+        targetCampaignId = new mongoose.Types.ObjectId(campaignId);
+      }
+
+      // Check campaign ownership
+      const campaign = await Campaign.findById(targetCampaignId);
+      if (!campaign) {
+        return res.status(404).json({
+          success: false,
+          message: 'Campaign not found'
+        });
+      }
+
+      if (campaign.createdBy.toString() !== req.user!._id.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied: You can only upload assets to resources under campaigns you created'
+        });
       }
     }
 

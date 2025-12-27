@@ -27,40 +27,46 @@ router.post('/', isAuthenticated, validateCommentCreation, async (req: Request, 
       });
     }
 
-    // Verify access to the target entity
-    if (req.user!.role !== UserRole.SYSTEM_ADMIN) {
-      if (!req.user!.teamId) {
-        return res.status(403).json({
+    // CRITICAL: Verify ownership through parent campaign (Hybrid users only)
+    if (req.user!.role === UserRole.HYBRID) {
+      let targetCampaignId = null;
+
+      if (eventId) {
+        const event = await Event.findById(eventId);
+        if (!event) {
+          return res.status(404).json({
+            success: false,
+            message: 'Event not found'
+          });
+        }
+        targetCampaignId = event.campaignId;
+      } else if (projectId) {
+        const project = await Project.findById(projectId);
+        if (!project) {
+          return res.status(404).json({
+            success: false,
+            message: 'Project not found'
+          });
+        }
+        targetCampaignId = project.campaignId;
+      } else if (campaignId) {
+        targetCampaignId = new mongoose.Types.ObjectId(campaignId);
+      }
+
+      // Check campaign ownership
+      const campaign = await Campaign.findById(targetCampaignId);
+      if (!campaign) {
+        return res.status(404).json({
           success: false,
-          message: 'Access denied'
+          message: 'Campaign not found'
         });
       }
 
-      // Check team access
-      if (eventId) {
-        const event = await Event.findById(eventId);
-        if (!event || event.teamId.toString() !== req.user!.teamId.toString()) {
-          return res.status(403).json({
-            success: false,
-            message: 'Access denied'
-          });
-        }
-      } else if (projectId) {
-        const project = await Project.findById(projectId);
-        if (!project || project.teamId.toString() !== req.user!.teamId.toString()) {
-          return res.status(403).json({
-            success: false,
-            message: 'Access denied'
-          });
-        }
-      } else if (campaignId) {
-        const campaign = await Campaign.findById(campaignId);
-        if (!campaign || campaign.teamId.toString() !== req.user!.teamId.toString()) {
-          return res.status(403).json({
-            success: false,
-            message: 'Access denied'
-          });
-        }
+      if (campaign.createdBy.toString() !== req.user!._id.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied: You can only comment on resources under campaigns you created'
+        });
       }
     }
 
