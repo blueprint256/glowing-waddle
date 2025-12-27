@@ -111,7 +111,7 @@ export default function Dashboard() {
                     <TableCell>Name</TableCell>
                     <TableCell>Type</TableCell>
                     <TableCell>Status</TableCell>
-                    <TableCell>Publish Date</TableCell>
+                    <TableCell>Task Date</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -140,8 +140,8 @@ export default function Dashboard() {
                         />
                       </TableCell>
                       <TableCell>
-                        {task.publishDate
-                          ? new Date(task.publishDate).toLocaleDateString()
+                        {task.taskDate
+                          ? new Date(task.taskDate).toLocaleDateString()
                           : 'Not scheduled'}
                       </TableCell>
                     </TableRow>

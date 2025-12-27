@@ -2,7 +2,6 @@ import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IComment extends Document {
   content: string;
-  eventId?: mongoose.Types.ObjectId;
   projectId?: mongoose.Types.ObjectId;
   campaignId?: mongoose.Types.ObjectId;
   authorId: mongoose.Types.ObjectId;
@@ -19,11 +18,6 @@ const commentSchema = new Schema<IComment>(
       type: String,
       required: true,
       trim: true
-    },
-    eventId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Event',
-      index: true
     },
     projectId: {
       type: Schema.Types.ObjectId,
@@ -59,7 +53,6 @@ const commentSchema = new Schema<IComment>(
 );
 
 // Indexes
-commentSchema.index({ eventId: 1, createdAt: -1 });
 commentSchema.index({ authorId: 1 });
 
 export const Comment = mongoose.model<IComment>('Comment', commentSchema);

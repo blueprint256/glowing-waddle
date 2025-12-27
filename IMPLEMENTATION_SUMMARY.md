@@ -18,22 +18,20 @@ A fully functional collaborative campaign management platform has been successfu
 - ✅ Comprehensive RBAC middleware
 
 **Core Features:**
-1. **8 Mongoose Models** with proper relationships and validation
-   - User, Team, Campaign, Project, Event, Asset, Comment, Approval, AuditLog
+1. **5 Mongoose Models** with proper relationships and validation
+   - User, Campaign, Project, Task, Asset, Comment, AuditLog
 
-2. **9 API Route Modules** with full CRUD operations
-   - auth, users, teams, campaigns, projects, events, comments, approvals, assets
+2. **6 API Route Modules** with full CRUD operations
+   - auth, users, campaigns, projects, tasks, comments, assets
 
 3. **Complete RBAC System**
-   - 5 user roles with exact capabilities as specified
+   - 2 user roles (System Admin, Hybrid)
    - Middleware enforcement on all routes
-   - Assignment Authority Matrix implementation
-   - Team membership verification before project assignment
+   - Role-based and ownership-based access control
 
 4. **Collaboration Features**
    - Comments with @mentions
-   - Approval workflows (request → review → approve/reject)
-   - Asset uploads with Multer (images, videos, documents)
+   - Asset uploads with S3 integration (images, videos, documents)
    - Version tracking
 
 5. **Security & Audit**
@@ -54,8 +52,8 @@ backend/
 │   │   ├── auth.ts              # Authentication middleware
 │   │   ├── rbac.ts              # Role-based access control
 │   │   └── validation.ts        # Input validation rules
-│   ├── models/                  # 9 Mongoose schemas
-│   ├── routes/                  # 9 Express route modules
+│   ├── models/                  # 7 Mongoose schemas
+│   ├── routes/                  # 7 Express route modules
 │   ├── scripts/
 │   │   └── seed.ts              # Database seeder
 │   ├── utils/
@@ -85,28 +83,25 @@ backend/
 
 2. **Role-Based Dashboards**
    - Different navigation for each role
-   - System Admin: Full access to all features
-   - Hybrid/Marketer: Campaign/project management
-   - Designer: Assigned event editing
-   - Client: View-only with approval capability
+   - System Admin: Full access to all features including user management
+   - Hybrid: Campaign/project/task management and content creation
 
 3. **Hierarchical Navigation**
    - Campaigns list and detail views
    - Projects nested under campaigns
-   - Events nested under projects
+   - Tasks nested under projects
    - Breadcrumb navigation
 
 4. **Key Pages Implemented:**
    - Dashboard with statistics
    - Campaign list and detail pages
-   - Project detail with team assignments
-   - Event detail with comments
+   - Project detail pages
+   - Task detail with comments
    - User management (admin only)
-   - Team management (admin only)
+   - Details Sheet for comprehensive overview
 
 5. **Collaboration UI**
-   - Comment threads on events
-   - Approval request interface
+   - Comment threads on tasks/projects/campaigns
    - Asset upload dialogs
    - Real-time status updates
 
@@ -121,8 +116,9 @@ frontend/
 │   │   ├── Admin/                   # Admin-only pages
 │   │   ├── Campaigns/               # Campaign management
 │   │   ├── Projects/                # Project views
-│   │   ├── Events/                  # Event details
+│   │   ├── Tasks/                   # Task details
 │   │   ├── Dashboard.tsx
+│   │   ├── DetailsSheet.tsx
 │   │   └── LoginPage.tsx
 │   ├── services/
 │   │   └── api.ts                   # Axios API client
@@ -140,45 +136,35 @@ frontend/
 
 ## 🎯 Requirements Met
 
-### ✅ All Specifications Implemented
+### ✅ Core Specifications Implemented
 
-1. **Hierarchy (Campaigns → Projects → Events)** ✓
-   - Full hierarchy with proper inheritance
-   - Team context flows down
+1. **Hierarchy (Campaigns → Projects → Tasks)** ✓
+   - Three-tier hierarchy with proper inheritance
    - Proper parent-child relationships
+   - Access control based on ownership (createdBy)
 
-2. **5 User Roles with Exact Permissions** ✓
-   - System Admin: Full control
-   - Hybrid: Operations without user management
-   - Client: View-only with approval rights
-   - Marketer: Campaign/event creation
-   - Designer: Assigned content editing
+2. **2 User Roles** ✓
+   - System Admin: Full control including user management
+   - Hybrid: Campaign/project/task management and content creation
 
-3. **Separation of Identity & Assignment** ✓
-   - Only System Admin creates users/teams
-   - Hybrid/Marketer assign from existing pool
-   - Team membership required before project assignment
-
-4. **Assignment Authority Matrix** ✓
-   - System Admin: Can assign anyone
-   - Hybrid: Can assign Marketers & Designers
-   - Marketer: Can assign Designers only
+3. **Role-Based Access Control** ✓
+   - System Admin: Can manage users and all content
+   - Hybrid: Can manage campaigns, projects, and tasks
+   - Ownership-based access: Users can edit content they created
    - Enforced at API and middleware level
 
-5. **Collaboration Features** ✓
+4. **Collaboration Features** ✓
    - Comments with threading
    - @mentions support
-   - Approval workflows
-   - Asset management
+   - Asset management with S3
 
-6. **Audit Logging** ✓
+5. **Audit Logging** ✓
    - User creation/updates
-   - Team membership changes
+   - Content changes
    - Project assignments
-   - Event publishes
-   - Approval decisions
+   - Asset uploads and deletions
 
-7. **Security** ✓
+6. **Security** ✓
    - Authentication required
    - RBAC on all routes
    - Input validation
@@ -228,9 +214,6 @@ Open http://localhost:3000
 **Demo Accounts:**
 - Admin: `admin@example.com / password123`
 - Hybrid: `hybrid@example.com / password123`
-- Marketer: `marketer@example.com / password123`
-- Designer: `designer@example.com / password123`
-- Client: `client@example.com / password123`
 
 ---
 
@@ -238,31 +221,28 @@ Open http://localhost:3000
 
 ### End-to-End Campaign Creation
 
-1. **Login as Admin** → Create team "Marketing Team"
-2. **Assign Users** → Add Marketer, Designer, Client to team
-3. **Create Campaign** → "Summer Launch 2025"
-4. **Create Project** → "Social Media Campaign"
-5. **Assign Team** → Add Marketer (PM) and Designer
-6. **Create Event** → "Instagram Post" assigned to Designer
-7. **Designer Edits** → Upload assets, add content
-8. **Request Approval** → Assign to Client
-9. **Client Approves** → Add feedback
-10. **Marketer Publishes** → Event goes live
-11. **Collaborate** → Team adds comments
-12. **Admin Reviews** → Check audit logs
+1. **Login as Admin** → Create users (System Admin, Hybrid)
+2. **Create Campaign** → "Summer Launch 2025"
+3. **Create Project** → "Social Media Campaign"
+4. **Create Task** → "Instagram Post"
+5. **Hybrid User Edits** → Upload task image, add content
+6. **Update Status** → Set to "In Progress", then "Completed"
+7. **Set Publish Date** → Schedule the task
+8. **Collaborate** → Users add comments on tasks
+9. **Admin Reviews** → Check audit logs
 
 ---
 
 ## 📊 Key Metrics
 
-- **51 files created**
-- **6,589 lines of code**
-- **9 MongoDB models**
-- **9 API route modules**
-- **12 frontend pages/components**
-- **5 user roles**
-- **19 API endpoints**
-- **100% spec compliance**
+- **45+ files created**
+- **6,000+ lines of code**
+- **7 MongoDB models**
+- **8 API route modules**
+- **10+ frontend pages/components**
+- **2 user roles**
+- **15+ API endpoints**
+- **Simplified architecture**
 
 ---
 
@@ -275,8 +255,8 @@ Open http://localhost:3000
 
 ✅ **Authorization:**
 - RBAC middleware on all routes
-- Assignment Authority Matrix
-- Team-based access control
+- Role-based access control (System Admin vs Hybrid)
+- Ownership-based access control (createdBy field)
 
 ✅ **Input Validation:**
 - express-validator on all inputs
@@ -300,16 +280,16 @@ Open http://localhost:3000
 - **Material-UI**: Professional, accessible components
 
 ### Permissions
-- **Team-Based**: All access scoped to teams
-- **Hierarchical Inheritance**: Permissions flow down
-- **Explicit Assignment**: No implicit permissions
+- **Role-Based**: Access based on System Admin vs Hybrid roles
+- **Ownership-Based**: Users can edit content they created
+- **Hierarchical Inheritance**: Permissions flow down the campaign hierarchy
 - **Audit Everything**: Complete trail for compliance
 
 ### Data Flow
-- **Campaigns inherit team context**
-- **Projects inherit campaign + team**
-- **Events inherit project + campaign + team**
-- **Access checked at every level**
+- **Campaigns** are the top-level organizational unit
+- **Projects** belong to campaigns
+- **Tasks** belong to projects
+- **Access checked based on role and ownership**
 
 ---
 
@@ -346,52 +326,40 @@ The following were noted as future improvements, not part of the prototype:
 
 ## 🔍 Testing the System
 
-### Test Assignment Authority Matrix
+### Test Role Permissions
 
 **As System Admin:**
 ```
-Login → Projects → Select Project → Add Assignment
-- Can assign Marketer ✓
-- Can assign Designer ✓
+- ✅ Can create and manage users
+- ✅ Can create campaigns, projects, tasks
+- ✅ Can edit all content
+- ✅ Can delete users and content
+- ✅ Can view audit logs
 ```
 
 **As Hybrid:**
 ```
-Login → Projects → Select Project → Add Assignment
-- Can assign Marketer ✓
-- Can assign Designer ✓
-```
-
-**As Marketer:**
-```
-Login → Projects → Select Project → Add Assignment
-- Cannot assign Marketer ✗
-- Can assign Designer ✓
-```
-
-### Test Role Restrictions
-
-**As Client:**
-- ❌ Cannot see "New Campaign" button
-- ❌ Cannot edit events
-- ✅ Can view campaigns/projects/events
-- ✅ Can comment
-- ✅ Can approve/reject
-
-**As Designer:**
-- ❌ Cannot create campaigns
-- ❌ Cannot publish events
-- ✅ Can edit assigned events
+- ❌ Cannot manage users
+- ✅ Can create campaigns, projects, tasks
+- ✅ Can edit content they created
+- ✅ Can edit content based on ownership
 - ✅ Can upload assets
-- ✅ Can update event status
+- ✅ Can publish tasks
+```
 
-### Test Approval Workflow
+### Test Ownership-Based Access
 
-1. Designer: Create event → Mark "Pending Approval"
-2. Marketer: Request approval → Assign to Client
-3. Client: Review → Approve with feedback
-4. Marketer: Event status → "Approved"
-5. Marketer: Publish event → Status "Published"
+1. **User A (Hybrid)**: Creates Campaign X → Can edit Campaign X
+2. **User B (Hybrid)**: Cannot edit Campaign X (not the creator)
+3. **System Admin**: Can edit any campaign regardless of creator
+
+### Test Task Workflow
+
+1. Hybrid User: Create task → Status "Pending"
+2. Hybrid User: Upload designed image → Add to task
+3. Hybrid User: Update status → "In Progress"
+4. Hybrid User: Complete work → Status "Completed"
+5. Hybrid User: Set publish date → Schedule task
 
 ---
 

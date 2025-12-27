@@ -22,7 +22,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { CloudUpload as CloudUploadIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import { taskAPI, commentAPI } from '../../services/api';
-import { Task, Comment, TaskStatus, TaskType } from '../../types';
+import { Task, Comment, TaskStatus } from '../../types';
 import { useAuthStore } from '../../store/authStore';
 
 export default function TaskDetail() {
@@ -40,10 +40,8 @@ export default function TaskDetail() {
   const [editForm, setEditForm] = useState({
     name: '',
     description: '',
-    type: TaskType.OTHER,
     status: TaskStatus.PENDING,
-    scheduledDate: null as Date | null,
-    publishDate: null as Date | null,
+    taskDate: null as Date | null,
     content: ''
   });
 
@@ -66,10 +64,8 @@ export default function TaskDetail() {
       setEditForm({
         name: taskData.name,
         description: taskData.description || '',
-        type: taskData.type,
         status: taskData.status,
-        scheduledDate: taskData.scheduledDate ? new Date(taskData.scheduledDate) : null,
-        publishDate: taskData.publishDate ? new Date(taskData.publishDate) : null,
+        taskDate: taskData.taskDate ? new Date(taskData.taskDate) : null,
         content: taskData.content || ''
       });
     } catch (error: any) {
@@ -133,8 +129,7 @@ export default function TaskDetail() {
     try {
       await taskAPI.update(id!, {
         ...editForm,
-        scheduledDate: editForm.scheduledDate?.toISOString(),
-        publishDate: editForm.publishDate?.toISOString()
+        taskDate: editForm.taskDate?.toISOString()
       });
       setIsEditing(false);
       loadTask();
@@ -196,9 +191,7 @@ export default function TaskDetail() {
               <Chip
                 label={task.status}
                 color={getStatusColor(task.status)}
-                sx={{ mr: 1 }}
               />
-              <Chip label={task.type} variant="outlined" />
             </Box>
           </Box>
 
@@ -214,23 +207,11 @@ export default function TaskDetail() {
                   <Typography variant="subtitle2" color="text.secondary">Status</Typography>
                   <Typography variant="body1">{task.status}</Typography>
                 </Grid>
-                <Grid item xs={12} md={6}>
-                  <Typography variant="subtitle2" color="text.secondary">Type</Typography>
-                  <Typography variant="body1">{task.type}</Typography>
-                </Grid>
-                {task.scheduledDate && (
+                {task.taskDate && (
                   <Grid item xs={12} md={6}>
-                    <Typography variant="subtitle2" color="text.secondary">Scheduled Date</Typography>
+                    <Typography variant="subtitle2" color="text.secondary">Task Date</Typography>
                     <Typography variant="body1">
-                      {new Date(task.scheduledDate).toLocaleDateString()}
-                    </Typography>
-                  </Grid>
-                )}
-                {task.publishDate && (
-                  <Grid item xs={12} md={6}>
-                    <Typography variant="subtitle2" color="text.secondary">Publish Date</Typography>
-                    <Typography variant="body1">
-                      {new Date(task.publishDate).toLocaleDateString()}
+                      {new Date(task.taskDate).toLocaleDateString()}
                     </Typography>
                   </Grid>
                 )}
@@ -318,21 +299,6 @@ export default function TaskDetail() {
                   <TextField
                     fullWidth
                     select
-                    label="Type"
-                    value={editForm.type}
-                    onChange={(e) => setEditForm({ ...editForm, type: e.target.value as TaskType })}
-                  >
-                    {Object.values(TaskType).map((type) => (
-                      <MenuItem key={type} value={type}>
-                        {type}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <TextField
-                    fullWidth
-                    select
                     label="Status"
                     value={editForm.status}
                     onChange={(e) => setEditForm({ ...editForm, status: e.target.value as TaskStatus })}
@@ -346,17 +312,9 @@ export default function TaskDetail() {
                 </Grid>
                 <Grid item xs={12} md={6}>
                   <DatePicker
-                    label="Scheduled Date"
-                    value={editForm.scheduledDate}
-                    onChange={(date) => setEditForm({ ...editForm, scheduledDate: date })}
-                    slotProps={{ textField: { fullWidth: true } }}
-                  />
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <DatePicker
-                    label="Publish Date"
-                    value={editForm.publishDate}
-                    onChange={(date) => setEditForm({ ...editForm, publishDate: date })}
+                    label="Task Date"
+                    value={editForm.taskDate}
+                    onChange={(date) => setEditForm({ ...editForm, taskDate: date })}
                     slotProps={{ textField: { fullWidth: true } }}
                   />
                 </Grid>
@@ -382,10 +340,8 @@ export default function TaskDetail() {
                   setEditForm({
                     name: task.name,
                     description: task.description || '',
-                    type: task.type,
                     status: task.status,
-                    scheduledDate: task.scheduledDate ? new Date(task.scheduledDate) : null,
-                    publishDate: task.publishDate ? new Date(task.publishDate) : null,
+                    taskDate: task.taskDate ? new Date(task.taskDate) : null,
                     content: task.content || ''
                   });
                 }}>

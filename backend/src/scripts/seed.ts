@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 import { User, UserRole } from '../models/User';
 import { Campaign, CampaignStatus } from '../models/Campaign';
 import { Project, ProjectStatus } from '../models/Project';
-import { Task, TaskStatus, TaskType } from '../models/Task';
+import { Task, TaskStatus } from '../models/Task';
 
 dotenv.config();
 
@@ -119,12 +119,10 @@ async function seed() {
     const task1 = await Task.create({
       name: 'Product Teaser Post',
       description: 'Instagram teaser post announcing the summer collection',
-      type: TaskType.POST,
       projectId: project._id,
       campaignId: campaignA._id,
       status: TaskStatus.IN_PROGRESS,
-      scheduledDate: new Date('2025-06-05'),
-      publishDate: new Date('2025-06-05'),
+      taskDate: new Date('2025-06-05'),
       content: 'Check out our stunning new summer collection! 🌞 Coming soon...',
       createdBy: hybridA._id
     });
@@ -132,12 +130,10 @@ async function seed() {
     const task2 = await Task.create({
       name: 'Launch Day Announcement',
       description: 'Official product launch announcement with carousel images',
-      type: TaskType.LAUNCH,
       projectId: project._id,
       campaignId: campaignA._id,
       status: TaskStatus.PENDING,
-      scheduledDate: new Date('2025-06-15'),
-      publishDate: new Date('2025-06-15'),
+      taskDate: new Date('2025-06-15'),
       createdBy: hybridA._id
     });
 

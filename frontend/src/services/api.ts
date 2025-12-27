@@ -86,14 +86,6 @@ export const commentAPI = {
   delete: (id: string) => api.delete(`/comments/${id}`)
 };
 
-// Approval API
-export const approvalAPI = {
-  getAll: (params?: any) => api.get('/approvals', { params }),
-  create: (data: any) => api.post('/approvals', data),
-  approve: (id: string, feedback?: string) => api.put(`/approvals/${id}/approve`, { feedback }),
-  reject: (id: string, feedback: string) => api.put(`/approvals/${id}/reject`, { feedback })
-};
-
 // Asset API
 export const assetAPI = {
   getAll: (params?: any) => api.get('/assets', { params }),

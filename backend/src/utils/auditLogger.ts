@@ -71,39 +71,3 @@ export const logProjectAssignment = async (
   });
 };
 
-/**
- * Log event publish
- */
-export const logEventPublished = async (
-  publisherId: mongoose.Types.ObjectId,
-  eventId: mongoose.Types.ObjectId,
-  req?: Request
-): Promise<void> => {
-  await logAudit({
-    action: AuditAction.EVENT_PUBLISHED,
-    userId: publisherId,
-    targetType: 'Event',
-    targetId: eventId,
-    req
-  });
-};
-
-/**
- * Log approval action
- */
-export const logApprovalAction = async (
-  reviewerId: mongoose.Types.ObjectId,
-  eventId: mongoose.Types.ObjectId,
-  action: AuditAction,
-  feedback?: string,
-  req?: Request
-): Promise<void> => {
-  await logAudit({
-    action,
-    userId: reviewerId,
-    targetType: 'Event',
-    targetId: eventId,
-    metadata: { feedback },
-    req
-  });
-};

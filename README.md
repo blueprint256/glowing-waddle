@@ -6,13 +6,13 @@ A full-stack collaborative campaign management and content production platform w
 
 ### Simplified Role System
 - **Reduced from 5 roles to 2 roles**: System Admin and Hybrid
-- System Admin: Full platform access including user/team management
+- System Admin: Full platform access including user management
 - Hybrid: Campaign, project, and task management capabilities
 - Removed: Client, Marketer, and Designer roles
+- **Teams feature fully removed**: Access controlled purely by role and ownership
 
-### Task Management Updates
-- **Events renamed to Tasks** throughout the platform
-- Added **designed image upload** with S3 integration for task assets
+### Task Management
+- **Task management** with designed image upload and S3 integration
 - Added **publish date** field for task scheduling
 - Enhanced **status management** with dropdown (Pending, In Progress, Completed)
 
@@ -50,9 +50,8 @@ A full-stack collaborative campaign management and content production platform w
 - Hierarchical structure: Campaigns → Projects → Tasks
 - 2 user roles with granular permissions (System Admin, Hybrid)
 - RBAC enforcement at API and UI levels
-- Team-based organization
+- Role and ownership-based access control
 - Task management with image uploads and scheduling
-- Approval workflows
 - Comments and collaboration
 - Asset management with S3 file storage
 - Details Sheet for comprehensive campaign overview
@@ -64,21 +63,19 @@ A full-stack collaborative campaign management and content production platform w
 ## Hierarchy & Data Model
 
 ```
-Team
- └─ Campaign
-     └─ Project
-         └─ Task
-             ├─ Comments
-             ├─ Approvals
-             └─ Assets
+Campaign
+ └─ Project
+     └─ Task
+         ├─ Comments
+         └─ Assets
 ```
 
 **Key Relationships:**
-- Users belong to Teams
-- Campaigns are owned by Teams
-- Projects belong to Campaigns (inherit teamId)
-- Tasks belong to Projects (inherit campaignId and teamId)
+- Campaigns are owned by Users (createdBy)
+- Projects belong to Campaigns
+- Tasks belong to Projects
 - Project Assignments link Users to Projects with roles
+- Access controlled by role (System Admin vs. Hybrid) and ownership
 
 ---
 
@@ -86,18 +83,17 @@ Team
 
 ### 1. System Administrator
 - Full platform access
-- Create/manage users and teams
+- Create/manage users
 - Override all restrictions
 - Access audit logs
 - Manage all campaigns, projects, and tasks
 
 ### 2. Hybrid User
 - Manage campaigns, projects, and tasks
-- Assign users to projects (from existing team members)
+- Assign users to projects
 - Upload task images and assets
 - Manage task scheduling and status
-- **Cannot** create users or add users to teams
-- Approve and publish content
+- **Cannot** create users
 
 ---
 
@@ -141,7 +137,7 @@ npm run seed
 **Seed Data Creates:**
 - System Admin: `admin@example.com / password123`
 - Hybrid User: `hybrid@example.com / password123`
-- One team, campaign, project, and sample tasks
+- Sample campaign, project, and tasks
 
 ### 3. Frontend Setup
 
@@ -206,23 +202,21 @@ Open http://localhost:3000 in your browser.
 ### Scenario: Creating a Campaign End-to-End
 
 1. **Login as System Admin**
-   - Navigate to Users → Create Hybrid users
-   - Navigate to Teams → Create team "Acme Marketing"
-   - Assign users to the team
+   - Navigate to Users → Create Hybrid users as needed
 
 2. **Create Campaign**
    - Navigate to Campaigns → Create New Campaign
-   - Enter: Name, Description, Goals, select Team
+   - Enter: Name, Description, Goals
    - Campaign created (status: Draft)
 
 3. **Create Project**
    - Open campaign → New Project
    - Enter: Name, Description, Dates
-   - Assign Hybrid users from team members
+   - Assign Hybrid users to project
 
 4. **Create Tasks**
    - Open project → New Task
-   - Enter: Name, Type (Post/Launch/Activation/Deliverable), Description
+   - Enter: Name, Description
    - Set scheduled date and publish date
    - Task created (status: Pending)
 
@@ -245,7 +239,7 @@ Open http://localhost:3000 in your browser.
    - Review task status and photo counts
 
 8. **Collaboration**
-   - Team members add comments on tasks
+   - Users add comments on tasks, projects, and campaigns
    - Track changes via audit log (Admin only)
 
 ---
@@ -254,16 +248,16 @@ Open http://localhost:3000 in your browser.
 
 The system enforces strict rules for who can assign users to projects:
 
-| Assigning Role | Can Assign Users | Can Manage Teams |
+| Assigning Role | Can Assign Users | Can Manage Users |
 |----------------|------------------|------------------|
 | System Admin   | ✅ Yes           | ✅ Yes           |
 | Hybrid         | ✅ Yes           | ❌ No            |
 
 **Key Rules:**
-- Users can only be assigned to projects if they're already team members
-- Only System Admin can add users to teams
-- Hybrid users assign from existing team pool
+- Only System Admin can create and manage users
+- Both roles can assign users to projects
 - Both roles can manage campaigns, projects, and tasks
+- Access controlled by role and ownership (createdBy)
 
 ---
 
@@ -278,14 +272,12 @@ The system enforces strict rules for who can assign users to projects:
 ### Resource Endpoints
 
 - `/api/users` - User CRUD (System Admin only)
-- `/api/teams` - Team CRUD (System Admin only)
 - `/api/campaigns` - Campaign management
 - `/api/projects` - Project management
   - `POST /api/projects/:id/assignments` - Assign user to project
 - `/api/tasks` - Task management
   - `POST /api/tasks/:id/upload-image` - Upload designed image to task
 - `/api/comments` - Comments on tasks/projects/campaigns
-- `/api/approvals` - Approval requests and responses
 - `/api/assets` - File uploads and downloads (S3 integration)
 
 All endpoints require authentication except `/api/auth/login`.
@@ -321,7 +313,7 @@ All endpoints require authentication except `/api/auth/login`.
 Use the seeded demo accounts to test each role:
 
 **System Admin:**
-- Create users, assign to teams
+- Create and manage users
 - Override permissions
 - View audit logs
 - Manage all campaigns, projects, and tasks
@@ -339,7 +331,6 @@ Use the seeded demo accounts to test each role:
 Add unit tests for:
 - RBAC middleware functions
 - Assignment authority validation
-- Approval workflow state transitions
 - Task image upload validation
 
 Integration tests for:
@@ -392,7 +383,7 @@ Integration tests for:
 ### Current Limitations (Prototype)
 
 1. **AWS S3 Configuration Required**: Task image uploads require AWS S3 credentials in environment variables
-2. **No Email Notifications**: Mentions and approvals don't send emails
+2. **No Email Notifications**: Mentions don't send emails
 3. **Basic Analytics**: Limited to simple counts in Details Sheet; add charts and metrics
 4. **No Real-time Updates**: Refresh required; add WebSocket support
 5. **Limited Validation**: Basic validation; enhance with comprehensive rules
@@ -419,12 +410,11 @@ Integration tests for:
 2. **MongoDB**: Selected for flexible schema and hierarchical data modeling
 3. **Two-Role System**: Simplified from 5 roles to System Admin and Hybrid for clearer permissions
 4. **AWS S3 Integration**: Task images stored in S3 for scalability and reliability
-5. **Team Membership Required**: Users must belong to a team before project assignment
-6. **Soft Deletes**: Users and teams marked inactive rather than hard deleted
-7. **Single Team per User**: Users belong to one team at a time (can be extended)
-8. **Progressive Data Loading**: Details Sheet loads data on-demand for performance
-9. **No Email Verification**: Demo purposes only; add in production
-10. **Password Requirements**: Minimum 6 characters (increase in production)
+5. **Role-Based Access**: Access controlled by user role and ownership (createdBy) without teams
+6. **Soft Deletes**: Users marked inactive rather than hard deleted
+7. **Progressive Data Loading**: Details Sheet loads data on-demand for performance
+8. **No Email Verification**: Demo purposes only; add in production
+9. **Password Requirements**: Minimum 6 characters (increase in production)
 
 ---
 

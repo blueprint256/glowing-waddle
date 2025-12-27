@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -19,27 +19,44 @@ import {
   Alert,
   Button,
   IconButton,
-  Tooltip
+  Tooltip,
+  TextField,
+  MenuItem,
+  Select,
+  FormControl,
+  InputLabel,
+  SelectChangeEvent
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
   PhotoCamera as PhotoCameraIcon,
   Add as AddIcon,
+  Delete as DeleteIcon,
+  Upload as UploadIcon,
   Edit as EditIcon,
-  Delete as DeleteIcon
+  Check as CheckIcon,
+  Close as CloseIcon
 } from '@mui/icons-material';
 import { campaignAPI, projectAPI, taskAPI } from '../services/api';
-import { Campaign, Project, Task, TaskStatus } from '../types';
+import { Campaign, Project, Task, TaskStatus, CampaignStatus, ProjectStatus } from '../types';
 import CreateTaskModal from '../components/CreateTaskModal';
+import CampaignFormModal from '../components/CampaignFormModal';
+import ProjectFormDialog from '../components/Projects/ProjectFormDialog';
 
 interface CampaignWithProjects extends Campaign {
-  projects?: Project[];
+  projects?: ProjectWithTasks[];
   projectsLoaded?: boolean;
 }
 
 interface ProjectWithTasks extends Project {
   tasks?: Task[];
   tasksLoaded?: boolean;
+}
+
+interface EditingCell {
+  type: 'campaign' | 'project' | 'task';
+  id: string;
+  field: string;
 }
 
 export default function DetailsSheet() {
@@ -50,11 +67,34 @@ export default function DetailsSheet() {
   const [expandedCampaigns, setExpandedCampaigns] = useState<Set<string>>(new Set());
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
   const [createTaskModalOpen, setCreateTaskModalOpen] = useState(false);
+  const [createCampaignModalOpen, setCreateCampaignModalOpen] = useState(false);
+  const [createProjectModalOpen, setCreateProjectModalOpen] = useState(false);
   const [selectedProjectForTask, setSelectedProjectForTask] = useState<{ projectId: string; campaignId: string } | null>(null);
+  const [selectedCampaignForProject, setSelectedCampaignForProject] = useState<string | null>(null);
+  const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const editInputRef = useRef<HTMLInputElement>(null);
+
+  // Color coding constants - Blue/Purple Brand Theme
+  const CAMPAIGN_COLOR = '#DBEAFE'; // Deep blue background
+  const CAMPAIGN_BORDER = '#2563EB'; // Deep brand blue
+  const CAMPAIGN_HOVER = '#BFDBFE'; // Lighter blue hover
+  const PROJECT_COLOR = '#E0E7FF';  // Mid blue-purple background
+  const PROJECT_BORDER = '#6366F1';  // Mid blue-purple
+  const PROJECT_HOVER = '#C7D2FE';   // Lighter purple hover
+  const TASK_COLOR = '#C7D2FE';      // Lighter violet-blue
+  const TASK_HOVER = '#E0E7FF';      // Very light violet hover
 
   useEffect(() => {
     loadCampaigns();
   }, []);
+
+  useEffect(() => {
+    if (editingCell && editInputRef.current) {
+      editInputRef.current.focus();
+      editInputRef.current.select();
+    }
+  }, [editingCell]);
 
   const loadCampaigns = async () => {
     try {
@@ -133,7 +173,6 @@ export default function DetailsSheet() {
     const newExpanded = new Set(expandedCampaigns);
     if (isExpanded) {
       newExpanded.add(campaignId);
-      // Load projects if not already loaded
       const campaign = campaigns.find((c) => c._id === campaignId);
       if (campaign && !campaign.projectsLoaded) {
         await loadProjectsForCampaign(campaignId);
@@ -151,7 +190,6 @@ export default function DetailsSheet() {
     const newExpanded = new Set(expandedProjects);
     if (isExpanded) {
       newExpanded.add(projectId);
-      // Load tasks if not already loaded
       const campaign = campaigns.find((c) => c._id === campaignId);
       const project = campaign?.projects?.find((p) => p._id === projectId);
       if (project && !project.tasksLoaded) {
@@ -215,8 +253,138 @@ export default function DetailsSheet() {
   const getPhotoCount = (task: Task): number => {
     let count = 0;
     if (task.designedImage) count++;
-    // Could add more logic here for other assets if needed
     return count;
+  };
+
+  // Inline editing functions
+  const startEditing = (type: 'campaign' | 'project' | 'task', id: string, field: string, currentValue: string) => {
+    setEditingCell({ type, id, field });
+    setEditValue(currentValue || '');
+  };
+
+  const cancelEditing = () => {
+    setEditingCell(null);
+    setEditValue('');
+  };
+
+  const saveEdit = async () => {
+    if (!editingCell) return;
+
+    try {
+      const { type, id, field } = editingCell;
+
+      if (type === 'campaign') {
+        await campaignAPI.update(id, { [field]: editValue });
+        setCampaigns(prev =>
+          prev.map(c => c._id === id ? { ...c, [field]: editValue } : c)
+        );
+      } else if (type === 'project') {
+        await projectAPI.update(id, { [field]: editValue });
+        setCampaigns(prev =>
+          prev.map(c => ({
+            ...c,
+            projects: c.projects?.map(p =>
+              p._id === id ? { ...p, [field]: editValue } : p
+            )
+          }))
+        );
+      } else if (type === 'task') {
+        await taskAPI.update(id, { [field]: editValue });
+        setCampaigns(prev =>
+          prev.map(c => ({
+            ...c,
+            projects: c.projects?.map(p => ({
+              ...p,
+              tasks: p.tasks?.map(t =>
+                t._id === id ? { ...t, [field]: editValue } : t
+              )
+            }))
+          }))
+        );
+      }
+
+      cancelEditing();
+    } catch (error: any) {
+      console.error('Error saving edit:', error);
+      alert(error.response?.data?.message || 'Failed to save changes');
+    }
+  };
+
+  // Status change functions
+  const handleCampaignStatusChange = async (campaignId: string, newStatus: CampaignStatus) => {
+    try {
+      await campaignAPI.update(campaignId, { status: newStatus });
+      setCampaigns(prev =>
+        prev.map(c => c._id === campaignId ? { ...c, status: newStatus } : c)
+      );
+    } catch (error: any) {
+      console.error('Error updating campaign status:', error);
+      alert(error.response?.data?.message || 'Failed to update campaign status');
+    }
+  };
+
+  const handleProjectStatusChange = async (projectId: string, newStatus: ProjectStatus) => {
+    try {
+      await projectAPI.update(projectId, { status: newStatus });
+      setCampaigns(prev =>
+        prev.map(c => ({
+          ...c,
+          projects: c.projects?.map(p =>
+            p._id === projectId ? { ...p, status: newStatus } : p
+          )
+        }))
+      );
+    } catch (error: any) {
+      console.error('Error updating project status:', error);
+      alert(error.response?.data?.message || 'Failed to update project status');
+    }
+  };
+
+  const handleTaskStatusChange = async (taskId: string, newStatus: TaskStatus) => {
+    try {
+      await taskAPI.update(taskId, { status: newStatus });
+      setCampaigns(prev =>
+        prev.map(c => ({
+          ...c,
+          projects: c.projects?.map(p => ({
+            ...p,
+            tasks: p.tasks?.map(t =>
+              t._id === taskId ? { ...t, status: newStatus } : t
+            )
+          }))
+        }))
+      );
+    } catch (error: any) {
+      console.error('Error updating task status:', error);
+      alert(error.response?.data?.message || 'Failed to update task status');
+    }
+  };
+
+  // Photo upload function
+  const handlePhotoUpload = async (taskId: string, campaignId: string, projectId: string) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = async (e: any) => {
+      const file = e.target?.files?.[0];
+      if (!file) return;
+
+      try {
+        const formData = new FormData();
+        formData.append('image', file);
+
+        await taskAPI.uploadImage(taskId, formData);
+
+        // Reload tasks to get updated image URL
+        await loadTasksForProject(campaignId, projectId);
+
+        alert('Photo uploaded successfully!');
+      } catch (error: any) {
+        console.error('Error uploading photo:', error);
+        alert(error.response?.data?.message || 'Failed to upload photo');
+      }
+    };
+    input.click();
   };
 
   const handleOpenCreateTaskModal = (projectId: string, campaignId: string) => {
@@ -230,11 +398,32 @@ export default function DetailsSheet() {
   };
 
   const handleTaskCreated = async () => {
-    // Reload tasks for the project
     if (selectedProjectForTask) {
       await loadTasksForProject(selectedProjectForTask.campaignId, selectedProjectForTask.projectId);
     }
     handleCloseCreateTaskModal();
+  };
+
+  const handleOpenCreateProjectModal = (campaignId: string) => {
+    setSelectedCampaignForProject(campaignId);
+    setCreateProjectModalOpen(true);
+  };
+
+  const handleCloseCreateProjectModal = () => {
+    setCreateProjectModalOpen(false);
+    setSelectedCampaignForProject(null);
+  };
+
+  const handleProjectCreated = async () => {
+    if (selectedCampaignForProject) {
+      await loadProjectsForCampaign(selectedCampaignForProject);
+    }
+    handleCloseCreateProjectModal();
+  };
+
+  const handleCampaignCreated = async () => {
+    await loadCampaigns();
+    setCreateCampaignModalOpen(false);
   };
 
   const handleDeleteTask = async (taskId: string, campaignId: string, projectId: string) => {
@@ -242,7 +431,6 @@ export default function DetailsSheet() {
 
     try {
       await taskAPI.delete(taskId);
-      // Reload tasks for the project
       await loadTasksForProject(campaignId, projectId);
     } catch (error: any) {
       console.error('Error deleting task:', error);
@@ -268,12 +456,34 @@ export default function DetailsSheet() {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>
+      <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, mb: 1 }}>
         Details Sheet
       </Typography>
       <Typography variant="body2" color="text.secondary" paragraph>
-        Hierarchical view of all campaigns, projects, and tasks
+        Hierarchical view of all campaigns, projects, and tasks with inline editing
       </Typography>
+
+      {/* Create Campaign Button */}
+      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'flex-start' }}>
+        <Button
+          variant="contained"
+          size="large"
+          startIcon={<AddIcon />}
+          onClick={() => setCreateCampaignModalOpen(true)}
+          sx={{
+            backgroundColor: CAMPAIGN_BORDER,
+            fontSize: '1rem',
+            fontWeight: 600,
+            px: 3,
+            py: 1.5,
+            '&:hover': {
+              backgroundColor: '#1D4ED8'
+            }
+          }}
+        >
+          Create Campaign
+        </Button>
+      </Box>
 
       {campaigns.length === 0 ? (
         <Paper sx={{ p: 3, textAlign: 'center' }}>
@@ -290,13 +500,68 @@ export default function DetailsSheet() {
               key={campaign._id}
               expanded={expandedCampaigns.has(campaign._id)}
               onChange={handleCampaignExpand(campaign._id)}
-              sx={{ mb: 2 }}
+              sx={{
+                mb: 2,
+                '& .MuiAccordionSummary-root': {
+                  backgroundColor: CAMPAIGN_COLOR,
+                  borderLeft: `4px solid ${CAMPAIGN_BORDER}`,
+                  '&:hover': {
+                    backgroundColor: CAMPAIGN_HOVER
+                  }
+                }
+              }}
             >
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                 <Box sx={{ width: '100%', pr: 2 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                    <Typography variant="h6">{campaign.name}</Typography>
-                    <Chip label={campaign.status} size="small" color="primary" />
+                    {editingCell?.type === 'campaign' && editingCell?.id === campaign._id && editingCell?.field === 'name' ? (
+                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flex: 1 }}>
+                        <TextField
+                          inputRef={editInputRef}
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') saveEdit();
+                            if (e.key === 'Escape') cancelEditing();
+                          }}
+                          size="small"
+                          onClick={(e) => e.stopPropagation()}
+                          sx={{ flex: 1 }}
+                        />
+                        <IconButton size="small" onClick={(e) => { e.stopPropagation(); saveEdit(); }} color="primary">
+                          <CheckIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton size="small" onClick={(e) => { e.stopPropagation(); cancelEditing(); }}>
+                          <CloseIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    ) : (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="h6" sx={{ fontWeight: 600 }}>{campaign.name}</Typography>
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            startEditing('campaign', campaign._id, 'name', campaign.name);
+                          }}
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    )}
+                    <FormControl size="small" sx={{ minWidth: 120 }} onClick={(e) => e.stopPropagation()}>
+                      <Select
+                        value={campaign.status}
+                        onChange={(e) => handleCampaignStatusChange(campaign._id, e.target.value as CampaignStatus)}
+                        sx={{ fontSize: '0.875rem' }}
+                      >
+                        <MenuItem value={CampaignStatus.DRAFT}>Draft</MenuItem>
+                        <MenuItem value={CampaignStatus.ACTIVE}>Active</MenuItem>
+                        <MenuItem value={CampaignStatus.PAUSED}>Paused</MenuItem>
+                        <MenuItem value={CampaignStatus.COMPLETED}>Completed</MenuItem>
+                        <MenuItem value={CampaignStatus.ARCHIVED}>Archived</MenuItem>
+                      </Select>
+                    </FormControl>
                   </Box>
                   {expandedCampaigns.has(campaign._id) && (
                     <Box sx={{ mt: 1 }}>
@@ -306,7 +571,7 @@ export default function DetailsSheet() {
                           value={progress}
                           sx={{ flex: 1, height: 8, borderRadius: 1 }}
                         />
-                        <Typography variant="body2" color="text.secondary">
+                        <Typography variant="body2" color="text.secondary" fontWeight={600}>
                           {progress}%
                         </Typography>
                       </Box>
@@ -317,7 +582,23 @@ export default function DetailsSheet() {
                   )}
                 </Box>
               </AccordionSummary>
-              <AccordionDetails sx={{ pl: 4 }}>
+              <AccordionDetails sx={{ pl: 4, backgroundColor: '#FAFAFA' }}>
+                {/* Create Project Button */}
+                <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    startIcon={<AddIcon />}
+                    onClick={() => handleOpenCreateProjectModal(campaign._id)}
+                    sx={{
+                      backgroundColor: PROJECT_BORDER,
+                      '&:hover': { backgroundColor: '#4F46E5' }
+                    }}
+                  >
+                    Create Project
+                  </Button>
+                </Box>
+
                 {!campaign.projectsLoaded ? (
                   <Box display="flex" justifyContent="center" py={2}>
                     <CircularProgress size={30} />
@@ -331,25 +612,85 @@ export default function DetailsSheet() {
                         key={project._id}
                         expanded={expandedProjects.has(project._id)}
                         onChange={handleProjectExpand(campaign._id, project._id)}
-                        sx={{ mb: 1 }}
+                        sx={{
+                          mb: 1,
+                          '& .MuiAccordionSummary-root': {
+                            backgroundColor: PROJECT_COLOR,
+                            borderLeft: `4px solid ${PROJECT_BORDER}`,
+                            '&:hover': {
+                              backgroundColor: PROJECT_HOVER
+                            }
+                          }
+                        }}
                       >
                         <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                          <Box sx={{ width: '100%' }}>
-                            <Typography variant="subtitle1">{project.name}</Typography>
-                            {expandedProjects.has(project._id) && (
-                              <Typography variant="caption" color="text.secondary">
-                                {completed} / {total} tasks completed
-                              </Typography>
+                          <Box sx={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            {editingCell?.type === 'project' && editingCell?.id === project._id && editingCell?.field === 'name' ? (
+                              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flex: 1 }}>
+                                <TextField
+                                  inputRef={editInputRef}
+                                  value={editValue}
+                                  onChange={(e) => setEditValue(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') saveEdit();
+                                    if (e.key === 'Escape') cancelEditing();
+                                  }}
+                                  size="small"
+                                  onClick={(e) => e.stopPropagation()}
+                                  sx={{ flex: 1 }}
+                                />
+                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); saveEdit(); }} color="primary">
+                                  <CheckIcon fontSize="small" />
+                                </IconButton>
+                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); cancelEditing(); }}>
+                                  <CloseIcon fontSize="small" />
+                                </IconButton>
+                              </Box>
+                            ) : (
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
+                                <Typography variant="subtitle1" fontWeight={600}>{project.name}</Typography>
+                                <IconButton
+                                  size="small"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    startEditing('project', project._id, 'name', project.name);
+                                  }}
+                                >
+                                  <EditIcon fontSize="small" />
+                                </IconButton>
+                                {expandedProjects.has(project._id) && (
+                                  <Typography variant="caption" color="text.secondary">
+                                    {completed} / {total} tasks completed
+                                  </Typography>
+                                )}
+                              </Box>
                             )}
+                            <FormControl size="small" sx={{ minWidth: 120 }} onClick={(e) => e.stopPropagation()}>
+                              <Select
+                                value={project.status}
+                                onChange={(e) => handleProjectStatusChange(project._id, e.target.value as ProjectStatus)}
+                                sx={{ fontSize: '0.875rem' }}
+                              >
+                                <MenuItem value={ProjectStatus.PLANNING}>Planning</MenuItem>
+                                <MenuItem value={ProjectStatus.IN_PROGRESS}>In Progress</MenuItem>
+                                <MenuItem value={ProjectStatus.REVIEW}>Review</MenuItem>
+                                <MenuItem value={ProjectStatus.COMPLETED}>Completed</MenuItem>
+                                <MenuItem value={ProjectStatus.ON_HOLD}>On Hold</MenuItem>
+                              </Select>
+                            </FormControl>
                           </Box>
                         </AccordionSummary>
-                        <AccordionDetails>
+                        <AccordionDetails sx={{ backgroundColor: '#F5F5F5' }}>
                           <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
                             <Button
                               variant="contained"
                               size="small"
                               startIcon={<AddIcon />}
                               onClick={() => handleOpenCreateTaskModal(project._id, campaign._id)}
+                              sx={{
+                                backgroundColor: '#6366F1',
+                                '&:hover': { backgroundColor: '#4F46E5' }
+                              }}
                             >
                               Add Task
                             </Button>
@@ -359,17 +700,17 @@ export default function DetailsSheet() {
                               <CircularProgress size={24} />
                             </Box>
                           ) : project.tasks && project.tasks.length > 0 ? (
-                            <TableContainer>
+                            <TableContainer component={Paper} sx={{ boxShadow: 2 }}>
                               <Table size="small">
                                 <TableHead>
-                                  <TableRow>
-                                    <TableCell>Date</TableCell>
-                                    <TableCell>Task Name</TableCell>
-                                    <TableCell>Status</TableCell>
-                                    <TableCell>Photos</TableCell>
-                                    <TableCell>Notes</TableCell>
-                                    <TableCell>Last Updated</TableCell>
-                                    <TableCell align="right">Actions</TableCell>
+                                  <TableRow sx={{ backgroundColor: TASK_COLOR }}>
+                                    <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
+                                    <TableCell sx={{ fontWeight: 600 }}>Task Name</TableCell>
+                                    <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                                    <TableCell sx={{ fontWeight: 600 }}>Photos</TableCell>
+                                    <TableCell sx={{ fontWeight: 600 }}>Notes</TableCell>
+                                    <TableCell sx={{ fontWeight: 600 }}>Last Updated</TableCell>
+                                    <TableCell align="right" sx={{ fontWeight: 600 }}>Actions</TableCell>
                                   </TableRow>
                                 </TableHead>
                                 <TableBody>
@@ -380,41 +721,129 @@ export default function DetailsSheet() {
                                       <TableRow
                                         key={task._id}
                                         hover
-                                        sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
+                                        sx={{
+                                          '&:last-child td, &:last-child th': { border: 0 },
+                                          '&:hover': { backgroundColor: TASK_HOVER }
+                                        }}
                                       >
-                                        <TableCell>{formatDate(task.publishDate)}</TableCell>
+                                        <TableCell>{formatDate(task.taskDate)}</TableCell>
                                         <TableCell>
-                                          <Typography
-                                            variant="body2"
-                                            sx={{
-                                              cursor: 'pointer',
-                                              color: 'primary.main',
-                                              '&:hover': { textDecoration: 'underline' }
-                                            }}
-                                            onClick={() => navigate(`/tasks/${task._id}`)}
-                                          >
-                                            {task.name}
-                                          </Typography>
-                                        </TableCell>
-                                        <TableCell>
-                                          <Chip
-                                            label={task.status}
-                                            size="small"
-                                            color={getStatusColor(task.status)}
-                                          />
-                                        </TableCell>
-                                        <TableCell>
-                                          {photoCount > 0 && (
-                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                              <PhotoCameraIcon fontSize="small" color="action" />
-                                              <Typography variant="caption">{photoCount}</Typography>
+                                          {editingCell?.type === 'task' && editingCell?.id === task._id && editingCell?.field === 'name' ? (
+                                            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                                              <TextField
+                                                inputRef={editInputRef}
+                                                value={editValue}
+                                                onChange={(e) => setEditValue(e.target.value)}
+                                                onKeyDown={(e) => {
+                                                  if (e.key === 'Enter') saveEdit();
+                                                  if (e.key === 'Escape') cancelEditing();
+                                                }}
+                                                size="small"
+                                                fullWidth
+                                              />
+                                              <IconButton size="small" onClick={saveEdit} color="primary">
+                                                <CheckIcon fontSize="small" />
+                                              </IconButton>
+                                              <IconButton size="small" onClick={cancelEditing}>
+                                                <CloseIcon fontSize="small" />
+                                              </IconButton>
+                                            </Box>
+                                          ) : (
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                              <Typography
+                                                variant="body2"
+                                                sx={{
+                                                  cursor: 'pointer',
+                                                  color: 'primary.main',
+                                                  '&:hover': { textDecoration: 'underline' }
+                                                }}
+                                                onClick={() => navigate(`/tasks/${task._id}`)}
+                                              >
+                                                {task.name}
+                                              </Typography>
+                                              <IconButton
+                                                size="small"
+                                                onClick={() => startEditing('task', task._id, 'name', task.name)}
+                                              >
+                                                <EditIcon fontSize="small" />
+                                              </IconButton>
                                             </Box>
                                           )}
                                         </TableCell>
                                         <TableCell>
-                                          <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
-                                            {task.description || '-'}
-                                          </Typography>
+                                          <FormControl size="small" fullWidth>
+                                            <Select
+                                              value={task.status}
+                                              onChange={(e) => handleTaskStatusChange(task._id, e.target.value as TaskStatus)}
+                                              sx={{ fontSize: '0.875rem' }}
+                                            >
+                                              <MenuItem value={TaskStatus.PENDING}>Pending</MenuItem>
+                                              <MenuItem value={TaskStatus.IN_PROGRESS}>In Progress</MenuItem>
+                                              <MenuItem value={TaskStatus.COMPLETED}>Completed</MenuItem>
+                                            </Select>
+                                          </FormControl>
+                                        </TableCell>
+                                        <TableCell>
+                                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                            {photoCount > 0 && (
+                                              <>
+                                                <PhotoCameraIcon fontSize="small" color="action" />
+                                                <Typography variant="caption">{photoCount}</Typography>
+                                              </>
+                                            )}
+                                            <Tooltip title="Upload Photo">
+                                              <IconButton
+                                                size="small"
+                                                onClick={() => handlePhotoUpload(task._id, campaign._id, project._id)}
+                                                color="primary"
+                                              >
+                                                <UploadIcon fontSize="small" />
+                                              </IconButton>
+                                            </Tooltip>
+                                          </Box>
+                                        </TableCell>
+                                        <TableCell>
+                                          {editingCell?.type === 'task' && editingCell?.id === task._id && editingCell?.field === 'description' ? (
+                                            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                                              <TextField
+                                                inputRef={editInputRef}
+                                                value={editValue}
+                                                onChange={(e) => setEditValue(e.target.value)}
+                                                onKeyDown={(e) => {
+                                                  if (e.key === 'Enter') saveEdit();
+                                                  if (e.key === 'Escape') cancelEditing();
+                                                }}
+                                                size="small"
+                                                multiline
+                                                fullWidth
+                                              />
+                                              <IconButton size="small" onClick={saveEdit} color="primary">
+                                                <CheckIcon fontSize="small" />
+                                              </IconButton>
+                                              <IconButton size="small" onClick={cancelEditing}>
+                                                <CloseIcon fontSize="small" />
+                                              </IconButton>
+                                            </Box>
+                                          ) : (
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                              <Typography
+                                                variant="body2"
+                                                noWrap
+                                                sx={{ maxWidth: 200, cursor: 'pointer' }}
+                                                onClick={() => startEditing('task', task._id, 'description', task.description || '')}
+                                              >
+                                                {task.description || '-'}
+                                              </Typography>
+                                              {!task.description && (
+                                                <IconButton
+                                                  size="small"
+                                                  onClick={() => startEditing('task', task._id, 'description', '')}
+                                                >
+                                                  <EditIcon fontSize="small" />
+                                                </IconButton>
+                                              )}
+                                            </Box>
+                                          )}
                                         </TableCell>
                                         <TableCell>
                                           <Typography variant="caption" color="text.secondary">
@@ -439,18 +868,39 @@ export default function DetailsSheet() {
                               </Table>
                             </TableContainer>
                           ) : (
-                            <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
-                              No tasks assigned to this project yet.
-                            </Typography>
+                            <Paper sx={{ py: 3, textAlign: 'center', backgroundColor: '#FAFAFA' }}>
+                              <Typography variant="body2" color="text.secondary">
+                                No tasks assigned to this project yet.
+                              </Typography>
+                              <Button
+                                variant="outlined"
+                                size="small"
+                                startIcon={<AddIcon />}
+                                onClick={() => handleOpenCreateTaskModal(project._id, campaign._id)}
+                                sx={{
+                                  mt: 2,
+                                  borderColor: '#6366F1',
+                                  color: '#6366F1',
+                                  '&:hover': {
+                                    borderColor: '#4F46E5',
+                                    backgroundColor: '#EEF2FF'
+                                  }
+                                }}
+                              >
+                                Create First Task
+                              </Button>
+                            </Paper>
                           )}
                         </AccordionDetails>
                       </Accordion>
                     );
                   })
                 ) : (
-                  <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
-                    No projects in this campaign yet.
-                  </Typography>
+                  <Paper sx={{ py: 3, textAlign: 'center', backgroundColor: '#FAFAFA' }}>
+                    <Typography variant="body2" color="text.secondary">
+                      No projects in this campaign yet.
+                    </Typography>
+                  </Paper>
                 )}
               </AccordionDetails>
             </Accordion>
@@ -466,6 +916,23 @@ export default function DetailsSheet() {
           projectId={selectedProjectForTask.projectId}
           campaignId={selectedProjectForTask.campaignId}
           onTaskCreated={handleTaskCreated}
+        />
+      )}
+
+      {/* Create Campaign Modal */}
+      <CampaignFormModal
+        open={createCampaignModalOpen}
+        onClose={() => setCreateCampaignModalOpen(false)}
+        onSuccess={handleCampaignCreated}
+      />
+
+      {/* Create Project Modal */}
+      {selectedCampaignForProject && (
+        <ProjectFormDialog
+          open={createProjectModalOpen}
+          onClose={handleCloseCreateProjectModal}
+          campaignId={selectedCampaignForProject}
+          onSuccess={handleProjectCreated}
         />
       )}
     </Box>

@@ -6,23 +6,13 @@ export enum TaskStatus {
   COMPLETED = 'Completed'
 }
 
-export enum TaskType {
-  POST = 'post',
-  LAUNCH = 'launch',
-  ACTIVATION = 'activation',
-  DELIVERABLE = 'deliverable',
-  OTHER = 'other'
-}
-
 export interface ITask extends Document {
   name: string;
   description?: string;
-  type: TaskType;
   projectId: mongoose.Types.ObjectId;
   campaignId: mongoose.Types.ObjectId; // Inherited from project
   status: TaskStatus;
-  scheduledDate?: Date;
-  publishDate?: Date;
+  taskDate?: Date; // Single date for when task should be carried out
   content?: string;
   designedImage?: string; // S3 URL for product marketing image
   createdBy: mongoose.Types.ObjectId;
@@ -42,11 +32,6 @@ const taskSchema = new Schema<ITask>(
       type: String,
       trim: true
     },
-    type: {
-      type: String,
-      enum: Object.values(TaskType),
-      default: TaskType.OTHER
-    },
     projectId: {
       type: Schema.Types.ObjectId,
       ref: 'Project',
@@ -62,10 +47,7 @@ const taskSchema = new Schema<ITask>(
       enum: Object.values(TaskStatus),
       default: TaskStatus.PENDING
     },
-    scheduledDate: {
-      type: Date
-    },
-    publishDate: {
+    taskDate: {
       type: Date
     },
     content: {
@@ -92,7 +74,6 @@ const taskSchema = new Schema<ITask>(
 // Indexes
 taskSchema.index({ projectId: 1, status: 1 });
 taskSchema.index({ campaignId: 1 });
-taskSchema.index({ scheduledDate: 1 });
-taskSchema.index({ publishDate: 1 });
+taskSchema.index({ taskDate: 1 });
 
 export const Task = mongoose.model<ITask>('Task', taskSchema);
