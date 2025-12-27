@@ -40,6 +40,8 @@ import {
 import { campaignAPI, projectAPI, taskAPI } from '../services/api';
 import { Campaign, Project, Task, TaskStatus, CampaignStatus, ProjectStatus } from '../types';
 import CreateTaskModal from '../components/CreateTaskModal';
+import CampaignFormModal from '../components/CampaignFormModal';
+import ProjectFormDialog from '../components/Projects/ProjectFormDialog';
 
 interface CampaignWithProjects extends Campaign {
   projects?: ProjectWithTasks[];
@@ -65,7 +67,10 @@ export default function DetailsSheet() {
   const [expandedCampaigns, setExpandedCampaigns] = useState<Set<string>>(new Set());
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
   const [createTaskModalOpen, setCreateTaskModalOpen] = useState(false);
+  const [createCampaignModalOpen, setCreateCampaignModalOpen] = useState(false);
+  const [createProjectModalOpen, setCreateProjectModalOpen] = useState(false);
   const [selectedProjectForTask, setSelectedProjectForTask] = useState<{ projectId: string; campaignId: string } | null>(null);
+  const [selectedCampaignForProject, setSelectedCampaignForProject] = useState<string | null>(null);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [editValue, setEditValue] = useState('');
   const editInputRef = useRef<HTMLInputElement>(null);
@@ -399,6 +404,28 @@ export default function DetailsSheet() {
     handleCloseCreateTaskModal();
   };
 
+  const handleOpenCreateProjectModal = (campaignId: string) => {
+    setSelectedCampaignForProject(campaignId);
+    setCreateProjectModalOpen(true);
+  };
+
+  const handleCloseCreateProjectModal = () => {
+    setCreateProjectModalOpen(false);
+    setSelectedCampaignForProject(null);
+  };
+
+  const handleProjectCreated = async () => {
+    if (selectedCampaignForProject) {
+      await loadProjectsForCampaign(selectedCampaignForProject);
+    }
+    handleCloseCreateProjectModal();
+  };
+
+  const handleCampaignCreated = async () => {
+    await loadCampaigns();
+    setCreateCampaignModalOpen(false);
+  };
+
   const handleDeleteTask = async (taskId: string, campaignId: string, projectId: string) => {
     if (!window.confirm('Are you sure you want to delete this task?')) return;
 
@@ -442,7 +469,7 @@ export default function DetailsSheet() {
           variant="contained"
           size="large"
           startIcon={<AddIcon />}
-          onClick={() => navigate('/campaigns/new')}
+          onClick={() => setCreateCampaignModalOpen(true)}
           sx={{
             backgroundColor: CAMPAIGN_BORDER,
             fontSize: '1rem',
@@ -556,6 +583,22 @@ export default function DetailsSheet() {
                 </Box>
               </AccordionSummary>
               <AccordionDetails sx={{ pl: 4, backgroundColor: '#FAFAFA' }}>
+                {/* Create Project Button */}
+                <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    startIcon={<AddIcon />}
+                    onClick={() => handleOpenCreateProjectModal(campaign._id)}
+                    sx={{
+                      backgroundColor: PROJECT_BORDER,
+                      '&:hover': { backgroundColor: '#4F46E5' }
+                    }}
+                  >
+                    Create Project
+                  </Button>
+                </Box>
+
                 {!campaign.projectsLoaded ? (
                   <Box display="flex" justifyContent="center" py={2}>
                     <CircularProgress size={30} />
@@ -873,6 +916,23 @@ export default function DetailsSheet() {
           projectId={selectedProjectForTask.projectId}
           campaignId={selectedProjectForTask.campaignId}
           onTaskCreated={handleTaskCreated}
+        />
+      )}
+
+      {/* Create Campaign Modal */}
+      <CampaignFormModal
+        open={createCampaignModalOpen}
+        onClose={() => setCreateCampaignModalOpen(false)}
+        onSuccess={handleCampaignCreated}
+      />
+
+      {/* Create Project Modal */}
+      {selectedCampaignForProject && (
+        <ProjectFormDialog
+          open={createProjectModalOpen}
+          onClose={handleCloseCreateProjectModal}
+          campaignId={selectedCampaignForProject}
+          onSuccess={handleProjectCreated}
         />
       )}
     </Box>
