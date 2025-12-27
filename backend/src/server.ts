@@ -16,7 +16,6 @@ import campaignRoutes from './routes/campaign.routes';
 import projectRoutes from './routes/project.routes';
 import taskRoutes from './routes/task.routes';
 import commentRoutes from './routes/comment.routes';
-import approvalRoutes from './routes/approval.routes';
 import assetRoutes from './routes/asset.routes';
 
 // Load environment variables
@@ -91,7 +90,6 @@ app.use('/api/campaigns', campaignRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/comments', commentRoutes);
-app.use('/api/approvals', approvalRoutes);
 app.use('/api/assets', assetRoutes);
 
 // Health check endpoint

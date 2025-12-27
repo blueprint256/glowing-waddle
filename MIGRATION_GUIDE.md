@@ -1,6 +1,6 @@
 # Migration Guide - Feature Updates Dec 2025
 
-This document outlines the changes made in the `feature-updates-dec2025` branch and provides instructions for completing the remaining tasks.
+This document outlines the changes made for the simplified role system and task-based architecture. Events have been completely replaced by Tasks.
 
 ## ✅ Completed Changes
 
@@ -16,14 +16,20 @@ This document outlines the changes made in the `feature-updates-dec2025` branch 
 - ✅ **Added field**: `archived` (boolean, default: false)
 - ✅ **Note**: Campaigns no longer have team associations
 
-#### Task Model (`backend/src/models/Task.ts`) - NEW FILE
-- ✅ **Created** new Task model (replaces Event)
+#### Task Model (`backend/src/models/Task.ts`)
+- ✅ **Created** new Task model (completely replaces Event model)
+- ✅ **Event model deleted**: backend/src/models/Event.ts has been removed
 - ✅ **Removed field**: `assignedTo` (no longer assigns tasks to specific users)
 - ✅ **Added fields**:
   - `designedImage` (string): S3 URL for product marketing image
-  - `publishDate` (Date): When task should be published
+  - `taskDate` (Date): Single date field for task scheduling (replaces separate scheduledDate and publishDate)
   - `status` (enum): Updated to 'Pending', 'In Progress', 'Completed'
 - ✅ **Renamed**: EventStatus → TaskStatus, EventType → TaskType
+
+#### Approval System - REMOVED
+- ✅ **Deleted**: backend/src/models/Approval.ts (event-dependent model)
+- ✅ **Deleted**: backend/src/routes/approval.routes.ts (event-dependent routes)
+- ✅ **Removed**: All approval-related audit log actions and functions
 
 #### Asset Model (`backend/src/models/Asset.ts`)
 - ✅ **Added field**: `location` (string) for S3 URLs
@@ -183,7 +189,7 @@ export const canManageTasks = hasRole(UserRole.SYSTEM_ADMIN, UserRole.HYBRID);
 - Add to Task interface:
   ```typescript
   designedImage?: string;
-  publishDate?: string;
+  taskDate?: string;
   status: TaskStatus; // 'Pending' | 'In Progress' | 'Completed'
   ```
 - Remove `budget` from Campaign interface
@@ -264,7 +270,7 @@ export const canManageTasks = hasRole(UserRole.SYSTEM_ADMIN, UserRole.HYBRID);
 - Update API calls from eventAPI to taskAPI
 - Remove "Assigned To" display
 - Add upload button for designed image
-- Add publish date picker
+- Add task date picker
 - Add status dropdown (Pending, In Progress, Completed)
 
 #### 7. Update App Routing
@@ -333,7 +339,7 @@ export const canManageTasks = hasRole(UserRole.SYSTEM_ADMIN, UserRole.HYBRID);
                 <TableBody>
                   {tasks.map(task => (
                     <TableRow key={task._id}>
-                      <TableCell>{task.publishDate}</TableCell>
+                      <TableCell>{task.taskDate}</TableCell>
                       <TableCell>{task.name}</TableCell>
                       <TableCell>
                         <Chip label={task.status} color={statusColor} />
@@ -442,7 +448,7 @@ After completing all changes:
 **Backend**:
 - [ ] Server starts without errors
 - [ ] Seed script creates only admin and hybrid users
-- [ ] Can create tasks with new fields (designedImage, publishDate, status)
+- [ ] Can create tasks with new fields (designedImage, taskDate, status)
 - [ ] Can upload files to S3 (or local storage as fallback)
 - [ ] Can archive campaigns
 - [ ] RBAC enforces System Admin and Hybrid permissions correctly

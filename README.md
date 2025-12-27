@@ -11,9 +11,8 @@ A full-stack collaborative campaign management and content production platform w
 - Removed: Client, Marketer, and Designer roles
 - **Teams feature fully removed**: Access controlled purely by role and ownership
 
-### Task Management Updates
-- **Events renamed to Tasks** throughout the platform
-- Added **designed image upload** with S3 integration for task assets
+### Task Management
+- **Task management** with designed image upload and S3 integration
 - Added **publish date** field for task scheduling
 - Enhanced **status management** with dropdown (Pending, In Progress, Completed)
 
@@ -53,7 +52,6 @@ A full-stack collaborative campaign management and content production platform w
 - RBAC enforcement at API and UI levels
 - Role and ownership-based access control
 - Task management with image uploads and scheduling
-- Approval workflows
 - Comments and collaboration
 - Asset management with S3 file storage
 - Details Sheet for comprehensive campaign overview
@@ -69,7 +67,6 @@ Campaign
  └─ Project
      └─ Task
          ├─ Comments
-         ├─ Approvals
          └─ Assets
 ```
 
@@ -97,7 +94,6 @@ Campaign
 - Upload task images and assets
 - Manage task scheduling and status
 - **Cannot** create users
-- Approve and publish content
 
 ---
 
@@ -243,7 +239,7 @@ Open http://localhost:3000 in your browser.
    - Review task status and photo counts
 
 8. **Collaboration**
-   - Users add comments on tasks
+   - Users add comments on tasks, projects, and campaigns
    - Track changes via audit log (Admin only)
 
 ---
@@ -282,7 +278,6 @@ The system enforces strict rules for who can assign users to projects:
 - `/api/tasks` - Task management
   - `POST /api/tasks/:id/upload-image` - Upload designed image to task
 - `/api/comments` - Comments on tasks/projects/campaigns
-- `/api/approvals` - Approval requests and responses
 - `/api/assets` - File uploads and downloads (S3 integration)
 
 All endpoints require authentication except `/api/auth/login`.
@@ -336,7 +331,6 @@ Use the seeded demo accounts to test each role:
 Add unit tests for:
 - RBAC middleware functions
 - Assignment authority validation
-- Approval workflow state transitions
 - Task image upload validation
 
 Integration tests for:
@@ -389,7 +383,7 @@ Integration tests for:
 ### Current Limitations (Prototype)
 
 1. **AWS S3 Configuration Required**: Task image uploads require AWS S3 credentials in environment variables
-2. **No Email Notifications**: Mentions and approvals don't send emails
+2. **No Email Notifications**: Mentions don't send emails
 3. **Basic Analytics**: Limited to simple counts in Details Sheet; add charts and metrics
 4. **No Real-time Updates**: Refresh required; add WebSocket support
 5. **Limited Validation**: Basic validation; enhance with comprehensive rules

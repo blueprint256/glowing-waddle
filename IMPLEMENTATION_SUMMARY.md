@@ -18,11 +18,11 @@ A fully functional collaborative campaign management platform has been successfu
 - ✅ Comprehensive RBAC middleware
 
 **Core Features:**
-1. **7 Mongoose Models** with proper relationships and validation
-   - User, Campaign, Project, Event, Asset, Comment, Approval, AuditLog
+1. **5 Mongoose Models** with proper relationships and validation
+   - User, Campaign, Project, Task, Asset, Comment, AuditLog
 
-2. **8 API Route Modules** with full CRUD operations
-   - auth, users, campaigns, projects, events, comments, approvals, assets
+2. **6 API Route Modules** with full CRUD operations
+   - auth, users, campaigns, projects, tasks, comments, assets
 
 3. **Complete RBAC System**
    - 2 user roles (System Admin, Hybrid)
@@ -31,8 +31,7 @@ A fully functional collaborative campaign management platform has been successfu
 
 4. **Collaboration Features**
    - Comments with @mentions
-   - Approval workflows (request → review → approve/reject)
-   - Asset uploads with Multer (images, videos, documents)
+   - Asset uploads with S3 integration (images, videos, documents)
    - Version tracking
 
 5. **Security & Audit**
@@ -53,8 +52,8 @@ backend/
 │   │   ├── auth.ts              # Authentication middleware
 │   │   ├── rbac.ts              # Role-based access control
 │   │   └── validation.ts        # Input validation rules
-│   ├── models/                  # 9 Mongoose schemas
-│   ├── routes/                  # 9 Express route modules
+│   ├── models/                  # 7 Mongoose schemas
+│   ├── routes/                  # 7 Express route modules
 │   ├── scripts/
 │   │   └── seed.ts              # Database seeder
 │   ├── utils/
@@ -90,19 +89,19 @@ backend/
 3. **Hierarchical Navigation**
    - Campaigns list and detail views
    - Projects nested under campaigns
-   - Events nested under projects
+   - Tasks nested under projects
    - Breadcrumb navigation
 
 4. **Key Pages Implemented:**
    - Dashboard with statistics
    - Campaign list and detail pages
    - Project detail pages
-   - Event detail with comments
+   - Task detail with comments
    - User management (admin only)
+   - Details Sheet for comprehensive overview
 
 5. **Collaboration UI**
-   - Comment threads on events
-   - Approval request interface
+   - Comment threads on tasks/projects/campaigns
    - Asset upload dialogs
    - Real-time status updates
 
@@ -117,8 +116,9 @@ frontend/
 │   │   ├── Admin/                   # Admin-only pages
 │   │   ├── Campaigns/               # Campaign management
 │   │   ├── Projects/                # Project views
-│   │   ├── Events/                  # Event details
+│   │   ├── Tasks/                   # Task details
 │   │   ├── Dashboard.tsx
+│   │   ├── DetailsSheet.tsx
 │   │   └── LoginPage.tsx
 │   ├── services/
 │   │   └── api.ts                   # Axios API client
@@ -156,15 +156,13 @@ frontend/
 4. **Collaboration Features** ✓
    - Comments with threading
    - @mentions support
-   - Approval workflows
-   - Asset management
+   - Asset management with S3
 
 5. **Audit Logging** ✓
    - User creation/updates
    - Content changes
    - Project assignments
-   - Task publishes
-   - Approval decisions
+   - Asset uploads and deletions
 
 6. **Security** ✓
    - Authentication required
@@ -227,12 +225,11 @@ Open http://localhost:3000
 2. **Create Campaign** → "Summer Launch 2025"
 3. **Create Project** → "Social Media Campaign"
 4. **Create Task** → "Instagram Post"
-5. **Hybrid User Edits** → Upload assets, add content
-6. **Request Approval** → Assign to another user for review
-7. **Reviewer Approves** → Add feedback
-8. **Hybrid Publishes** → Task goes live
-9. **Collaborate** → Users add comments
-10. **Admin Reviews** → Check audit logs
+5. **Hybrid User Edits** → Upload task image, add content
+6. **Update Status** → Set to "In Progress", then "Completed"
+7. **Set Publish Date** → Schedule the task
+8. **Collaborate** → Users add comments on tasks
+9. **Admin Reviews** → Check audit logs
 
 ---
 
@@ -356,13 +353,13 @@ The following were noted as future improvements, not part of the prototype:
 2. **User B (Hybrid)**: Cannot edit Campaign X (not the creator)
 3. **System Admin**: Can edit any campaign regardless of creator
 
-### Test Approval Workflow
+### Test Task Workflow
 
-1. Hybrid User: Create task → Mark "Pending Approval"
-2. Hybrid User: Request approval → Assign to another user
-3. Reviewer: Review → Approve with feedback
-4. Creator: Task status → "Approved"
-5. Creator: Publish task → Status "Published"
+1. Hybrid User: Create task → Status "Pending"
+2. Hybrid User: Upload designed image → Add to task
+3. Hybrid User: Update status → "In Progress"
+4. Hybrid User: Complete work → Status "Completed"
+5. Hybrid User: Set publish date → Schedule task
 
 ---
 

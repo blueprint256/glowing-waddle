@@ -1,6 +1,5 @@
 import express, { Request, Response } from 'express';
 import { Comment } from '../models/Comment';
-import { Event } from '../models/Event';
 import { Project } from '../models/Project';
 import { Campaign } from '../models/Campaign';
 import { UserRole } from '../models/User';
@@ -17,13 +16,13 @@ const router = express.Router();
  */
 router.post('/', isAuthenticated, validateCommentCreation, async (req: Request, res: Response) => {
   try {
-    const { content, eventId, projectId, campaignId, mentions, parentCommentId } = req.body;
+    const { content, projectId, campaignId, mentions, parentCommentId } = req.body;
 
     // At least one target is required
-    if (!eventId && !projectId && !campaignId) {
+    if (!projectId && !campaignId) {
       return res.status(400).json({
         success: false,
-        message: 'Comment must be attached to an event, project, or campaign'
+        message: 'Comment must be attached to a project or campaign'
       });
     }
 
@@ -31,16 +30,7 @@ router.post('/', isAuthenticated, validateCommentCreation, async (req: Request, 
     if (req.user!.role === UserRole.HYBRID) {
       let targetCampaignId = null;
 
-      if (eventId) {
-        const event = await Event.findById(eventId);
-        if (!event) {
-          return res.status(404).json({
-            success: false,
-            message: 'Event not found'
-          });
-        }
-        targetCampaignId = event.campaignId;
-      } else if (projectId) {
+      if (projectId) {
         const project = await Project.findById(projectId);
         if (!project) {
           return res.status(404).json({
@@ -73,7 +63,6 @@ router.post('/', isAuthenticated, validateCommentCreation, async (req: Request, 
     // Create comment
     const comment = await Comment.create({
       content,
-      eventId: eventId ? new mongoose.Types.ObjectId(eventId) : undefined,
       projectId: projectId ? new mongoose.Types.ObjectId(projectId) : undefined,
       campaignId: campaignId ? new mongoose.Types.ObjectId(campaignId) : undefined,
       authorId: req.user!._id,
@@ -102,7 +91,7 @@ router.post('/', isAuthenticated, validateCommentCreation, async (req: Request, 
 
 /**
  * @route   GET /api/comments
- * @desc    Get comments (filtered by event/project/campaign)
+ * @desc    Get comments (filtered by project/campaign)
  * @access  Private
  */
 router.get('/', isAuthenticated, async (req: Request, res: Response) => {
@@ -110,9 +99,7 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
     let query: any = {};
 
     // Filter by entity
-    if (req.query.eventId) {
-      query.eventId = req.query.eventId;
-    } else if (req.query.projectId) {
+    if (req.query.projectId) {
       query.projectId = req.query.projectId;
     } else if (req.query.campaignId) {
       query.campaignId = req.query.campaignId;

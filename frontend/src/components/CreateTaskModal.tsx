@@ -9,8 +9,16 @@ import {
   MenuItem,
   Box,
   Alert,
-  Grid
+  Grid,
+  Typography,
+  Paper,
+  IconButton
 } from '@mui/material';
+import {
+  CloudUpload as CloudUploadIcon,
+  Close as CloseIcon,
+  Image as ImageIcon
+} from '@mui/icons-material';
 import { taskAPI } from '../services/api';
 import { TaskStatus } from '../types';
 
@@ -33,12 +41,45 @@ export default function CreateTaskModal({
     name: '',
     description: '',
     status: TaskStatus.PENDING,
-    scheduledDate: '',
-    publishDate: '',
+    taskDate: '',
     content: ''
   });
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        setError('Please select an image file');
+        return;
+      }
+
+      // Validate file size (e.g., max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        setError('Image size must be less than 5MB');
+        return;
+      }
+
+      setSelectedImage(file);
+
+      // Create preview URL
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+      setError('');
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setSelectedImage(null);
+    setImagePreview(null);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,24 +87,41 @@ export default function CreateTaskModal({
     setLoading(true);
 
     try {
-      await taskAPI.create({
+      // First, create the task
+      const response = await taskAPI.create({
         ...formData,
         projectId,
         campaignId,
-        scheduledDate: formData.scheduledDate || undefined,
-        publishDate: formData.publishDate || undefined,
+        taskDate: formData.taskDate || undefined,
         content: formData.content || undefined
       });
+
+      const createdTaskId = response.data.task._id;
+
+      // If an image was selected, upload it
+      if (selectedImage && createdTaskId) {
+        const imageFormData = new FormData();
+        imageFormData.append('image', selectedImage);
+
+        try {
+          await taskAPI.uploadImage(createdTaskId, imageFormData);
+        } catch (uploadErr) {
+          console.error('Error uploading image:', uploadErr);
+          // Don't fail the whole operation if just the image upload fails
+          setError('Task created but image upload failed. You can upload it later.');
+        }
+      }
 
       // Reset form
       setFormData({
         name: '',
         description: '',
         status: TaskStatus.PENDING,
-        scheduledDate: '',
-        publishDate: '',
+        taskDate: '',
         content: ''
       });
+      setSelectedImage(null);
+      setImagePreview(null);
 
       // Call success callback
       if (onTaskCreated) {
@@ -88,10 +146,11 @@ export default function CreateTaskModal({
         name: '',
         description: '',
         status: TaskStatus.PENDING,
-        scheduledDate: '',
-        publishDate: '',
+        taskDate: '',
         content: ''
       });
+      setSelectedImage(null);
+      setImagePreview(null);
       setError('');
       onClose();
     }
@@ -125,7 +184,7 @@ export default function CreateTaskModal({
               fullWidth
             />
             <Grid container spacing={2}>
-              <Grid item xs={12} md={12}>
+              <Grid item xs={12} md={6}>
                 <TextField
                   label="Status"
                   value={formData.status}
@@ -141,25 +200,89 @@ export default function CreateTaskModal({
               </Grid>
               <Grid item xs={12} md={6}>
                 <TextField
-                  label="Scheduled Date"
+                  label="Task Date"
                   type="date"
-                  value={formData.scheduledDate}
-                  onChange={(e) => setFormData({ ...formData, scheduledDate: e.target.value })}
-                  InputLabelProps={{ shrink: true }}
-                  fullWidth
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  label="Publish Date"
-                  type="date"
-                  value={formData.publishDate}
-                  onChange={(e) => setFormData({ ...formData, publishDate: e.target.value })}
+                  value={formData.taskDate}
+                  onChange={(e) => setFormData({ ...formData, taskDate: e.target.value })}
                   InputLabelProps={{ shrink: true }}
                   fullWidth
                 />
               </Grid>
             </Grid>
+
+            {/* Image Upload Section */}
+            <Box sx={{ mt: 1 }}>
+              <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <ImageIcon fontSize="small" />
+                Task Image (Optional)
+              </Typography>
+
+              {imagePreview ? (
+                <Paper
+                  sx={{
+                    p: 2,
+                    position: 'relative',
+                    border: '2px dashed #2563EB',
+                    backgroundColor: '#F0F4FF'
+                  }}
+                >
+                  <IconButton
+                    size="small"
+                    onClick={handleRemoveImage}
+                    sx={{
+                      position: 'absolute',
+                      top: 8,
+                      right: 8,
+                      backgroundColor: 'white',
+                      '&:hover': { backgroundColor: '#f5f5f5' }
+                    }}
+                  >
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                  <Box
+                    component="img"
+                    src={imagePreview}
+                    alt="Preview"
+                    sx={{
+                      width: '100%',
+                      maxHeight: 200,
+                      objectFit: 'contain',
+                      borderRadius: 1
+                    }}
+                  />
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                    {selectedImage?.name}
+                  </Typography>
+                </Paper>
+              ) : (
+                <Button
+                  component="label"
+                  variant="outlined"
+                  startIcon={<CloudUploadIcon />}
+                  fullWidth
+                  sx={{
+                    py: 3,
+                    borderStyle: 'dashed',
+                    borderWidth: 2,
+                    borderColor: '#2563EB',
+                    color: '#2563EB',
+                    '&:hover': {
+                      borderColor: '#1E40AF',
+                      backgroundColor: '#F0F4FF'
+                    }
+                  }}
+                >
+                  Upload Task Image
+                  <input
+                    type="file"
+                    hidden
+                    accept="image/*"
+                    onChange={handleImageSelect}
+                  />
+                </Button>
+              )}
+            </Box>
+
             <TextField
               label="Content/Notes"
               value={formData.content}

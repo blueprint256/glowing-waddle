@@ -74,8 +74,7 @@ export const validateTaskCreation = [
   body('type').isIn(['post', 'launch', 'activation', 'deliverable', 'other'])
     .withMessage('Invalid task type'),
   body('projectId').isMongoId().withMessage('Valid project ID is required'),
-  body('scheduledDate').optional().isISO8601(),
-  body('publishDate').optional().isISO8601(),
+  body('taskDate').optional().isISO8601(),
   body('content').optional().trim(),
   body('status').optional().isIn(['Pending', 'In Progress', 'Completed'])
     .withMessage('Invalid task status'),

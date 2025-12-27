@@ -70,10 +70,15 @@ export default function DetailsSheet() {
   const [editValue, setEditValue] = useState('');
   const editInputRef = useRef<HTMLInputElement>(null);
 
-  // Color coding constants
-  const CAMPAIGN_COLOR = '#FFF9C4'; // Yellow
-  const PROJECT_COLOR = '#BBDEFB';  // Blue
-  const TASK_COLOR = '#C8E6C9';     // Green
+  // Color coding constants - Blue/Purple Brand Theme
+  const CAMPAIGN_COLOR = '#DBEAFE'; // Deep blue background
+  const CAMPAIGN_BORDER = '#2563EB'; // Deep brand blue
+  const CAMPAIGN_HOVER = '#BFDBFE'; // Lighter blue hover
+  const PROJECT_COLOR = '#E0E7FF';  // Mid blue-purple background
+  const PROJECT_BORDER = '#6366F1';  // Mid blue-purple
+  const PROJECT_HOVER = '#C7D2FE';   // Lighter purple hover
+  const TASK_COLOR = '#C7D2FE';      // Lighter violet-blue
+  const TASK_HOVER = '#E0E7FF';      // Very light violet hover
 
   useEffect(() => {
     loadCampaigns();
@@ -431,6 +436,28 @@ export default function DetailsSheet() {
         Hierarchical view of all campaigns, projects, and tasks with inline editing
       </Typography>
 
+      {/* Create Campaign Button */}
+      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'flex-start' }}>
+        <Button
+          variant="contained"
+          size="large"
+          startIcon={<AddIcon />}
+          onClick={() => navigate('/campaigns/new')}
+          sx={{
+            backgroundColor: CAMPAIGN_BORDER,
+            fontSize: '1rem',
+            fontWeight: 600,
+            px: 3,
+            py: 1.5,
+            '&:hover': {
+              backgroundColor: '#1D4ED8'
+            }
+          }}
+        >
+          Create Campaign
+        </Button>
+      </Box>
+
       {campaigns.length === 0 ? (
         <Paper sx={{ p: 3, textAlign: 'center' }}>
           <Typography color="text.secondary">No campaigns found</Typography>
@@ -450,9 +477,9 @@ export default function DetailsSheet() {
                 mb: 2,
                 '& .MuiAccordionSummary-root': {
                   backgroundColor: CAMPAIGN_COLOR,
-                  borderLeft: '4px solid #FBC02D',
+                  borderLeft: `4px solid ${CAMPAIGN_BORDER}`,
                   '&:hover': {
-                    backgroundColor: '#FFF59D'
+                    backgroundColor: CAMPAIGN_HOVER
                   }
                 }
               }}
@@ -546,9 +573,9 @@ export default function DetailsSheet() {
                           mb: 1,
                           '& .MuiAccordionSummary-root': {
                             backgroundColor: PROJECT_COLOR,
-                            borderLeft: '4px solid #42A5F5',
+                            borderLeft: `4px solid ${PROJECT_BORDER}`,
                             '&:hover': {
-                              backgroundColor: '#E3F2FD'
+                              backgroundColor: PROJECT_HOVER
                             }
                           }
                         }}
@@ -618,8 +645,8 @@ export default function DetailsSheet() {
                               startIcon={<AddIcon />}
                               onClick={() => handleOpenCreateTaskModal(project._id, campaign._id)}
                               sx={{
-                                backgroundColor: '#4CAF50',
-                                '&:hover': { backgroundColor: '#45a049' }
+                                backgroundColor: '#6366F1',
+                                '&:hover': { backgroundColor: '#4F46E5' }
                               }}
                             >
                               Add Task
@@ -653,10 +680,10 @@ export default function DetailsSheet() {
                                         hover
                                         sx={{
                                           '&:last-child td, &:last-child th': { border: 0 },
-                                          '&:hover': { backgroundColor: '#E8F5E9' }
+                                          '&:hover': { backgroundColor: TASK_HOVER }
                                         }}
                                       >
-                                        <TableCell>{formatDate(task.publishDate)}</TableCell>
+                                        <TableCell>{formatDate(task.taskDate)}</TableCell>
                                         <TableCell>
                                           {editingCell?.type === 'task' && editingCell?.id === task._id && editingCell?.field === 'name' ? (
                                             <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
@@ -807,7 +834,15 @@ export default function DetailsSheet() {
                                 size="small"
                                 startIcon={<AddIcon />}
                                 onClick={() => handleOpenCreateTaskModal(project._id, campaign._id)}
-                                sx={{ mt: 2 }}
+                                sx={{
+                                  mt: 2,
+                                  borderColor: '#6366F1',
+                                  color: '#6366F1',
+                                  '&:hover': {
+                                    borderColor: '#4F46E5',
+                                    backgroundColor: '#EEF2FF'
+                                  }
+                                }}
                               >
                                 Create First Task
                               </Button>

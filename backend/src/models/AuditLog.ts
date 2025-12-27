@@ -11,12 +11,6 @@ export enum AuditAction {
   PROJECT_UPDATED = 'project_updated',
   PROJECT_ASSIGNMENT_ADDED = 'project_assignment_added',
   PROJECT_ASSIGNMENT_REMOVED = 'project_assignment_removed',
-  EVENT_CREATED = 'event_created',
-  EVENT_UPDATED = 'event_updated',
-  EVENT_PUBLISHED = 'event_published',
-  APPROVAL_REQUESTED = 'approval_requested',
-  APPROVAL_GRANTED = 'approval_granted',
-  APPROVAL_REJECTED = 'approval_rejected',
   ASSET_UPLOADED = 'asset_uploaded',
   ASSET_DELETED = 'asset_deleted'
 }

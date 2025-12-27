@@ -87,8 +87,7 @@ export interface Task {
   projectId: any;
   campaignId: any;
   status: TaskStatus;
-  scheduledDate?: string;
-  publishDate?: string;
+  taskDate?: string; // Single date for when task should be carried out
   content?: string;
   designedImage?: string;
   createdBy: any;

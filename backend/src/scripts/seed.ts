@@ -122,8 +122,7 @@ async function seed() {
       projectId: project._id,
       campaignId: campaignA._id,
       status: TaskStatus.IN_PROGRESS,
-      scheduledDate: new Date('2025-06-05'),
-      publishDate: new Date('2025-06-05'),
+      taskDate: new Date('2025-06-05'),
       content: 'Check out our stunning new summer collection! 🌞 Coming soon...',
       createdBy: hybridA._id
     });
@@ -134,8 +133,7 @@ async function seed() {
       projectId: project._id,
       campaignId: campaignA._id,
       status: TaskStatus.PENDING,
-      scheduledDate: new Date('2025-06-15'),
-      publishDate: new Date('2025-06-15'),
+      taskDate: new Date('2025-06-15'),
       createdBy: hybridA._id
     });
 
