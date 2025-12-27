@@ -107,4 +107,27 @@ router.get('/check', (req: Request, res: Response) => {
   });
 });
 
+/**
+ * @route   GET /api/auth/google
+ * @desc    Initiate Google OAuth flow
+ * @access  Public
+ */
+router.get('/google', passport.authenticate('google', {
+  scope: ['profile', 'email']
+}));
+
+/**
+ * @route   GET /api/auth/google/callback
+ * @desc    Google OAuth callback
+ * @access  Public
+ */
+router.get('/google/callback',
+  passport.authenticate('google', { failureRedirect: '/login' }),
+  (req: Request, res: Response) => {
+    // Successful authentication
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    res.redirect(`${frontendUrl}/?auth=success`);
+  }
+);
+
 export default router;

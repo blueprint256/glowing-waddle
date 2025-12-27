@@ -23,6 +23,7 @@ import {
   ListAlt as ListAltIcon,
   CalendarMonth as CalendarIcon,
   TableChart as TableChartIcon,
+  Settings as SettingsIcon,
   Logout as LogoutIcon
 } from '@mui/icons-material';
 import { useAuthStore } from '../../store/authStore';
@@ -50,6 +51,7 @@ export default function DashboardLayout() {
     { text: 'Details Sheet', icon: <ListAltIcon />, path: '/details-sheet', roles: ['all'] },
     { text: 'Calendar', icon: <CalendarIcon />, path: '/calendar', roles: ['all'] },
     { text: 'Tasks Sheet', icon: <TableChartIcon />, path: '/tasks-sheet', roles: ['all'] },
+    { text: 'Settings', icon: <SettingsIcon />, path: '/settings', roles: ['all'] },
     { text: 'Users', icon: <PeopleIcon />, path: '/admin/users', roles: [UserRole.SYSTEM_ADMIN] }
   ];
 

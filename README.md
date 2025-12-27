@@ -4,6 +4,17 @@ A full-stack collaborative campaign management and content production platform w
 
 ## Recent Updates (2025)
 
+### Authentication Enhancements
+- **Google OAuth2 Integration**: Sign in/sign up with Google for seamless authentication
+- **Dual Authentication**: Support for both traditional email/password and Google OAuth
+- Automatic account linking when using Google with an existing email
+
+### Settings & Integrations
+- **New Settings Page**: Centralized hub for user preferences and integrations
+- **Canva Integration**: Connect your Canva account to import designs and images directly into tasks
+- Profile management and account settings interface
+- Integration status tracking with connection timestamps
+
 ### Simplified Role System
 - **Reduced from 5 roles to 2 roles**: System Admin and Hybrid
 - System Admin: Full platform access including user management
@@ -16,17 +27,15 @@ A full-stack collaborative campaign management and content production platform w
 - Added **publish date** field for task scheduling
 - Enhanced **status management** with dropdown (Pending, In Progress, Completed)
 
-### New Features
-- **Details Sheet**: New hierarchical view showing all campaigns, projects, and tasks in a single collapsible accordion interface with:
+### Enhanced Navigation & Views
+- **Details Sheet**: Hierarchical view showing all campaigns, projects, and tasks in a single collapsible accordion interface with:
   - Campaign progress tracking
   - Project summaries
   - Comprehensive task tables with photo counts, notes, and last updated timestamps
   - Progressive data loading for performance
-
-### Navigation Updates
-- Removed Teams navigation link
-- Added Details Sheet to main navigation
-- Streamlined UI focused on campaign and task management
+- **Calendar View**: Visual task scheduling and timeline management
+- **Tasks Sheet**: Comprehensive task overview and management
+- **Settings**: User preferences and third-party integrations
 
 ## Architecture Overview
 
@@ -35,7 +44,7 @@ A full-stack collaborative campaign management and content production platform w
 **Backend:**
 - Node.js with Express.js
 - MongoDB with Mongoose (ODM)
-- Passport.js with LocalStrategy (session-based authentication)
+- Passport.js with LocalStrategy and Google OAuth2 (session-based authentication)
 - express-session with MongoDB store
 - TypeScript
 
@@ -48,13 +57,18 @@ A full-stack collaborative campaign management and content production platform w
 
 **Key Features:**
 - Hierarchical structure: Campaigns → Projects → Tasks
+- Dual authentication: Email/Password + Google OAuth2
 - 2 user roles with granular permissions (System Admin, Hybrid)
 - RBAC enforcement at API and UI levels
 - Role and ownership-based access control
 - Task management with image uploads and scheduling
+- Third-party integrations (Canva)
+- Settings page for user preferences and integrations
 - Comments and collaboration
 - Asset management with S3 file storage
 - Details Sheet for comprehensive campaign overview
+- Calendar view for task scheduling
+- Tasks Sheet for task management
 - Audit logging for all critical actions
 - Rate limiting and security headers
 
@@ -124,8 +138,15 @@ npm install
 cp .env.example .env
 
 # Edit .env with your configuration
-# Default MongoDB URI: mongodb://localhost:27017/campaign_management
-# Generate a strong SESSION_SECRET for production
+# Required:
+# - MONGODB_URI: mongodb://localhost:27017/campaign_management
+# - SESSION_SECRET: Generate a strong secret for production
+# - GOOGLE_CLIENT_ID: Your Google OAuth2 Client ID
+# - GOOGLE_CLIENT_SECRET: Your Google OAuth2 Client Secret
+# - GOOGLE_CALLBACK_URL: http://localhost:5000/api/auth/google/callback
+# Optional (for Canva integration):
+# - CANVA_CLIENT_ID: Your Canva API Client ID
+# - CANVA_CLIENT_SECRET: Your Canva API Client Secret
 
 # Build TypeScript
 npm run build
@@ -266,8 +287,18 @@ The system enforces strict rules for who can assign users to projects:
 ### Authentication Endpoints
 
 - `POST /api/auth/login` - Login with email/password
+- `GET /api/auth/google` - Initiate Google OAuth flow
+- `GET /api/auth/google/callback` - Google OAuth callback
 - `POST /api/auth/logout` - Logout current session
 - `GET /api/auth/me` - Get current user
+- `GET /api/auth/check` - Check authentication status
+
+### Integration Endpoints
+
+- `GET /api/integrations/canva` - Initiate Canva OAuth flow (requires authentication)
+- `GET /api/integrations/canva/callback` - Canva OAuth callback
+- `POST /api/integrations/canva/disconnect` - Disconnect Canva integration (requires authentication)
+- `GET /api/integrations/status` - Get user's integration status (requires authentication)
 
 ### Resource Endpoints
 
@@ -280,7 +311,7 @@ The system enforces strict rules for who can assign users to projects:
 - `/api/comments` - Comments on tasks/projects/campaigns
 - `/api/assets` - File uploads and downloads (S3 integration)
 
-All endpoints require authentication except `/api/auth/login`.
+All endpoints require authentication except `/api/auth/login`, `/api/auth/google`, and `/api/auth/google/callback`.
 
 ---
 
@@ -391,11 +422,14 @@ Integration tests for:
 
 ### Future Enhancements
 
-- [ ] Calendar view for scheduled tasks
+- [x] Calendar view for scheduled tasks (Implemented)
+- [x] Google OAuth2 authentication (Implemented)
+- [x] Third-party integrations starting with Canva (Implemented)
 - [ ] Drag-and-drop Kanban boards for task management
 - [ ] Advanced search and filtering in Details Sheet
 - [ ] Export reports (PDF/CSV) from Details Sheet
 - [ ] Mobile app (React Native)
+- [ ] Additional integrations (Figma, Dropbox, Google Drive)
 - [ ] Integration with social media platforms for task publishing
 - [ ] Automated workflows and triggers
 - [ ] Multi-language support

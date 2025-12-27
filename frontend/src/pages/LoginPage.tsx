@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Container,
   Box,
@@ -7,17 +7,30 @@ import {
   TextField,
   Button,
   Typography,
-  Alert
+  Alert,
+  Divider
 } from '@mui/material';
+import GoogleIcon from '@mui/icons-material/Google';
 import { useAuthStore } from '../store/authStore';
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { login, isAuthenticated } = useAuthStore();
+  const [searchParams] = useSearchParams();
+  const { login, isAuthenticated, checkAuth } = useAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    // Check if returning from Google OAuth
+    const authStatus = searchParams.get('auth');
+    if (authStatus === 'success') {
+      checkAuth().then(() => {
+        navigate('/');
+      });
+    }
+  }, [searchParams, checkAuth, navigate]);
 
   if (isAuthenticated) {
     navigate('/');
@@ -36,6 +49,11 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleGoogleLogin = () => {
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+    window.location.href = `${apiUrl}/auth/google`;
   };
 
   return (
@@ -91,6 +109,27 @@ export default function LoginPage() {
               disabled={loading}
             >
               {loading ? 'Signing in...' : 'Sign In'}
+            </Button>
+
+            <Divider sx={{ my: 3 }}>OR</Divider>
+
+            <Button
+              fullWidth
+              variant="outlined"
+              size="large"
+              startIcon={<GoogleIcon />}
+              onClick={handleGoogleLogin}
+              disabled={loading}
+              sx={{
+                borderColor: '#4285f4',
+                color: '#4285f4',
+                '&:hover': {
+                  borderColor: '#357ae8',
+                  backgroundColor: 'rgba(66, 133, 244, 0.04)'
+                }
+              }}
+            >
+              Sign in with Google
             </Button>
 
             <Box sx={{ mt: 3 }}>

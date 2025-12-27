@@ -13,6 +13,7 @@ import UserManagement from './pages/Admin/UserManagement';
 import DetailsSheet from './pages/DetailsSheet';
 import Calendar from './pages/Calendar';
 import TasksSheet from './pages/TasksSheet';
+import Settings from './pages/Settings';
 
 function ProtectedRoute({ children }: { children: JSX.Element }) {
   const { isAuthenticated, isLoading } = useAuthStore();
@@ -56,6 +57,7 @@ function App() {
         <Route path="details-sheet" element={<DetailsSheet />} />
         <Route path="calendar" element={<Calendar />} />
         <Route path="tasks-sheet" element={<TasksSheet />} />
+        <Route path="settings" element={<Settings />} />
         <Route path="admin/users" element={<UserManagement />} />
       </Route>
     </Routes>
