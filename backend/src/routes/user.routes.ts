@@ -61,7 +61,7 @@ router.post('/', isAuthenticated, canManageUsers, validateUserCreation, async (r
 
 /**
  * @route   GET /api/users
- * @desc    Get all users (System Admin only)
+ * @desc    Get all users (System Admin only) with pagination
  * @access  Private
  */
 router.get('/', isAuthenticated, async (req: Request, res: Response) => {
@@ -74,13 +74,29 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
       });
     }
 
+    // Pagination parameters
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const skip = (page - 1) * limit;
+
+    // Get total count for pagination metadata
+    const total = await User.countDocuments({ isActive: true });
+
     const users = await User.find({ isActive: true })
       .select('-password')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
 
     res.json({
       success: true,
-      users
+      users,
+      pagination: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit)
+      }
     });
   } catch (error: any) {
     console.error('Error fetching users:', error);

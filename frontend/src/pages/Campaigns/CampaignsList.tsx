@@ -16,18 +16,23 @@ import {
   TextField,
   Accordion,
   AccordionSummary,
-  AccordionDetails
+  AccordionDetails,
+  CircularProgress
 } from '@mui/material';
 import { Add as AddIcon, ExpandMore as ExpandMoreIcon } from '@mui/icons-material';
 import { useAuthStore } from '../../store/authStore';
 import { campaignAPI } from '../../services/api';
 import { Campaign, UserRole, User } from '../../types';
+import Pagination from '../../components/Pagination';
 
 export default function CampaignsList() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ total: 0, pages: 0, limit: 10 });
   const [formData, setFormData] = useState({
     name: '',
     description: ''
@@ -35,14 +40,18 @@ export default function CampaignsList() {
 
   useEffect(() => {
     loadCampaigns();
-  }, []);
+  }, [page]);
 
   const loadCampaigns = async () => {
     try {
-      const res = await campaignAPI.getAll();
+      setLoading(true);
+      const res = await campaignAPI.getAll({ page, limit: 10, includeArchived: false });
       setCampaigns(res.data.campaigns || []);
+      setPagination(res.data.pagination || { total: 0, pages: 0, limit: 10 });
     } catch (error) {
       console.error('Error loading campaigns:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -105,6 +114,14 @@ export default function CampaignsList() {
     </Grid>
   );
 
+  if (loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+        <CircularProgress sx={{ color: '#2563EB' }} />
+      </Box>
+    );
+  }
+
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
@@ -118,52 +135,72 @@ export default function CampaignsList() {
 
       {/* Hybrid Users: Flat list of their own campaigns */}
       {user?.role === UserRole.HYBRID && (
-        <Grid container spacing={3}>
-          {campaigns.map(renderCampaignCard)}
-          {campaigns.length === 0 && (
-            <Grid item xs={12}>
-              <Typography align="center" color="text.secondary">
-                No campaigns found
-              </Typography>
-            </Grid>
-          )}
-        </Grid>
+        <>
+          <Grid container spacing={3}>
+            {campaigns.map(renderCampaignCard)}
+            {campaigns.length === 0 && (
+              <Grid item xs={12}>
+                <Typography align="center" color="text.secondary">
+                  No campaigns found
+                </Typography>
+              </Grid>
+            )}
+          </Grid>
+
+          <Pagination
+            currentPage={page}
+            totalPages={pagination.pages}
+            totalItems={pagination.total}
+            itemsPerPage={pagination.limit}
+            onPageChange={(newPage) => setPage(newPage)}
+          />
+        </>
       )}
 
       {/* System Admins: Grouped by creator */}
       {user?.role === UserRole.SYSTEM_ADMIN && (
-        <Box>
-          {groupedCampaigns && Object.keys(groupedCampaigns).length > 0 ? (
-            Object.entries(groupedCampaigns).map(([key, { user: creator, campaigns: userCampaigns }]) => (
-              <Accordion key={key} defaultExpanded={false} sx={{ mb: 2 }}>
-                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
-                    <Typography variant="h6">
-                      Campaigns by {creator.firstName} {creator.lastName}
-                    </Typography>
-                    <Chip
-                      label={`${userCampaigns.length} campaign${userCampaigns.length !== 1 ? 's' : ''}`}
-                      size="small"
-                      color="primary"
-                    />
-                    <Typography variant="body2" color="text.secondary" sx={{ ml: 'auto' }}>
-                      {creator.email}
-                    </Typography>
-                  </Box>
-                </AccordionSummary>
-                <AccordionDetails>
-                  <Grid container spacing={3}>
-                    {userCampaigns.map(renderCampaignCard)}
-                  </Grid>
-                </AccordionDetails>
-              </Accordion>
-            ))
-          ) : (
-            <Typography align="center" color="text.secondary">
-              No campaigns found
-            </Typography>
-          )}
-        </Box>
+        <>
+          <Box>
+            {groupedCampaigns && Object.keys(groupedCampaigns).length > 0 ? (
+              Object.entries(groupedCampaigns).map(([key, { user: creator, campaigns: userCampaigns }]) => (
+                <Accordion key={key} defaultExpanded={false} sx={{ mb: 2 }}>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
+                      <Typography variant="h6">
+                        Campaigns by {creator.firstName} {creator.lastName}
+                      </Typography>
+                      <Chip
+                        label={`${userCampaigns.length} campaign${userCampaigns.length !== 1 ? 's' : ''}`}
+                        size="small"
+                        color="primary"
+                      />
+                      <Typography variant="body2" color="text.secondary" sx={{ ml: 'auto' }}>
+                        {creator.email}
+                      </Typography>
+                    </Box>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <Grid container spacing={3}>
+                      {userCampaigns.map(renderCampaignCard)}
+                    </Grid>
+                  </AccordionDetails>
+                </Accordion>
+              ))
+            ) : (
+              <Typography align="center" color="text.secondary">
+                No campaigns found
+              </Typography>
+            )}
+          </Box>
+
+          <Pagination
+            currentPage={page}
+            totalPages={pagination.pages}
+            totalItems={pagination.total}
+            itemsPerPage={pagination.limit}
+            onPageChange={(newPage) => setPage(newPage)}
+          />
+        </>
       )}
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>

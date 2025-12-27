@@ -82,7 +82,7 @@ router.post('/', isAuthenticated, canCreateCampaign, validateProjectCreation, as
 
 /**
  * @route   GET /api/projects
- * @desc    Get all projects (System Admin sees all, Hybrid sees only projects under their campaigns)
+ * @desc    Get all projects (System Admin sees all, Hybrid sees only projects under their campaigns) with pagination
  * @access  Private
  */
 router.get('/', isAuthenticated, async (req: Request, res: Response) => {
@@ -102,16 +102,32 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
       query.campaignId = req.query.campaignId;
     }
 
+    // Pagination parameters
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const skip = (page - 1) * limit;
+
+    // Get total count for pagination metadata
+    const total = await Project.countDocuments(query);
+
     const projects = await Project.find(query)
       .populate('campaignId', 'name status')
       .populate('createdBy', 'firstName lastName')
       .populate('assignments.userId', 'firstName lastName email role')
       .populate('assignments.assignedBy', 'firstName lastName')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
 
     res.json({
       success: true,
-      projects
+      projects,
+      pagination: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit)
+      }
     });
   } catch (error: any) {
     console.error('Error fetching projects:', error);

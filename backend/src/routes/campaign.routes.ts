@@ -58,7 +58,7 @@ router.post('/', isAuthenticated, canCreateCampaign, validateCampaignCreation, a
 
 /**
  * @route   GET /api/campaigns
- * @desc    Get all campaigns (System Admin) or owned campaigns (Hybrid User)
+ * @desc    Get all campaigns (System Admin) or owned campaigns (Hybrid User) with pagination
  * @access  Private
  */
 router.get('/', isAuthenticated, async (req: Request, res: Response) => {
@@ -81,13 +81,29 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
       query.status = req.query.status;
     }
 
+    // Pagination parameters
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const skip = (page - 1) * limit;
+
+    // Get total count for pagination metadata
+    const total = await Campaign.countDocuments(query);
+
     const campaigns = await Campaign.find(query)
       .populate('createdBy', 'firstName lastName email')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
 
     res.json({
       success: true,
-      campaigns
+      campaigns,
+      pagination: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit)
+      }
     });
   } catch (error: any) {
     console.error('Error fetching campaigns:', error);

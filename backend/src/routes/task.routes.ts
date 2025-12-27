@@ -111,7 +111,7 @@ router.post('/', isAuthenticated, canManageTasks, async (req: Request, res: Resp
 
 /**
  * @route   GET /api/tasks
- * @desc    Get all tasks (System Admin sees all, Hybrid sees only tasks under their campaigns)
+ * @desc    Get all tasks (System Admin sees all, Hybrid sees only tasks under their campaigns) with pagination
  * @access  Private
  */
 router.get('/', isAuthenticated, async (req: Request, res: Response) => {
@@ -141,16 +141,32 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
       query.status = req.query.status;
     }
 
+    // Pagination parameters
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const skip = (page - 1) * limit;
+
+    // Get total count for pagination metadata
+    const total = await Task.countDocuments(query);
+
     const tasks = await Task.find(query)
       .populate('projectId', 'name')
       .populate('campaignId', 'name')
       .populate('createdBy', 'firstName lastName')
       .populate('lastModifiedBy', 'firstName lastName')
-      .sort({ taskDate: 1, createdAt: -1 });
+      .sort({ taskDate: 1, createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
 
     res.json({
       success: true,
-      tasks
+      tasks,
+      pagination: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit)
+      }
     });
   } catch (error: any) {
     console.error('Error fetching tasks:', error);

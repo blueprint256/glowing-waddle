@@ -10,7 +10,8 @@ import {
   Chip,
   Breadcrumbs,
   Link,
-  Button
+  Button,
+  CircularProgress
 } from '@mui/material';
 import { Add as AddIcon } from '@mui/icons-material';
 import { projectAPI, taskAPI } from '../../services/api';
@@ -22,6 +23,7 @@ export default function ProjectDetail() {
   const navigate = useNavigate();
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
   const [createTaskModalOpen, setCreateTaskModalOpen] = useState(false);
 
   useEffect(() => {
@@ -33,10 +35,13 @@ export default function ProjectDetail() {
 
   const loadProject = async () => {
     try {
+      setLoading(true);
       const res = await projectAPI.getById(id!);
       setProject(res.data.project);
     } catch (error) {
       console.error('Error loading project:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -53,6 +58,14 @@ export default function ProjectDetail() {
     await loadTasks();
     setCreateTaskModalOpen(false);
   };
+
+  if (loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+        <CircularProgress sx={{ color: '#2563EB' }} />
+      </Box>
+    );
+  }
 
   if (!project) return <Typography>Loading...</Typography>;
 
