@@ -15,13 +15,17 @@ import {
 } from '@mui/material';
 import { Add as AddIcon } from '@mui/icons-material';
 import { campaignAPI, projectAPI } from '../../services/api';
-import { Campaign, Project } from '../../types';
+import { Campaign, Project, UserRole } from '../../types';
+import { useAuthStore } from '../../store/authStore';
+import ProjectFormDialog from '../../components/Projects/ProjectFormDialog';
 
 export default function CampaignDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useAuthStore();
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -46,6 +50,23 @@ export default function CampaignDetail() {
     } catch (error) {
       console.error('Error loading projects:', error);
     }
+  };
+
+  const handleCreateProject = () => {
+    setIsCreateDialogOpen(true);
+  };
+
+  const handleProjectCreated = () => {
+    loadProjects();
+  };
+
+  // Check if user can create projects
+  const canCreateProject = () => {
+    if (!user || !campaign) return false;
+    // System Admin can create projects in any campaign
+    if (user.role === UserRole.SYSTEM_ADMIN) return true;
+    // Hybrid users can only create projects in campaigns they own
+    return campaign.createdBy === user.id || campaign.createdBy?._id === user.id;
   };
 
   if (!campaign) return <Typography>Loading...</Typography>;
@@ -85,7 +106,12 @@ export default function CampaignDetail() {
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
         <Typography variant="h5">Projects</Typography>
-        <Button variant="contained" startIcon={<AddIcon />}>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={handleCreateProject}
+          disabled={!canCreateProject()}
+        >
           New Project
         </Button>
       </Box>
@@ -117,6 +143,13 @@ export default function CampaignDetail() {
           </Grid>
         )}
       </Grid>
+
+      <ProjectFormDialog
+        open={isCreateDialogOpen}
+        onClose={() => setIsCreateDialogOpen(false)}
+        campaignId={id!}
+        onSuccess={handleProjectCreated}
+      />
     </Box>
   );
 }
