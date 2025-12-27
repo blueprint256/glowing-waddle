@@ -14,12 +14,17 @@ import {
 import GoogleIcon from '@mui/icons-material/Google';
 import { useAuthStore } from '../store/authStore';
 
-export default function LoginPage() {
+export default function SignupPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { login, isAuthenticated, checkAuth } = useAuthStore();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const { signup, isAuthenticated, checkAuth } = useAuthStore();
+  const [formData, setFormData] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    password: '',
+    confirmPassword: ''
+  });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -37,22 +42,46 @@ export default function LoginPage() {
     navigate('/');
   }
 
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    // Validation
+    if (!formData.firstName || !formData.lastName || !formData.email || !formData.password || !formData.confirmPassword) {
+      setError('All fields are required');
+      return;
+    }
+
+    if (formData.password !== formData.confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
+    if (formData.password.length < 6) {
+      setError('Password must be at least 6 characters long');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      await login(email, password);
+      await signup(formData.email, formData.password, formData.firstName, formData.lastName);
       navigate('/');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Login failed');
+      setError(err.response?.data?.message || 'Signup failed');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleGoogleLogin = () => {
+  const handleGoogleSignup = () => {
     const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
     window.location.href = `${apiUrl}/auth/google`;
   };
@@ -72,7 +101,7 @@ export default function LoginPage() {
             Campaign Management
           </Typography>
           <Typography variant="subtitle1" gutterBottom align="center" color="text.secondary">
-            Sign in to your account
+            Create your account
           </Typography>
 
           {error && (
@@ -82,22 +111,55 @@ export default function LoginPage() {
           )}
 
           <Box component="form" onSubmit={handleSubmit} sx={{ mt: 3 }}>
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <TextField
+                fullWidth
+                label="First Name"
+                name="firstName"
+                value={formData.firstName}
+                onChange={handleChange}
+                margin="normal"
+                required
+                autoFocus
+              />
+              <TextField
+                fullWidth
+                label="Last Name"
+                name="lastName"
+                value={formData.lastName}
+                onChange={handleChange}
+                margin="normal"
+                required
+              />
+            </Box>
             <TextField
               fullWidth
               label="Email"
+              name="email"
               type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={formData.email}
+              onChange={handleChange}
               margin="normal"
               required
-              autoFocus
             />
             <TextField
               fullWidth
               label="Password"
+              name="password"
               type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              value={formData.password}
+              onChange={handleChange}
+              margin="normal"
+              required
+              helperText="Minimum 6 characters"
+            />
+            <TextField
+              fullWidth
+              label="Confirm Password"
+              name="confirmPassword"
+              type="password"
+              value={formData.confirmPassword}
+              onChange={handleChange}
               margin="normal"
               required
             />
@@ -109,7 +171,7 @@ export default function LoginPage() {
               sx={{ mt: 3 }}
               disabled={loading}
             >
-              {loading ? 'Signing in...' : 'Sign In'}
+              {loading ? 'Creating account...' : 'Sign Up'}
             </Button>
 
             <Divider sx={{ my: 3 }}>OR</Divider>
@@ -119,7 +181,7 @@ export default function LoginPage() {
               variant="outlined"
               size="large"
               startIcon={<GoogleIcon />}
-              onClick={handleGoogleLogin}
+              onClick={handleGoogleSignup}
               disabled={loading}
               sx={{
                 borderColor: '#4285f4',
@@ -130,29 +192,14 @@ export default function LoginPage() {
                 }
               }}
             >
-              Sign in with Google
+              Sign up with Google
             </Button>
-
-            <Box sx={{ mt: 3 }}>
-              <Typography variant="caption" color="text.secondary">
-                Demo credentials:
-              </Typography>
-              <Typography variant="caption" display="block">
-                Admin: admin@example.com / password123
-              </Typography>
-              <Typography variant="caption" display="block">
-                Hybrid: hybrid@example.com / password123
-              </Typography>
-              <Typography variant="caption" display="block">
-                Marketer: marketer@example.com / password123
-              </Typography>
-            </Box>
 
             <Box sx={{ mt: 3, textAlign: 'center' }}>
               <Typography variant="body2" color="text.secondary">
-                Don't have an account?{' '}
-                <Link component={RouterLink} to="/signup" underline="hover">
-                  Sign up
+                Already have an account?{' '}
+                <Link component={RouterLink} to="/login" underline="hover">
+                  Sign in
                 </Link>
               </Typography>
             </Box>

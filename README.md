@@ -7,7 +7,10 @@ A full-stack collaborative campaign management and content production platform w
 ### Authentication Enhancements
 - **Google OAuth2 Integration**: Sign in/sign up with Google for seamless authentication
 - **Dual Authentication**: Support for both traditional email/password and Google OAuth
+- **Dedicated Signup Page**: Complete signup flow with form validation and password confirmation
+- **Email/Password Signup**: Create new accounts with email, password, first name, and last name
 - Automatic account linking when using Google with an existing email
+- Auto-login after successful signup
 
 ### Settings & Integrations
 - **New Settings Page**: Centralized hub for user preferences and integrations
@@ -286,8 +289,9 @@ The system enforces strict rules for who can assign users to projects:
 
 ### Authentication Endpoints
 
+- `POST /api/auth/signup` - Create new account with email/password
 - `POST /api/auth/login` - Login with email/password
-- `GET /api/auth/google` - Initiate Google OAuth flow
+- `GET /api/auth/google` - Initiate Google OAuth flow (works for both login and signup)
 - `GET /api/auth/google/callback` - Google OAuth callback
 - `POST /api/auth/logout` - Logout current session
 - `GET /api/auth/me` - Get current user

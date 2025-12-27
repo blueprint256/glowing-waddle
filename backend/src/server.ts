@@ -1,5 +1,9 @@
-import express, { Request, Response, NextFunction } from 'express';
 import dotenv from 'dotenv';
+
+// Load environment variables FIRST before any other imports that use them
+dotenv.config();
+
+import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -18,9 +22,6 @@ import taskRoutes from './routes/task.routes';
 import commentRoutes from './routes/comment.routes';
 import assetRoutes from './routes/asset.routes';
 import integrationsRoutes from './routes/integrations.routes';
-
-// Load environment variables
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;

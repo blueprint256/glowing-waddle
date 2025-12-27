@@ -5,6 +5,76 @@ import { isAuthenticated } from '../middleware/auth';
 const router = express.Router();
 
 /**
+ * @route   POST /api/auth/signup
+ * @desc    Register new user
+ * @access  Public
+ */
+router.post('/signup', async (req: Request, res: Response) => {
+  try {
+    const { email, password, firstName, lastName } = req.body;
+
+    // Validate required fields
+    if (!email || !password || !firstName || !lastName) {
+      return res.status(400).json({
+        success: false,
+        message: 'All fields are required'
+      });
+    }
+
+    // Check if user already exists
+    const { User } = await import('../models/User');
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
+
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        message: 'User with this email already exists'
+      });
+    }
+
+    // Create new user
+    const newUser = new User({
+      email: email.toLowerCase(),
+      password,
+      firstName,
+      lastName,
+      role: 'hybrid',
+      isActive: true
+    });
+
+    await newUser.save();
+
+    // Log the user in automatically after signup
+    req.login(newUser, (err) => {
+      if (err) {
+        return res.status(500).json({
+          success: false,
+          message: 'Account created but login failed'
+        });
+      }
+
+      return res.status(201).json({
+        success: true,
+        message: 'Account created successfully',
+        user: {
+          id: newUser._id,
+          email: newUser.email,
+          firstName: newUser.firstName,
+          lastName: newUser.lastName,
+          role: newUser.role
+        }
+      });
+    });
+  } catch (error: any) {
+    console.error('Signup error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Error creating account'
+    });
+  }
+});
+
+/**
  * @route   POST /api/auth/login
  * @desc    Login user
  * @access  Public
