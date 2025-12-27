@@ -3,9 +3,8 @@ import { User, UserRole } from '../models/User';
 import { isAuthenticated } from '../middleware/auth';
 import { canManageUsers } from '../middleware/rbac';
 import { validateUserCreation, validateUserUpdate, validateMongoId } from '../middleware/validation';
-import { logUserCreated, logUserAddedToTeam, logAudit } from '../utils/auditLogger';
+import { logUserCreated, logAudit } from '../utils/auditLogger';
 import { AuditAction } from '../models/AuditLog';
-import mongoose from 'mongoose';
 
 const router = express.Router();
 
@@ -16,7 +15,7 @@ const router = express.Router();
  */
 router.post('/', isAuthenticated, canManageUsers, validateUserCreation, async (req: Request, res: Response) => {
   try {
-    const { email, password, firstName, lastName, role, teamId } = req.body;
+    const { email, password, firstName, lastName, role } = req.body;
 
     // Check if user already exists
     const existingUser = await User.findOne({ email: email.toLowerCase() });
@@ -33,17 +32,11 @@ router.post('/', isAuthenticated, canManageUsers, validateUserCreation, async (r
       password,
       firstName,
       lastName,
-      role,
-      teamId: teamId ? new mongoose.Types.ObjectId(teamId) : null
+      role
     });
 
     // Log user creation
     await logUserCreated(req.user!._id, user._id, { email, role }, req);
-
-    // If user is added to team, log that too
-    if (teamId) {
-      await logUserAddedToTeam(req.user!._id, user._id, new mongoose.Types.ObjectId(teamId), req);
-    }
 
     res.status(201).json({
       success: true,
@@ -53,8 +46,7 @@ router.post('/', isAuthenticated, canManageUsers, validateUserCreation, async (r
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
-        role: user.role,
-        teamId: user.teamId
+        role: user.role
       }
     });
   } catch (error: any) {
@@ -69,27 +61,21 @@ router.post('/', isAuthenticated, canManageUsers, validateUserCreation, async (r
 
 /**
  * @route   GET /api/users
- * @desc    Get all users (System Admin) or team users
+ * @desc    Get all users (System Admin only)
  * @access  Private
  */
 router.get('/', isAuthenticated, async (req: Request, res: Response) => {
   try {
-    let query: any = { isActive: true };
-
-    // Non-admins can only see users from their team
+    // Only System Admins can list all users
     if (req.user!.role !== UserRole.SYSTEM_ADMIN) {
-      if (!req.user!.teamId) {
-        return res.json({
-          success: true,
-          users: []
-        });
-      }
-      query.teamId = req.user!.teamId;
+      return res.status(403).json({
+        success: false,
+        message: 'Only System Administrators can list users'
+      });
     }
 
-    const users = await User.find(query)
+    const users = await User.find({ isActive: true })
       .select('-password')
-      .populate('teamId', 'name')
       .sort({ createdAt: -1 });
 
     res.json({
@@ -108,29 +94,26 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
 /**
  * @route   GET /api/users/:id
  * @desc    Get user by ID
- * @access  Private
+ * @access  Private (System Admin only)
  */
 router.get('/:id', isAuthenticated, validateMongoId('id'), async (req: Request, res: Response) => {
   try {
+    // Only System Admins can view user details
+    if (req.user!.role !== UserRole.SYSTEM_ADMIN) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only System Administrators can view user details'
+      });
+    }
+
     const user = await User.findById(req.params.id)
-      .select('-password')
-      .populate('teamId', 'name');
+      .select('-password');
 
     if (!user) {
       return res.status(404).json({
         success: false,
         message: 'User not found'
       });
-    }
-
-    // Check access permissions
-    if (req.user!.role !== UserRole.SYSTEM_ADMIN) {
-      if (!req.user!.teamId || user.teamId?.toString() !== req.user!.teamId.toString()) {
-        return res.status(403).json({
-          success: false,
-          message: 'Access denied'
-        });
-      }
     }
 
     res.json({
@@ -153,7 +136,7 @@ router.get('/:id', isAuthenticated, validateMongoId('id'), async (req: Request, 
  */
 router.put('/:id', isAuthenticated, canManageUsers, validateMongoId('id'), validateUserUpdate, async (req: Request, res: Response) => {
   try {
-    const { email, firstName, lastName, role, teamId, isActive } = req.body;
+    const { email, firstName, lastName, role, isActive } = req.body;
 
     const user = await User.findById(req.params.id);
     if (!user) {
@@ -171,17 +154,6 @@ router.put('/:id', isAuthenticated, canManageUsers, validateMongoId('id'), valid
     if (lastName) user.lastName = lastName;
     if (role) user.role = role;
     if (typeof isActive !== 'undefined') user.isActive = isActive;
-
-    // Handle team change
-    if (teamId !== undefined) {
-      const oldTeamId = user.teamId;
-      user.teamId = teamId ? new mongoose.Types.ObjectId(teamId) : undefined;
-
-      // Log team change
-      if (teamId && oldTeamId?.toString() !== teamId) {
-        await logUserAddedToTeam(req.user!._id, user._id, new mongoose.Types.ObjectId(teamId), req);
-      }
-    }
 
     await user.save();
 
@@ -204,7 +176,6 @@ router.put('/:id', isAuthenticated, canManageUsers, validateMongoId('id'), valid
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
-        teamId: user.teamId,
         isActive: user.isActive
       }
     });

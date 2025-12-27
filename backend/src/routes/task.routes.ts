@@ -2,9 +2,11 @@ import express, { Request, Response } from 'express';
 import multer from 'multer';
 import { Task, TaskStatus, TaskType } from '../models/Task';
 import { Project } from '../models/Project';
+import { Campaign } from '../models/Campaign';
 import { UserRole } from '../models/User';
 import { isAuthenticated } from '../middleware/auth';
 import { canManageTasks } from '../middleware/rbac';
+import { checkTaskOwnership } from '../middleware/ownership';
 import { validateMongoId } from '../middleware/validation';
 import { logAudit } from '../utils/auditLogger';
 import { AuditAction } from '../models/AuditLog';
@@ -38,8 +40,7 @@ router.post('/', isAuthenticated, canManageTasks, async (req: Request, res: Resp
     const { name, description, type, projectId, scheduledDate, publishDate, content, status } = req.body;
 
     // Verify project exists and get hierarchy info
-    const project = await Project.findById(projectId)
-      .populate('campaignId');
+    const project = await Project.findById(projectId);
 
     if (!project) {
       return res.status(404).json({
@@ -48,24 +49,32 @@ router.post('/', isAuthenticated, canManageTasks, async (req: Request, res: Resp
       });
     }
 
-    // Check access permissions
-    if (req.user!.role !== UserRole.SYSTEM_ADMIN) {
-      if (!req.user!.teamId || project.teamId.toString() !== req.user!.teamId.toString()) {
+    // CRITICAL: Check ownership through parent campaign
+    const campaign = await Campaign.findById(project.campaignId);
+    if (!campaign) {
+      return res.status(404).json({
+        success: false,
+        message: 'Parent campaign not found'
+      });
+    }
+
+    // Hybrid users can only create tasks under campaigns they own
+    if (req.user!.role === UserRole.HYBRID) {
+      if (campaign.createdBy.toString() !== req.user!._id.toString()) {
         return res.status(403).json({
           success: false,
-          message: 'Access denied'
+          message: 'Access denied: You can only create tasks under campaigns you created'
         });
       }
     }
 
-    // Create task (inherit campaignId and teamId from project)
+    // Create task (inherit campaignId from project)
     const task = await Task.create({
       name,
       description,
       type: type || TaskType.OTHER,
       projectId: new mongoose.Types.ObjectId(projectId),
       campaignId: project.campaignId,
-      teamId: project.teamId,
       status: status || TaskStatus.PENDING,
       scheduledDate,
       publishDate,
@@ -104,19 +113,27 @@ router.post('/', isAuthenticated, canManageTasks, async (req: Request, res: Resp
 
 /**
  * @route   GET /api/tasks
- * @desc    Get all tasks (filtered by project/campaign/team)
+ * @desc    Get all tasks (System Admin sees all, Hybrid sees only tasks under their campaigns)
  * @access  Private
  */
 router.get('/', isAuthenticated, async (req: Request, res: Response) => {
   try {
     let query: any = {};
 
-    // Filter by project if provided
+    // CRITICAL: Hybrid users can only see tasks under campaigns they own
+    if (req.user!.role === UserRole.HYBRID) {
+      // Find all campaigns owned by this user
+      const ownedCampaigns = await Campaign.find({ createdBy: req.user!._id }).select('_id');
+      const campaignIds = ownedCampaigns.map(c => c._id);
+      query.campaignId = { $in: campaignIds };
+    }
+
+    // Filter by specific project if provided
     if (req.query.projectId) {
       query.projectId = req.query.projectId;
     }
 
-    // Filter by campaign if provided
+    // Filter by specific campaign if provided
     if (req.query.campaignId) {
       query.campaignId = req.query.campaignId;
     }
@@ -124,17 +141,6 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
     // Filter by status if provided
     if (req.query.status) {
       query.status = req.query.status;
-    }
-
-    // Non-admins can only see tasks from their team
-    if (req.user!.role !== UserRole.SYSTEM_ADMIN) {
-      if (!req.user!.teamId) {
-        return res.json({
-          success: true,
-          tasks: []
-        });
-      }
-      query.teamId = req.user!.teamId;
     }
 
     const tasks = await Task.find(query)
@@ -159,15 +165,14 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
 
 /**
  * @route   GET /api/tasks/:id
- * @desc    Get task by ID
+ * @desc    Get task by ID (with ownership check)
  * @access  Private
  */
-router.get('/:id', isAuthenticated, validateMongoId('id'), async (req: Request, res: Response) => {
+router.get('/:id', isAuthenticated, validateMongoId('id'), checkTaskOwnership, async (req: Request, res: Response) => {
   try {
     const task = await Task.findById(req.params.id)
       .populate('projectId', 'name status')
       .populate('campaignId', 'name')
-      .populate('teamId', 'name')
       .populate('createdBy', 'firstName lastName email')
       .populate('lastModifiedBy', 'firstName lastName');
 
@@ -176,16 +181,6 @@ router.get('/:id', isAuthenticated, validateMongoId('id'), async (req: Request, 
         success: false,
         message: 'Task not found'
       });
-    }
-
-    // Check access permissions
-    if (req.user!.role !== UserRole.SYSTEM_ADMIN) {
-      if (!req.user!.teamId || task.teamId._id.toString() !== req.user!.teamId.toString()) {
-        return res.status(403).json({
-          success: false,
-          message: 'Access denied'
-        });
-      }
     }
 
     res.json({
@@ -203,10 +198,10 @@ router.get('/:id', isAuthenticated, validateMongoId('id'), async (req: Request, 
 
 /**
  * @route   PUT /api/tasks/:id
- * @desc    Update task
+ * @desc    Update task (with ownership check)
  * @access  Private (System Admin, Hybrid)
  */
-router.put('/:id', isAuthenticated, canManageTasks, validateMongoId('id'), async (req: Request, res: Response) => {
+router.put('/:id', isAuthenticated, canManageTasks, validateMongoId('id'), checkTaskOwnership, async (req: Request, res: Response) => {
   try {
     const task = await Task.findById(req.params.id);
     if (!task) {
@@ -214,16 +209,6 @@ router.put('/:id', isAuthenticated, canManageTasks, validateMongoId('id'), async
         success: false,
         message: 'Task not found'
       });
-    }
-
-    // Check access permissions
-    if (req.user!.role !== UserRole.SYSTEM_ADMIN) {
-      if (!req.user!.teamId || task.teamId.toString() !== req.user!.teamId.toString()) {
-        return res.status(403).json({
-          success: false,
-          message: 'Access denied'
-        });
-      }
     }
 
     const oldData = { ...task.toObject() };
@@ -273,10 +258,10 @@ router.put('/:id', isAuthenticated, canManageTasks, validateMongoId('id'), async
 
 /**
  * @route   POST /api/tasks/:id/upload-image
- * @desc    Upload designed image for task
+ * @desc    Upload designed image for task (with ownership check)
  * @access  Private (System Admin, Hybrid)
  */
-router.post('/:id/upload-image', isAuthenticated, canManageTasks, validateMongoId('id'), upload.single('image'), async (req: Request, res: Response) => {
+router.post('/:id/upload-image', isAuthenticated, canManageTasks, validateMongoId('id'), checkTaskOwnership, upload.single('image'), async (req: Request, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -291,16 +276,6 @@ router.post('/:id/upload-image', isAuthenticated, canManageTasks, validateMongoI
         success: false,
         message: 'Task not found'
       });
-    }
-
-    // Check access permissions
-    if (req.user!.role !== UserRole.SYSTEM_ADMIN) {
-      if (!req.user!.teamId || task.teamId.toString() !== req.user!.teamId.toString()) {
-        return res.status(403).json({
-          success: false,
-          message: 'Access denied'
-        });
-      }
     }
 
     // Upload to S3 (or local storage fallback)
@@ -324,10 +299,10 @@ router.post('/:id/upload-image', isAuthenticated, canManageTasks, validateMongoI
 
 /**
  * @route   DELETE /api/tasks/:id
- * @desc    Delete task
+ * @desc    Delete task (with ownership check)
  * @access  Private (System Admin, Hybrid)
  */
-router.delete('/:id', isAuthenticated, canManageTasks, validateMongoId('id'), async (req: Request, res: Response) => {
+router.delete('/:id', isAuthenticated, canManageTasks, validateMongoId('id'), checkTaskOwnership, async (req: Request, res: Response) => {
   try {
     const task = await Task.findById(req.params.id);
     if (!task) {
@@ -335,16 +310,6 @@ router.delete('/:id', isAuthenticated, canManageTasks, validateMongoId('id'), as
         success: false,
         message: 'Task not found'
       });
-    }
-
-    // Check access permissions
-    if (req.user!.role !== UserRole.SYSTEM_ADMIN) {
-      if (!req.user!.teamId || task.teamId.toString() !== req.user!.teamId.toString()) {
-        return res.status(403).json({
-          success: false,
-          message: 'Access denied'
-        });
-      }
     }
 
     await Task.findByIdAndDelete(req.params.id);

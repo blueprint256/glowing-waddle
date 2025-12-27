@@ -52,25 +52,6 @@ export const logUserCreated = async (
 };
 
 /**
- * Log team member addition
- */
-export const logUserAddedToTeam = async (
-  adminId: mongoose.Types.ObjectId,
-  userId: mongoose.Types.ObjectId,
-  teamId: mongoose.Types.ObjectId,
-  req?: Request
-): Promise<void> => {
-  await logAudit({
-    action: AuditAction.USER_ADDED_TO_TEAM,
-    userId: adminId,
-    targetType: 'Team',
-    targetId: teamId,
-    metadata: { addedUserId: userId },
-    req
-  });
-};
-
-/**
  * Log project assignment
  */
 export const logProjectAssignment = async (

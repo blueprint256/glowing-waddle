@@ -24,7 +24,6 @@ export interface IEvent extends Document {
   type: EventType;
   projectId: mongoose.Types.ObjectId;
   campaignId: mongoose.Types.ObjectId; // Inherited from project
-  teamId: mongoose.Types.ObjectId; // Inherited from project
   status: EventStatus;
   assignedTo?: mongoose.Types.ObjectId;
   scheduledDate?: Date;
@@ -60,12 +59,6 @@ const eventSchema = new Schema<IEvent>(
     campaignId: {
       type: Schema.Types.ObjectId,
       ref: 'Campaign',
-      required: true,
-      index: true
-    },
-    teamId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Team',
       required: true,
       index: true
     },
