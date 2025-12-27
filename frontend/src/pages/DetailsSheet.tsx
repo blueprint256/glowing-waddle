@@ -44,6 +44,7 @@ import CreateTaskModal from '../components/CreateTaskModal';
 import CampaignFormModal from '../components/CampaignFormModal';
 import ProjectFormDialog from '../components/Projects/ProjectFormDialog';
 import Pagination from '../components/Pagination';
+import FilterToolbar, { FilterOptions } from '../components/FilterToolbar';
 
 interface CampaignWithProjects extends Campaign {
   projects?: ProjectWithTasks[];
@@ -80,6 +81,15 @@ export default function DetailsSheet() {
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [editValue, setEditValue] = useState('');
   const editInputRef = useRef<HTMLInputElement>(null);
+  const [filters, setFilters] = useState<FilterOptions>({
+    search: '',
+    campaignIds: [],
+    projectIds: [],
+    statuses: [],
+    dateFrom: '',
+    dateTo: '',
+    createdBy: []
+  });
 
   // Color coding constants - Blue/Purple Brand Theme
   const CAMPAIGN_COLOR = '#DBEAFE'; // Deep blue background
@@ -117,7 +127,7 @@ export default function DetailsSheet() {
 
   useEffect(() => {
     loadCampaigns();
-  }, [page]);
+  }, [page, filters]);
 
   useEffect(() => {
     if (editingCell && editInputRef.current) {
@@ -130,7 +140,35 @@ export default function DetailsSheet() {
     try {
       setLoading(true);
       setError(null);
-      const res = await campaignAPI.getAll({ page, limit: 10, includeArchived: false });
+
+      // Build query parameters from filters
+      const params: any = {
+        page,
+        limit: 1000, // Increased for comprehensive filtering
+        includeArchived: false
+      };
+
+      // Add filter parameters
+      if (filters.search) {
+        params.search = filters.search;
+      }
+      if (filters.campaignIds && filters.campaignIds.length > 0) {
+        params.campaignId = filters.campaignIds.join(',');
+      }
+      if (filters.statuses && filters.statuses.length > 0) {
+        params.status = filters.statuses.join(',');
+      }
+      if (filters.dateFrom) {
+        params.dateFrom = filters.dateFrom;
+      }
+      if (filters.dateTo) {
+        params.dateTo = filters.dateTo;
+      }
+      if (filters.createdBy && filters.createdBy.length > 0 && user?.role === UserRole.SYSTEM_ADMIN) {
+        params.createdBy = filters.createdBy.join(',');
+      }
+
+      const res = await campaignAPI.getAll(params);
       const campaignsData = res.data.campaigns || [];
       setCampaigns(
         campaignsData.map((c: Campaign) => ({
@@ -139,7 +177,7 @@ export default function DetailsSheet() {
           projectsLoaded: false
         }))
       );
-      setPagination(res.data.pagination || { total: 0, pages: 0, limit: 10 });
+      setPagination(res.data.pagination || { total: 0, pages: 0, limit: 1000 });
     } catch (error: any) {
       console.error('Error loading campaigns:', error);
       setError(error.response?.data?.message || 'Failed to load campaigns');
@@ -150,7 +188,27 @@ export default function DetailsSheet() {
 
   const loadProjectsForCampaign = async (campaignId: string) => {
     try {
-      const res = await projectAPI.getAll({ campaignId });
+      // Build query parameters from filters
+      const params: any = { campaignId, limit: 1000 };
+
+      // Apply project and date filters
+      if (filters.search) {
+        params.search = filters.search;
+      }
+      if (filters.projectIds && filters.projectIds.length > 0) {
+        params.projectId = filters.projectIds.join(',');
+      }
+      if (filters.statuses && filters.statuses.length > 0) {
+        params.status = filters.statuses.join(',');
+      }
+      if (filters.dateFrom) {
+        params.dateFrom = filters.dateFrom;
+      }
+      if (filters.dateTo) {
+        params.dateTo = filters.dateTo;
+      }
+
+      const res = await projectAPI.getAll(params);
       const projectsData = res.data.projects || [];
 
       setCampaigns((prev) =>
@@ -175,7 +233,24 @@ export default function DetailsSheet() {
 
   const loadTasksForProject = async (campaignId: string, projectId: string) => {
     try {
-      const res = await taskAPI.getAll({ projectId });
+      // Build query parameters from filters
+      const params: any = { projectId, limit: 1000 };
+
+      // Apply task filters
+      if (filters.search) {
+        params.search = filters.search;
+      }
+      if (filters.statuses && filters.statuses.length > 0) {
+        params.status = filters.statuses.join(',');
+      }
+      if (filters.dateFrom) {
+        params.dateFrom = filters.dateFrom;
+      }
+      if (filters.dateTo) {
+        params.dateTo = filters.dateTo;
+      }
+
+      const res = await taskAPI.getAll(params);
       const tasksData = res.data.tasks || [];
 
       setCampaigns((prev) =>
@@ -909,8 +984,21 @@ export default function DetailsSheet() {
         Details Sheet
       </Typography>
       <Typography variant="body2" color="text.secondary" paragraph>
-        Hierarchical view of all campaigns, projects, and tasks with inline editing
+        Hierarchical view of all campaigns, projects, and tasks with inline editing and comprehensive filtering
       </Typography>
+
+      {/* Filter Toolbar */}
+      <FilterToolbar
+        filters={filters}
+        onFilterChange={setFilters}
+        showCampaignFilter={true}
+        showProjectFilter={true}
+        showStatusFilter={true}
+        statusType="task"
+        showDateFilter={true}
+        showCreatorFilter={user?.role === UserRole.SYSTEM_ADMIN}
+        placeholder="Search campaigns, projects, and tasks..."
+      />
 
       {/* Create Campaign Button */}
       <Box sx={{ mb: 3, display: 'flex', justifyContent: 'flex-start' }}>

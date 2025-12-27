@@ -111,7 +111,7 @@ router.post('/', isAuthenticated, canManageTasks, async (req: Request, res: Resp
 
 /**
  * @route   GET /api/tasks
- * @desc    Get all tasks (System Admin sees all, Hybrid sees only tasks under their campaigns) with pagination
+ * @desc    Get all tasks (System Admin sees all, Hybrid sees only tasks under their campaigns) with pagination and comprehensive filtering
  * @access  Private
  */
 router.get('/', isAuthenticated, async (req: Request, res: Response) => {
@@ -126,24 +126,88 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
       query.campaignId = { $in: campaignIds };
     }
 
-    // Filter by specific project if provided
+    // Filter by specific project(s) if provided (supports multi-select)
     if (req.query.projectId) {
-      query.projectId = req.query.projectId;
+      const projectIds = Array.isArray(req.query.projectId)
+        ? req.query.projectId
+        : req.query.projectId.split(',');
+      query.projectId = { $in: projectIds };
     }
 
-    // Filter by specific campaign if provided
+    // Filter by specific campaign(s) if provided (supports multi-select)
     if (req.query.campaignId) {
-      query.campaignId = req.query.campaignId;
+      const campaignIds = Array.isArray(req.query.campaignId)
+        ? req.query.campaignId
+        : req.query.campaignId.split(',');
+
+      // If user is Hybrid, ensure they can only access their own campaigns
+      if (req.user!.role === UserRole.HYBRID) {
+        const ownedCampaigns = await Campaign.find({ createdBy: req.user!._id }).select('_id');
+        const ownedCampaignIds = ownedCampaigns.map(c => c._id.toString());
+        const filteredCampaignIds = campaignIds.filter(id => ownedCampaignIds.includes(id));
+        query.campaignId = { $in: filteredCampaignIds };
+      } else {
+        query.campaignId = { $in: campaignIds };
+      }
     }
 
-    // Filter by status if provided
+    // Filter by status(es) if provided (supports multi-select)
     if (req.query.status) {
-      query.status = req.query.status;
+      const statuses = Array.isArray(req.query.status)
+        ? req.query.status
+        : req.query.status.split(',');
+      query.status = { $in: statuses };
+    }
+
+    // Filter by date range if provided
+    if (req.query.dateFrom || req.query.dateTo) {
+      query.taskDate = {};
+      if (req.query.dateFrom) {
+        query.taskDate.$gte = new Date(req.query.dateFrom as string);
+      }
+      if (req.query.dateTo) {
+        query.taskDate.$lte = new Date(req.query.dateTo as string);
+      }
+    }
+
+    // Filter by creator (System Admin only)
+    if (req.query.createdBy && req.user!.role === UserRole.SYSTEM_ADMIN) {
+      const creatorIds = Array.isArray(req.query.createdBy)
+        ? req.query.createdBy
+        : req.query.createdBy.split(',');
+
+      // Find campaigns created by the specified users
+      const campaignsByCreators = await Campaign.find({
+        createdBy: { $in: creatorIds }
+      }).select('_id');
+      const campaignIdsByCreator = campaignsByCreators.map(c => c._id);
+
+      // Combine with existing campaignId filter if present
+      if (query.campaignId) {
+        const existingIds = Array.isArray(query.campaignId.$in)
+          ? query.campaignId.$in
+          : [query.campaignId];
+        const intersection = campaignIdsByCreator.filter(id =>
+          existingIds.some((eid: any) => eid.toString() === id.toString())
+        );
+        query.campaignId = { $in: intersection };
+      } else {
+        query.campaignId = { $in: campaignIdsByCreator };
+      }
+    }
+
+    // Global search across task names and descriptions
+    if (req.query.search) {
+      const searchRegex = new RegExp(req.query.search as string, 'i');
+      query.$or = [
+        { name: searchRegex },
+        { description: searchRegex }
+      ];
     }
 
     // Pagination parameters
     const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
+    const limit = parseInt(req.query.limit as string) || 1000; // Higher default for flat views
     const skip = (page - 1) * limit;
 
     // Get total count for pagination metadata

@@ -82,7 +82,7 @@ router.post('/', isAuthenticated, canCreateCampaign, validateProjectCreation, as
 
 /**
  * @route   GET /api/projects
- * @desc    Get all projects (System Admin sees all, Hybrid sees only projects under their campaigns) with pagination
+ * @desc    Get all projects (System Admin sees all, Hybrid sees only projects under their campaigns) with pagination and comprehensive filtering
  * @access  Private
  */
 router.get('/', isAuthenticated, async (req: Request, res: Response) => {
@@ -97,14 +97,62 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
       query.campaignId = { $in: campaignIds };
     }
 
-    // Filter by specific campaign if provided
+    // Filter by specific campaign(s) if provided (supports multi-select)
     if (req.query.campaignId) {
-      query.campaignId = req.query.campaignId;
+      const campaignIds = Array.isArray(req.query.campaignId)
+        ? req.query.campaignId
+        : req.query.campaignId.split(',');
+
+      // If user is Hybrid, ensure they can only access their own campaigns
+      if (req.user!.role === UserRole.HYBRID) {
+        const ownedCampaigns = await Campaign.find({ createdBy: req.user!._id }).select('_id');
+        const ownedCampaignIds = ownedCampaigns.map(c => c._id.toString());
+        const filteredCampaignIds = campaignIds.filter(id => ownedCampaignIds.includes(id));
+        query.campaignId = { $in: filteredCampaignIds };
+      } else {
+        query.campaignId = { $in: campaignIds };
+      }
+    }
+
+    // Filter by status(es) if provided (supports multi-select)
+    if (req.query.status) {
+      const statuses = Array.isArray(req.query.status)
+        ? req.query.status
+        : req.query.status.split(',');
+      query.status = { $in: statuses };
+    }
+
+    // Global search across project names and descriptions
+    if (req.query.search) {
+      const searchRegex = new RegExp(req.query.search as string, 'i');
+      query.$or = [
+        { name: searchRegex },
+        { description: searchRegex }
+      ];
+    }
+
+    // Filter by date range (startDate or dueDate)
+    if (req.query.dateFrom || req.query.dateTo) {
+      const dateQuery: any = {};
+      if (req.query.dateFrom) {
+        dateQuery.$gte = new Date(req.query.dateFrom as string);
+      }
+      if (req.query.dateTo) {
+        dateQuery.$lte = new Date(req.query.dateTo as string);
+      }
+      // Match projects where either startDate or dueDate falls in range
+      query.$and = query.$and || [];
+      query.$and.push({
+        $or: [
+          { startDate: dateQuery },
+          { dueDate: dateQuery }
+        ]
+      });
     }
 
     // Pagination parameters
     const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
+    const limit = parseInt(req.query.limit as string) || 1000; // Higher default for comprehensive views
     const skip = (page - 1) * limit;
 
     // Get total count for pagination metadata
