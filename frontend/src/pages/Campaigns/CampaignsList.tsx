@@ -13,12 +13,15 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField
+  TextField,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails
 } from '@mui/material';
-import { Add as AddIcon } from '@mui/icons-material';
+import { Add as AddIcon, ExpandMore as ExpandMoreIcon } from '@mui/icons-material';
 import { useAuthStore } from '../../store/authStore';
 import { campaignAPI } from '../../services/api';
-import { Campaign, UserRole } from '../../types';
+import { Campaign, UserRole, User } from '../../types';
 
 export default function CampaignsList() {
   const navigate = useNavigate();
@@ -58,6 +61,50 @@ export default function CampaignsList() {
     user?.role as UserRole
   );
 
+  // Group campaigns by creator for System Admins
+  const groupedCampaigns = (() => {
+    if (user?.role !== UserRole.SYSTEM_ADMIN) {
+      return null;
+    }
+
+    const groups: Record<string, { user: User; campaigns: Campaign[] }> = {};
+
+    campaigns.forEach((campaign) => {
+      const creator = campaign.createdBy as User;
+      if (!creator || typeof creator === 'string') return;
+
+      const key = creator._id || creator.email;
+      if (!groups[key]) {
+        groups[key] = { user: creator, campaigns: [] };
+      }
+      groups[key].campaigns.push(campaign);
+    });
+
+    return groups;
+  })();
+
+  // Render a single campaign card
+  const renderCampaignCard = (campaign: Campaign) => (
+    <Grid item xs={12} md={6} lg={4} key={campaign._id}>
+      <Card>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>
+            {campaign.name}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" paragraph>
+            {campaign.description}
+          </Typography>
+          <Chip label={campaign.status} size="small" color="primary" />
+        </CardContent>
+        <CardActions>
+          <Button size="small" onClick={() => navigate(`/campaigns/${campaign._id}`)}>
+            View Details
+          </Button>
+        </CardActions>
+      </Card>
+    </Grid>
+  );
+
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
@@ -69,35 +116,55 @@ export default function CampaignsList() {
         )}
       </Box>
 
-      <Grid container spacing={3}>
-        {campaigns.map((campaign) => (
-          <Grid item xs={12} md={6} lg={4} key={campaign._id}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  {campaign.name}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" paragraph>
-                  {campaign.description}
-                </Typography>
-                <Chip label={campaign.status} size="small" color="primary" />
-              </CardContent>
-              <CardActions>
-                <Button size="small" onClick={() => navigate(`/campaigns/${campaign._id}`)}>
-                  View Details
-                </Button>
-              </CardActions>
-            </Card>
-          </Grid>
-        ))}
-        {campaigns.length === 0 && (
-          <Grid item xs={12}>
+      {/* Hybrid Users: Flat list of their own campaigns */}
+      {user?.role === UserRole.HYBRID && (
+        <Grid container spacing={3}>
+          {campaigns.map(renderCampaignCard)}
+          {campaigns.length === 0 && (
+            <Grid item xs={12}>
+              <Typography align="center" color="text.secondary">
+                No campaigns found
+              </Typography>
+            </Grid>
+          )}
+        </Grid>
+      )}
+
+      {/* System Admins: Grouped by creator */}
+      {user?.role === UserRole.SYSTEM_ADMIN && (
+        <Box>
+          {groupedCampaigns && Object.keys(groupedCampaigns).length > 0 ? (
+            Object.entries(groupedCampaigns).map(([key, { user: creator, campaigns: userCampaigns }]) => (
+              <Accordion key={key} defaultExpanded={false} sx={{ mb: 2 }}>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
+                    <Typography variant="h6">
+                      Campaigns by {creator.firstName} {creator.lastName}
+                    </Typography>
+                    <Chip
+                      label={`${userCampaigns.length} campaign${userCampaigns.length !== 1 ? 's' : ''}`}
+                      size="small"
+                      color="primary"
+                    />
+                    <Typography variant="body2" color="text.secondary" sx={{ ml: 'auto' }}>
+                      {creator.email}
+                    </Typography>
+                  </Box>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <Grid container spacing={3}>
+                    {userCampaigns.map(renderCampaignCard)}
+                  </Grid>
+                </AccordionDetails>
+              </Accordion>
+            ))
+          ) : (
             <Typography align="center" color="text.secondary">
               No campaigns found
             </Typography>
-          </Grid>
-        )}
-      </Grid>
+          )}
+        </Box>
+      )}
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Create New Campaign</DialogTitle>

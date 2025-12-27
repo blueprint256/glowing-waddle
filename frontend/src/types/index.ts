@@ -5,7 +5,8 @@ export enum UserRole {
 }
 
 export interface User {
-  id: string;
+  _id?: string;
+  id?: string;
   email: string;
   firstName: string;
   lastName: string;
@@ -31,7 +32,7 @@ export interface Campaign {
   endDate?: string;
   goals?: string[];
   archived: boolean;
-  createdBy: any;
+  createdBy: User | string;
   createdAt: string;
   updatedAt: string;
 }

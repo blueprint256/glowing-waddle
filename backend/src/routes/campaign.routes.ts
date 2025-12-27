@@ -40,7 +40,7 @@ router.post('/', isAuthenticated, canCreateCampaign, validateCampaignCreation, a
     });
 
     const populatedCampaign = await Campaign.findById(campaign._id)
-      .populate('createdBy', 'firstName lastName');
+      .populate('createdBy', 'firstName lastName email');
 
     res.status(201).json({
       success: true,
@@ -82,7 +82,7 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
     }
 
     const campaigns = await Campaign.find(query)
-      .populate('createdBy', 'firstName lastName')
+      .populate('createdBy', 'firstName lastName email')
       .sort({ createdAt: -1 });
 
     res.json({
@@ -187,7 +187,7 @@ router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), as
     });
 
     const updatedCampaign = await Campaign.findById(campaign._id)
-      .populate('createdBy', 'firstName lastName');
+      .populate('createdBy', 'firstName lastName email');
 
     res.json({
       success: true,
@@ -243,7 +243,7 @@ router.put('/:id/archive', isAuthenticated, canCreateCampaign, validateMongoId('
     });
 
     const archivedCampaign = await Campaign.findById(campaign._id)
-      .populate('createdBy', 'firstName lastName');
+      .populate('createdBy', 'firstName lastName email');
 
     res.json({
       success: true,
