@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express';
 import multer from 'multer';
-import { Task, TaskStatus, TaskType } from '../models/Task';
+import { Task, TaskStatus } from '../models/Task';
 import { Project } from '../models/Project';
 import { Campaign } from '../models/Campaign';
 import { UserRole } from '../models/User';
@@ -37,7 +37,7 @@ const upload = multer({
  */
 router.post('/', isAuthenticated, canManageTasks, async (req: Request, res: Response) => {
   try {
-    const { name, description, type, projectId, scheduledDate, publishDate, content, status } = req.body;
+    const { name, description, projectId, scheduledDate, publishDate, content, status } = req.body;
 
     // Verify project exists and get hierarchy info
     const project = await Project.findById(projectId);
@@ -72,7 +72,6 @@ router.post('/', isAuthenticated, canManageTasks, async (req: Request, res: Resp
     const task = await Task.create({
       name,
       description,
-      type: type || TaskType.OTHER,
       projectId: new mongoose.Types.ObjectId(projectId),
       campaignId: project.campaignId,
       status: status || TaskStatus.PENDING,
@@ -212,12 +211,11 @@ router.put('/:id', isAuthenticated, canManageTasks, validateMongoId('id'), check
     }
 
     const oldData = { ...task.toObject() };
-    const { name, description, type, status, scheduledDate, publishDate, content } = req.body;
+    const { name, description, status, scheduledDate, publishDate, content } = req.body;
 
     // Update fields
     if (name) task.name = name;
     if (description !== undefined) task.description = description;
-    if (type) task.type = type;
     if (status) task.status = status;
     if (scheduledDate !== undefined) task.scheduledDate = scheduledDate;
     if (publishDate !== undefined) task.publishDate = publishDate;

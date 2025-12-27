@@ -12,7 +12,7 @@ import {
   Grid
 } from '@mui/material';
 import { taskAPI } from '../services/api';
-import { TaskStatus, TaskType } from '../types';
+import { TaskStatus } from '../types';
 
 interface CreateTaskModalProps {
   open: boolean;
@@ -32,7 +32,6 @@ export default function CreateTaskModal({
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    type: TaskType.OTHER,
     status: TaskStatus.PENDING,
     scheduledDate: '',
     publishDate: '',
@@ -60,7 +59,6 @@ export default function CreateTaskModal({
       setFormData({
         name: '',
         description: '',
-        type: TaskType.OTHER,
         status: TaskStatus.PENDING,
         scheduledDate: '',
         publishDate: '',
@@ -89,7 +87,6 @@ export default function CreateTaskModal({
       setFormData({
         name: '',
         description: '',
-        type: TaskType.OTHER,
         status: TaskStatus.PENDING,
         scheduledDate: '',
         publishDate: '',
@@ -128,23 +125,7 @@ export default function CreateTaskModal({
               fullWidth
             />
             <Grid container spacing={2}>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  label="Type"
-                  value={formData.type}
-                  onChange={(e) => setFormData({ ...formData, type: e.target.value as TaskType })}
-                  select
-                  required
-                  fullWidth
-                >
-                  <MenuItem value={TaskType.POST}>Post</MenuItem>
-                  <MenuItem value={TaskType.LAUNCH}>Launch</MenuItem>
-                  <MenuItem value={TaskType.ACTIVATION}>Activation</MenuItem>
-                  <MenuItem value={TaskType.DELIVERABLE}>Deliverable</MenuItem>
-                  <MenuItem value={TaskType.OTHER}>Other</MenuItem>
-                </TextField>
-              </Grid>
-              <Grid item xs={12} md={6}>
+              <Grid item xs={12} md={12}>
                 <TextField
                   label="Status"
                   value={formData.status}

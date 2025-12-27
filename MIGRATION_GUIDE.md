@@ -14,7 +14,7 @@ This document outlines the changes made in the `feature-updates-dec2025` branch 
 #### Campaign Model (`backend/src/models/Campaign.ts`)
 - ✅ **Removed field**: `budget` (number)
 - ✅ **Added field**: `archived` (boolean, default: false)
-- ✅ **Kept field**: `teamId` (campaigns still belong to teams)
+- ✅ **Note**: Campaigns no longer have team associations
 
 #### Task Model (`backend/src/models/Task.ts`) - NEW FILE
 - ✅ **Created** new Task model (replaces Event)
@@ -101,7 +101,7 @@ export const canManageTasks = hasRole(UserRole.SYSTEM_ADMIN, UserRole.HYBRID);
 
 **Tasks**:
 - Remove `budget` field from create/update validation
-- Remove `teamId` from create form input (or make it auto-assigned based on user's team)
+- Remove `teamId` from create/update endpoints (teams feature deprecated)
 - Add archive endpoint:
   ```typescript
   router.put('/:id/archive', isAuthenticated, canCreateCampaign, async (req, res) => {
@@ -221,7 +221,7 @@ export const canManageTasks = hasRole(UserRole.SYSTEM_ADMIN, UserRole.HYBRID);
     </MenuItem>
   ))}
   ```
-- Remove team selection dropdown (teams still exist but are managed separately)
+- Remove team selection dropdown (teams feature has been deprecated)
 - This fixes the "blank page" issue (if any)
 
 #### 4. Update CampaignsList Page
@@ -229,7 +229,7 @@ export const canManageTasks = hasRole(UserRole.SYSTEM_ADMIN, UserRole.HYBRID);
 
 **Tasks**:
 - Remove `budget` field from create dialog
-- Remove `teamId` field from create dialog (auto-assign from user's team)
+- Remove `teamId` field from create dialog (teams feature deprecated)
 - Add filter toggle for archived campaigns:
   ```typescript
   const [showArchived, setShowArchived] = useState(false);
@@ -283,7 +283,7 @@ export const canManageTasks = hasRole(UserRole.SYSTEM_ADMIN, UserRole.HYBRID);
 **File**: `frontend/src/components/Layout/DashboardLayout.tsx`
 
 **Tasks**:
-- Remove "Teams" menu item (line with `path: '/admin/teams'`)
+- Remove "Teams" menu item (teams feature deprecated)
 - Add "Details Sheet" menu item:
   ```typescript
   { text: 'Details Sheet', icon: <ListIcon />, path: '/details-sheet', roles: ['all'] }
@@ -431,7 +431,7 @@ export const canManageTasks = hasRole(UserRole.SYSTEM_ADMIN, UserRole.HYBRID);
 - `backend/src/routes/event.routes.ts` (replaced by task.routes.ts)
 - `backend/src/models/Event.ts` (replaced by Task.ts)
 - `frontend/src/pages/Events/` (renamed to Tasks/)
-- `frontend/src/pages/Admin/TeamManagement.tsx` (Teams still exist but no dedicated management page)
+- `frontend/src/pages/Admin/TeamManagement.tsx` (teams feature deprecated)
 
 ---
 

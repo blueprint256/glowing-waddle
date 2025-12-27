@@ -9,16 +9,20 @@ import {
   ListItemText,
   Chip,
   Breadcrumbs,
-  Link
+  Link,
+  Button
 } from '@mui/material';
+import { Add as AddIcon } from '@mui/icons-material';
 import { projectAPI, taskAPI } from '../../services/api';
 import { Project, Task } from '../../types';
+import CreateTaskModal from '../../components/CreateTaskModal';
 
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [createTaskModalOpen, setCreateTaskModalOpen] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -43,6 +47,11 @@ export default function ProjectDetail() {
     } catch (error) {
       console.error('Error loading tasks:', error);
     }
+  };
+
+  const handleTaskCreated = async () => {
+    await loadTasks();
+    setCreateTaskModalOpen(false);
   };
 
   if (!project) return <Typography>Loading...</Typography>;
@@ -88,9 +97,22 @@ export default function ProjectDetail() {
         )}
       </Paper>
 
-      <Typography variant="h5" gutterBottom>
-        Tasks
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h5">
+          Tasks
+        </Typography>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => setCreateTaskModalOpen(true)}
+          sx={{
+            backgroundColor: '#4CAF50',
+            '&:hover': { backgroundColor: '#45a049' }
+          }}
+        >
+          Add Task
+        </Button>
+      </Box>
       <List>
         {tasks.map((task) => (
           <ListItem
@@ -100,7 +122,7 @@ export default function ProjectDetail() {
           >
             <ListItemText
               primary={task.name}
-              secondary={`Type: ${task.type} | Status: ${task.status}`}
+              secondary={`Status: ${task.status}`}
             />
             <Chip label={task.status} size="small" />
           </ListItem>
@@ -109,6 +131,17 @@ export default function ProjectDetail() {
           <Typography color="text.secondary">No tasks found</Typography>
         )}
       </List>
+
+      {/* Create Task Modal */}
+      {project && (
+        <CreateTaskModal
+          open={createTaskModalOpen}
+          onClose={() => setCreateTaskModalOpen(false)}
+          projectId={project._id}
+          campaignId={project.campaignId}
+          onTaskCreated={handleTaskCreated}
+        />
+      )}
     </Box>
   );
 }

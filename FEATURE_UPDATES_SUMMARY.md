@@ -201,7 +201,7 @@ The backend will have TypeScript errors until routes are updated. You can:
 - [ ] backend/src/routes/event.routes.ts
 - [ ] backend/src/models/Event.ts
 - [ ] frontend/src/pages/Events/ (after renaming to Tasks/)
-- [ ] frontend/src/pages/Admin/TeamManagement.tsx (optional)
+- [ ] frontend/src/pages/Admin/TeamManagement.tsx
 
 ---
 
@@ -209,7 +209,7 @@ The backend will have TypeScript errors until routes are updated. You can:
 
 1. **Two Roles Only**: Simplified from 5 roles to 2 (System Admin, Hybrid) as requested
 2. **Tasks Not Assigned**: Removed assignedTo field - tasks are implicitly managed by Hybrid users
-3. **Campaigns Still Have Teams**: Kept teamId on campaigns for organizational hierarchy
+3. **Simplified Hierarchy**: Three-tier hierarchy: Campaigns → Projects → Tasks (no teams)
 4. **S3 URL Storage**: Store both S3 key (path) and URL (location) for flexibility
 5. **Archive vs Delete**: Campaigns are archived (soft delete) not hard deleted
 6. **Progressive Disclosure**: Details Sheet uses lazy loading for performance

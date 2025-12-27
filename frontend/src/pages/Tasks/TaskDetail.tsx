@@ -22,7 +22,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { CloudUpload as CloudUploadIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import { taskAPI, commentAPI } from '../../services/api';
-import { Task, Comment, TaskStatus, TaskType } from '../../types';
+import { Task, Comment, TaskStatus } from '../../types';
 import { useAuthStore } from '../../store/authStore';
 
 export default function TaskDetail() {
@@ -40,7 +40,6 @@ export default function TaskDetail() {
   const [editForm, setEditForm] = useState({
     name: '',
     description: '',
-    type: TaskType.OTHER,
     status: TaskStatus.PENDING,
     scheduledDate: null as Date | null,
     publishDate: null as Date | null,
@@ -66,7 +65,6 @@ export default function TaskDetail() {
       setEditForm({
         name: taskData.name,
         description: taskData.description || '',
-        type: taskData.type,
         status: taskData.status,
         scheduledDate: taskData.scheduledDate ? new Date(taskData.scheduledDate) : null,
         publishDate: taskData.publishDate ? new Date(taskData.publishDate) : null,
@@ -196,9 +194,7 @@ export default function TaskDetail() {
               <Chip
                 label={task.status}
                 color={getStatusColor(task.status)}
-                sx={{ mr: 1 }}
               />
-              <Chip label={task.type} variant="outlined" />
             </Box>
           </Box>
 
@@ -213,10 +209,6 @@ export default function TaskDetail() {
                 <Grid item xs={12} md={6}>
                   <Typography variant="subtitle2" color="text.secondary">Status</Typography>
                   <Typography variant="body1">{task.status}</Typography>
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <Typography variant="subtitle2" color="text.secondary">Type</Typography>
-                  <Typography variant="body1">{task.type}</Typography>
                 </Grid>
                 {task.scheduledDate && (
                   <Grid item xs={12} md={6}>
@@ -318,21 +310,6 @@ export default function TaskDetail() {
                   <TextField
                     fullWidth
                     select
-                    label="Type"
-                    value={editForm.type}
-                    onChange={(e) => setEditForm({ ...editForm, type: e.target.value as TaskType })}
-                  >
-                    {Object.values(TaskType).map((type) => (
-                      <MenuItem key={type} value={type}>
-                        {type}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <TextField
-                    fullWidth
-                    select
                     label="Status"
                     value={editForm.status}
                     onChange={(e) => setEditForm({ ...editForm, status: e.target.value as TaskStatus })}
@@ -382,7 +359,6 @@ export default function TaskDetail() {
                   setEditForm({
                     name: task.name,
                     description: task.description || '',
-                    type: task.type,
                     status: task.status,
                     scheduledDate: task.scheduledDate ? new Date(task.scheduledDate) : null,
                     publishDate: task.publishDate ? new Date(task.publishDate) : null,

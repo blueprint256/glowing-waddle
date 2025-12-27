@@ -80,19 +80,10 @@ export enum TaskStatus {
   COMPLETED = 'Completed'
 }
 
-export enum TaskType {
-  POST = 'post',
-  LAUNCH = 'launch',
-  ACTIVATION = 'activation',
-  DELIVERABLE = 'deliverable',
-  OTHER = 'other'
-}
-
 export interface Task {
   _id: string;
   name: string;
   description?: string;
-  type: TaskType;
   projectId: any;
   campaignId: any;
   status: TaskStatus;

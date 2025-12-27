@@ -6,18 +6,9 @@ export enum TaskStatus {
   COMPLETED = 'Completed'
 }
 
-export enum TaskType {
-  POST = 'post',
-  LAUNCH = 'launch',
-  ACTIVATION = 'activation',
-  DELIVERABLE = 'deliverable',
-  OTHER = 'other'
-}
-
 export interface ITask extends Document {
   name: string;
   description?: string;
-  type: TaskType;
   projectId: mongoose.Types.ObjectId;
   campaignId: mongoose.Types.ObjectId; // Inherited from project
   status: TaskStatus;
@@ -41,11 +32,6 @@ const taskSchema = new Schema<ITask>(
     description: {
       type: String,
       trim: true
-    },
-    type: {
-      type: String,
-      enum: Object.values(TaskType),
-      default: TaskType.OTHER
     },
     projectId: {
       type: Schema.Types.ObjectId,
