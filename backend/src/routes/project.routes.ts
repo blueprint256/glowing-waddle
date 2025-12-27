@@ -4,6 +4,7 @@ import { Campaign } from '../models/Campaign';
 import { UserRole } from '../models/User';
 import { isAuthenticated } from '../middleware/auth';
 import { canCreateCampaign, canAssignToProject } from '../middleware/rbac';
+import { checkProjectOwnership } from '../middleware/ownership';
 import { validateProjectCreation, validateMongoId } from '../middleware/validation';
 import { logAudit, logProjectAssignment } from '../utils/auditLogger';
 import { AuditAction } from '../models/AuditLog';
@@ -27,6 +28,16 @@ router.post('/', isAuthenticated, canCreateCampaign, validateProjectCreation, as
         success: false,
         message: 'Campaign not found'
       });
+    }
+
+    // CRITICAL: Hybrid users can only create projects under campaigns they own
+    if (req.user!.role === UserRole.HYBRID) {
+      if (campaign.createdBy.toString() !== req.user!._id.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied: You can only create projects under campaigns you created'
+        });
+      }
     }
 
     // Create project
@@ -71,14 +82,22 @@ router.post('/', isAuthenticated, canCreateCampaign, validateProjectCreation, as
 
 /**
  * @route   GET /api/projects
- * @desc    Get all projects
+ * @desc    Get all projects (System Admin sees all, Hybrid sees only projects under their campaigns)
  * @access  Private
  */
 router.get('/', isAuthenticated, async (req: Request, res: Response) => {
   try {
     let query: any = {};
 
-    // Filter by campaign if provided
+    // CRITICAL: Hybrid users can only see projects under campaigns they own
+    if (req.user!.role === UserRole.HYBRID) {
+      // Find all campaigns owned by this user
+      const ownedCampaigns = await Campaign.find({ createdBy: req.user!._id }).select('_id');
+      const campaignIds = ownedCampaigns.map(c => c._id);
+      query.campaignId = { $in: campaignIds };
+    }
+
+    // Filter by specific campaign if provided
     if (req.query.campaignId) {
       query.campaignId = req.query.campaignId;
     }
@@ -105,10 +124,10 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
 
 /**
  * @route   GET /api/projects/:id
- * @desc    Get project by ID
+ * @desc    Get project by ID (with ownership check)
  * @access  Private
  */
-router.get('/:id', isAuthenticated, validateMongoId('id'), async (req: Request, res: Response) => {
+router.get('/:id', isAuthenticated, validateMongoId('id'), checkProjectOwnership, async (req: Request, res: Response) => {
   try {
     const project = await Project.findById(req.params.id)
       .populate('campaignId', 'name status description')
@@ -138,10 +157,10 @@ router.get('/:id', isAuthenticated, validateMongoId('id'), async (req: Request, 
 
 /**
  * @route   PUT /api/projects/:id
- * @desc    Update project
+ * @desc    Update project (with ownership check)
  * @access  Private (System Admin, Hybrid)
  */
-router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), async (req: Request, res: Response) => {
+router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), checkProjectOwnership, async (req: Request, res: Response) => {
   try {
     const project = await Project.findById(req.params.id);
     if (!project) {
@@ -193,13 +212,14 @@ router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), as
 
 /**
  * @route   POST /api/projects/:id/assignments
- * @desc    Assign user to project
+ * @desc    Assign user to project (with ownership check)
  * @access  Private (System Admin, Hybrid)
  */
 router.post('/:id/assignments',
   isAuthenticated,
   validateMongoId('id'),
   canAssignToProject,
+  checkProjectOwnership,
   async (req: Request, res: Response) => {
     try {
       const { userId, role } = req.body;
@@ -271,13 +291,14 @@ router.post('/:id/assignments',
 
 /**
  * @route   DELETE /api/projects/:id/assignments/:userId
- * @desc    Remove user from project
+ * @desc    Remove user from project (with ownership check)
  * @access  Private (System Admin, Hybrid)
  */
 router.delete('/:id/assignments/:userId',
   isAuthenticated,
   validateMongoId('id'),
   canAssignToProject,
+  checkProjectOwnership,
   async (req: Request, res: Response) => {
     try {
       const { id, userId } = req.params;

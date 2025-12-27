@@ -10,18 +10,7 @@ export interface User {
   firstName: string;
   lastName: string;
   role: UserRole;
-  teamId?: string;
   isActive: boolean;
-}
-
-// Team types
-export interface Team {
-  _id: string;
-  name: string;
-  description?: string;
-  createdBy: string;
-  isActive: boolean;
-  members?: User[];
 }
 
 // Campaign types
@@ -37,7 +26,6 @@ export interface Campaign {
   _id: string;
   name: string;
   description?: string;
-  teamId: any;
   status: CampaignStatus;
   startDate?: string;
   endDate?: string;
@@ -76,7 +64,6 @@ export interface Project {
   name: string;
   description?: string;
   campaignId: any;
-  teamId: any;
   status: ProjectStatus;
   assignments: ProjectAssignment[];
   startDate?: string;
@@ -108,7 +95,6 @@ export interface Task {
   type: TaskType;
   projectId: any;
   campaignId: any;
-  teamId: any;
   status: TaskStatus;
   scheduledDate?: string;
   publishDate?: string;

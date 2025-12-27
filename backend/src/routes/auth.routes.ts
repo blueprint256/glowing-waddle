@@ -41,8 +41,7 @@ router.post('/login', (req: Request, res: Response, next: NextFunction) => {
           email: user.email,
           firstName: user.firstName,
           lastName: user.lastName,
-          role: user.role,
-          teamId: user.teamId
+          role: user.role
         }
       });
     });
@@ -91,7 +90,6 @@ router.get('/me', isAuthenticated, (req: Request, res: Response) => {
       firstName: req.user.firstName,
       lastName: req.user.lastName,
       role: req.user.role,
-      teamId: req.user.teamId,
       isActive: req.user.isActive
     }
   });

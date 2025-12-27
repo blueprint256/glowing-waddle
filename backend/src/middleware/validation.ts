@@ -43,15 +43,6 @@ export const validateUserUpdate = [
 ];
 
 /**
- * Team validation rules
- */
-export const validateTeamCreation = [
-  body('name').trim().notEmpty().withMessage('Team name is required'),
-  body('description').optional().trim(),
-  handleValidationErrors
-];
-
-/**
  * Campaign validation rules
  */
 export const validateCampaignCreation = [

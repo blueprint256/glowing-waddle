@@ -68,7 +68,7 @@ export default function ProjectDetail() {
         {project.assignments && project.assignments.length > 0 && (
           <Box sx={{ mt: 3 }}>
             <Typography variant="h6" gutterBottom>
-              Team Assignments
+              Project Assignments
             </Typography>
             <List>
               {project.assignments.map((assignment: any, idx: number) => (
