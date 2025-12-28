@@ -29,12 +29,14 @@ import {
   Check as CheckIcon,
   Close as CloseIcon,
   ExpandMore as ExpandMoreIcon,
-  CalendarToday as CalendarIcon
+  CalendarToday as CalendarIcon,
+  Visibility as VisibilityIcon
 } from '@mui/icons-material';
 import { useAuthStore } from '../store/authStore';
 import { taskAPI } from '../services/api';
 import { Task, TaskStatus, UserRole, Campaign, Project } from '../types';
 import FilterToolbar, { FilterOptions } from '../components/FilterToolbar';
+import SocialPreviewModal from '../components/SocialPreviewModal';
 
 interface EditingCell {
   taskId: string;
@@ -50,6 +52,7 @@ export default function TasksSheet() {
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [editValue, setEditValue] = useState('');
   const editInputRef = useRef<HTMLInputElement>(null);
+  const [previewTask, setPreviewTask] = useState<Task | null>(null);
   const [filters, setFilters] = useState<FilterOptions>({
     search: '',
     campaignIds: [],
@@ -328,12 +331,13 @@ export default function TasksSheet() {
             <Table>
               <TableHead>
                 <TableRow sx={{ backgroundColor: '#F3F4F6' }}>
-                  <TableCell sx={{ fontWeight: 700, width: '20%' }}>Task Name</TableCell>
-                  <TableCell sx={{ fontWeight: 700, width: '15%' }}>Campaign</TableCell>
-                  <TableCell sx={{ fontWeight: 700, width: '15%' }}>Project</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: '18%' }}>Task Name</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: '13%' }}>Campaign</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: '13%' }}>Project</TableCell>
                   <TableCell sx={{ fontWeight: 700, width: '10%' }}>Status</TableCell>
                   <TableCell sx={{ fontWeight: 700, width: '10%' }}>Date</TableCell>
-                  <TableCell sx={{ fontWeight: 700, width: '30%' }}>Description</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: '26%' }}>Description</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: '10%', textAlign: 'center' }}>Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -405,11 +409,32 @@ export default function TasksSheet() {
                     <TableCell>
                       {renderEditableCell(task, 'description', task.description || '')}
                     </TableCell>
+                    <TableCell sx={{ textAlign: 'center' }}>
+                      <Tooltip title="Preview on Social Media">
+                        <IconButton
+                          size="small"
+                          onClick={() => setPreviewTask(task)}
+                          color="primary"
+                          disabled={!task.name && !task.designedImage}
+                        >
+                          <VisibilityIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </TableContainer>
+
+          {/* Social Preview Modal */}
+          {previewTask && (
+            <SocialPreviewModal
+              open={!!previewTask}
+              onClose={() => setPreviewTask(null)}
+              task={previewTask}
+            />
+          )}
 
           {/* Summary Statistics */}
           <Paper sx={{ p: 2, backgroundColor: '#F3F4F6' }}>
