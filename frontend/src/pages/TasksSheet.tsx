@@ -211,7 +211,7 @@ export default function TasksSheet() {
 
   const handleEditInCanva = async (task: Task) => {
     if (!canvaConnected) {
-      alert('Please connect your Canva account in Settings → Integrations before editing designs.');
+      alert('⚠️ Canva Not Connected\n\nPlease connect your Canva account in Settings → Integrations before editing designs.');
       return;
     }
 
@@ -228,11 +228,23 @@ export default function TasksSheet() {
         );
 
         // Open Canva editor in new tab
-        window.open(editorUrl, '_blank');
+        const canvaWindow = window.open(editorUrl, '_blank');
+        if (!canvaWindow) {
+          alert('⚠️ Pop-up Blocked\n\nPlease allow pop-ups for this site to open the Canva editor.');
+        }
       }
     } catch (error: any) {
       console.error('Error opening Canva editor:', error);
-      alert(error.response?.data?.message || 'Failed to open Canva editor. Please try again.');
+      const errorMessage = error.response?.data?.message || 'Failed to open Canva editor';
+      const errorCode = error.response?.data?.error;
+
+      if (errorCode === 'CANVA_NOT_CONNECTED' || errorCode === 'CANVA_TOKEN_MISSING') {
+        alert('⚠️ Canva Connection Issue\n\nYour Canva connection may have expired. Please reconnect your Canva account in Settings → Integrations.');
+      } else if (errorCode === 'TASK_NOT_FOUND') {
+        alert('⚠️ Task Not Found\n\nThe task could not be found. Please refresh the page and try again.');
+      } else {
+        alert(`⚠️ Error\n\n${errorMessage}\n\nPlease try again or contact support if the issue persists.`);
+      }
     }
   };
 
@@ -247,11 +259,20 @@ export default function TasksSheet() {
             t._id === taskId ? response.data.task : t
           )
         );
-        alert('Design synced from Canva successfully!');
+        alert('✅ Success!\n\nDesign synced from Canva successfully!');
       }
     } catch (error: any) {
       console.error('Error syncing from Canva:', error);
-      alert(error.response?.data?.message || 'Failed to sync from Canva. Please try again.');
+      const errorMessage = error.response?.data?.message || 'Failed to sync from Canva';
+      const errorCode = error.response?.data?.error;
+
+      if (errorCode === 'CANVA_NOT_CONNECTED' || errorCode === 'CANVA_TOKEN_MISSING') {
+        alert('⚠️ Canva Connection Issue\n\nYour Canva connection may have expired. Please reconnect your Canva account in Settings → Integrations.');
+      } else if (errorCode === 'NO_CANVA_DESIGN') {
+        alert('⚠️ No Canva Design\n\nThis task has no associated Canva design. Please use "Edit in Canva" first.');
+      } else {
+        alert(`⚠️ Error\n\n${errorMessage}\n\nPlease try again or contact support if the issue persists.`);
+      }
     } finally {
       setSyncingTask(null);
     }

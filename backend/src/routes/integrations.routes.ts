@@ -10,28 +10,43 @@ const router = express.Router();
  * @access  Private
  */
 router.get('/canva', isAuthenticated, (req: Request, res: Response) => {
-  const clientId = process.env.CANVA_CLIENT_ID;
-  const redirectUri = process.env.CANVA_CALLBACK_URL || 'http://localhost:5000/api/integrations/canva/callback';
-  const state = req.user?._id.toString();
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  try {
+    const clientId = process.env.CANVA_CLIENT_ID;
+    const redirectUri = process.env.CANVA_CALLBACK_URL || 'http://localhost:5000/api/integrations/canva/callback';
+    const state = req.user?._id.toString();
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
-  console.log('Canva OAuth initiated by user:', req.user?.email);
-  console.log('Canva Client ID configured:', !!clientId);
+    console.log('[Canva OAuth] Initiated by user:', req.user?.email);
+    console.log('[Canva OAuth] Client ID configured:', !!clientId);
+    console.log('[Canva OAuth] Redirect URI:', redirectUri);
 
-  if (!clientId) {
-    console.error('Canva Client ID not configured');
-    // Redirect to frontend with error instead of returning JSON
-    return res.redirect(`${frontendUrl}/settings?integration=canva&status=error&message=not_configured`);
+    if (!clientId) {
+      console.error('[Canva OAuth] Client ID not configured in environment variables');
+      return res.redirect(`${frontendUrl}/settings?integration=canva&status=error&message=not_configured`);
+    }
+
+    if (!state) {
+      console.error('[Canva OAuth] User ID not found in session');
+      return res.redirect(`${frontendUrl}/settings?integration=canva&status=error&message=user_not_authenticated`);
+    }
+
+    // For demo purposes, we'll simulate a successful connection without actual Canva OAuth
+    // In production, you would use the actual Canva OAuth URL:
+    // const canvaAuthUrl = `https://www.canva.com/api/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=${state}&scope=design:read design:content:read design:content:write asset:read asset:write`;
+    // return res.redirect(canvaAuthUrl);
+
+    // For now, redirect directly to callback with a demo code
+    console.log('[Canva OAuth] Demo mode: Simulating OAuth success');
+    const demoCode = `demo_${Date.now()}`;
+    res.redirect(`${redirectUri}?code=${demoCode}&state=${state}`);
+  } catch (error: any) {
+    console.error('[Canva OAuth] Error initiating OAuth:', {
+      message: error.message,
+      stack: error.stack
+    });
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    res.redirect(`${frontendUrl}/settings?integration=canva&status=error&message=server_error`);
   }
-
-  // For demo purposes, we'll simulate a successful connection without actual Canva OAuth
-  // In production, you would use the actual Canva OAuth URL
-  // const canvaAuthUrl = `https://www.canva.com/api/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=${state}&scope=design:read design:content:read`;
-
-  // For now, redirect directly to callback with a demo code
-  console.log('Demo mode: Simulating Canva OAuth success');
-  const demoCode = `demo_${Date.now()}`;
-  res.redirect(`${redirectUri}?code=${demoCode}&state=${state}`);
 });
 
 /**
@@ -43,53 +58,74 @@ router.get('/canva/callback', async (req: Request, res: Response) => {
   const { code, state, error: oauthError } = req.query;
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
-  console.log('Canva callback received:', { code: !!code, state: !!state, error: oauthError });
+  console.log('[Canva Callback] Received:', {
+    hasCode: !!code,
+    hasState: !!state,
+    error: oauthError
+  });
 
   if (oauthError) {
-    console.error('Canva OAuth error:', oauthError);
+    console.error('[Canva Callback] OAuth error from Canva:', oauthError);
     return res.redirect(`${frontendUrl}/settings?integration=canva&status=error&message=${oauthError}`);
   }
 
   if (!code || !state) {
-    console.error('Missing code or state in callback');
+    console.error('[Canva Callback] Missing required parameters:', { code: !!code, state: !!state });
     return res.redirect(`${frontendUrl}/settings?integration=canva&status=error&message=missing_params`);
   }
 
   try {
-    // In a real implementation, you would exchange the code for an access token
-    // For now, we'll simulate a successful connection
     const userId = state as string;
-    const user = await User.findById(userId);
+    console.log('[Canva Callback] Looking up user:', userId);
 
+    const user = await User.findById(userId);
     if (!user) {
-      console.error('User not found for ID:', userId);
+      console.error('[Canva Callback] User not found:', userId);
       return res.redirect(`${frontendUrl}/settings?integration=canva&status=error&message=user_not_found`);
     }
 
-    console.log('Connecting Canva for user:', user.email);
+    console.log('[Canva Callback] Processing for user:', user.email);
 
-    // Update user's Canva integration (in a real app, you'd exchange code for token)
+    // In a real implementation, exchange code for access token:
+    // const tokenResponse = await fetch('https://api.canva.com/oauth/token', {
+    //   method: 'POST',
+    //   headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    //   body: new URLSearchParams({
+    //     grant_type: 'authorization_code',
+    //     code: code as string,
+    //     client_id: process.env.CANVA_CLIENT_ID!,
+    //     client_secret: process.env.CANVA_CLIENT_SECRET!,
+    //     redirect_uri: process.env.CANVA_CALLBACK_URL!
+    //   })
+    // });
+    // if (!tokenResponse.ok) {
+    //   throw new Error('Failed to exchange code for token');
+    // }
+    // const tokenData = await tokenResponse.json();
+    // const { access_token, refresh_token, expires_in } = tokenData;
+
+    // Update user's Canva integration
     if (!user.integrations) {
       user.integrations = {};
     }
-    if (!user.integrations.canva) {
-      user.integrations.canva = {
-        connected: false
-      };
-    }
 
     user.integrations.canva = {
-      accessToken: code as string, // In production, exchange code for actual token
+      accessToken: code as string, // In production, use actual access_token
+      refreshToken: undefined, // In production, store refresh_token
+      expiresAt: undefined, // In production, calculate expiry: new Date(Date.now() + expires_in * 1000)
       connected: true,
       connectedAt: new Date()
     };
 
     await user.save();
 
-    console.log('Canva integration saved successfully for:', user.email);
+    console.log('[Canva Callback] Integration saved successfully for:', user.email);
     res.redirect(`${frontendUrl}/settings?integration=canva&status=success`);
-  } catch (error) {
-    console.error('Canva callback error:', error);
+  } catch (error: any) {
+    console.error('[Canva Callback] Error processing callback:', {
+      message: error.message,
+      stack: error.stack
+    });
     res.redirect(`${frontendUrl}/settings?integration=canva&status=error&message=server_error`);
   }
 });

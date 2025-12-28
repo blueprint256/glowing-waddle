@@ -3,7 +3,7 @@ import multer from 'multer';
 import { Task, TaskStatus } from '../models/Task';
 import { Project } from '../models/Project';
 import { Campaign } from '../models/Campaign';
-import { UserRole } from '../models/User';
+import { User, UserRole } from '../models/User';
 import { isAuthenticated } from '../middleware/auth';
 import { canManageTasks } from '../middleware/rbac';
 import { checkTaskOwnership } from '../middleware/ownership';
@@ -410,27 +410,53 @@ router.delete('/:id', isAuthenticated, canManageTasks, validateMongoId('id'), ch
  */
 router.post('/:id/canva-edit', isAuthenticated, canManageTasks, validateMongoId('id'), checkTaskOwnership, async (req: Request, res: Response) => {
   try {
+    console.log(`[Canva Edit] Request for task ${req.params.id} by user ${req.user?._id}`);
+
     const task = await Task.findById(req.params.id);
     if (!task) {
+      console.error(`[Canva Edit] Task not found: ${req.params.id}`);
       return res.status(404).json({
         success: false,
-        message: 'Task not found'
+        message: 'Task not found',
+        error: 'TASK_NOT_FOUND'
       });
     }
 
-    // Check if user has Canva connected
-    const user = await mongoose.model('User').findById(req.user!._id);
-    if (!user || !user.integrations?.canva?.connected) {
+    // Check if user has Canva connected - FIXED: Use imported User model
+    const user = await User.findById(req.user!._id);
+    if (!user) {
+      console.error(`[Canva Edit] User not found: ${req.user?._id}`);
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+        error: 'USER_NOT_FOUND'
+      });
+    }
+
+    console.log(`[Canva Edit] User ${user.email}, Canva connected: ${user.integrations?.canva?.connected}`);
+
+    if (!user.integrations?.canva?.connected) {
+      console.warn(`[Canva Edit] User ${user.email} has not connected Canva`);
       return res.status(403).json({
         success: false,
-        message: 'Canva integration not connected. Please connect your Canva account in Settings.'
+        message: 'Canva integration not connected. Please connect your Canva account in Settings.',
+        error: 'CANVA_NOT_CONNECTED'
       });
     }
 
     const accessToken = user.integrations.canva.accessToken;
+    if (!accessToken) {
+      console.error(`[Canva Edit] User ${user.email} has no Canva access token`);
+      return res.status(403).json({
+        success: false,
+        message: 'Canva access token missing. Please reconnect your Canva account.',
+        error: 'CANVA_TOKEN_MISSING'
+      });
+    }
 
     // If task already has a Canva design, return the existing design URL
     if (task.canvaDesignId && task.canvaDesignUrl) {
+      console.log(`[Canva Edit] Returning existing design for task ${task._id}: ${task.canvaDesignId}`);
       return res.json({
         success: true,
         message: 'Existing Canva design found',
@@ -444,6 +470,8 @@ router.post('/:id/canva-edit', isAuthenticated, canManageTasks, validateMongoId(
     // For now, we'll create a demo design URL
     const designId = `design_${task._id}_${Date.now()}`;
     const editorUrl = `https://www.canva.com/design/${designId}/edit`;
+
+    console.log(`[Canva Edit] Creating new design for task ${task._id}: ${designId}`);
 
     // In a real implementation, you would:
     // 1. Upload the current task image to Canva (if exists)
@@ -463,12 +491,18 @@ router.post('/:id/canva-edit', isAuthenticated, canManageTasks, validateMongoId(
     //     height: 1080
     //   })
     // });
+    // if (!canvaResponse.ok) {
+    //   const errorData = await canvaResponse.json();
+    //   throw new Error(`Canva API error: ${errorData.message || canvaResponse.statusText}`);
+    // }
 
     // Update task with Canva design info
     task.canvaDesignId = designId;
     task.canvaDesignUrl = editorUrl;
     task.lastModifiedBy = req.user!._id;
     await task.save();
+
+    console.log(`[Canva Edit] Successfully created design for task ${task._id}`);
 
     res.json({
       success: true,
@@ -477,10 +511,16 @@ router.post('/:id/canva-edit', isAuthenticated, canManageTasks, validateMongoId(
       editorUrl
     });
   } catch (error: any) {
-    console.error('Error creating Canva design:', error);
+    console.error(`[Canva Edit] Error for task ${req.params.id}:`, {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
     res.status(500).json({
       success: false,
-      message: error.message || 'Error creating Canva design'
+      message: 'Failed to create Canva design. Please try again.',
+      error: error.message || 'INTERNAL_SERVER_ERROR',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
@@ -492,31 +532,58 @@ router.post('/:id/canva-edit', isAuthenticated, canManageTasks, validateMongoId(
  */
 router.post('/:id/canva-sync', isAuthenticated, canManageTasks, validateMongoId('id'), checkTaskOwnership, async (req: Request, res: Response) => {
   try {
+    console.log(`[Canva Sync] Request for task ${req.params.id} by user ${req.user?._id}`);
+
     const task = await Task.findById(req.params.id);
     if (!task) {
+      console.error(`[Canva Sync] Task not found: ${req.params.id}`);
       return res.status(404).json({
         success: false,
-        message: 'Task not found'
+        message: 'Task not found',
+        error: 'TASK_NOT_FOUND'
       });
     }
 
     if (!task.canvaDesignId) {
+      console.warn(`[Canva Sync] Task ${task._id} has no associated Canva design`);
       return res.status(400).json({
         success: false,
-        message: 'No Canva design associated with this task'
+        message: 'No Canva design associated with this task. Please use "Edit in Canva" first.',
+        error: 'NO_CANVA_DESIGN'
       });
     }
 
-    // Get user's Canva access token
-    const user = await mongoose.model('User').findById(req.user!._id);
-    if (!user || !user.integrations?.canva?.connected) {
+    // Get user's Canva access token - FIXED: Use imported User model
+    const user = await User.findById(req.user!._id);
+    if (!user) {
+      console.error(`[Canva Sync] User not found: ${req.user?._id}`);
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+        error: 'USER_NOT_FOUND'
+      });
+    }
+
+    if (!user.integrations?.canva?.connected) {
+      console.warn(`[Canva Sync] User ${user.email} has not connected Canva`);
       return res.status(403).json({
         success: false,
-        message: 'Canva integration not connected'
+        message: 'Canva integration not connected. Please reconnect your Canva account.',
+        error: 'CANVA_NOT_CONNECTED'
       });
     }
 
     const accessToken = user.integrations.canva.accessToken;
+    if (!accessToken) {
+      console.error(`[Canva Sync] User ${user.email} has no Canva access token`);
+      return res.status(403).json({
+        success: false,
+        message: 'Canva access token missing. Please reconnect your Canva account.',
+        error: 'CANVA_TOKEN_MISSING'
+      });
+    }
+
+    console.log(`[Canva Sync] Syncing design ${task.canvaDesignId} for task ${task._id}`);
 
     // In production, fetch the latest export from Canva
     // Example (pseudo-code):
@@ -531,7 +598,13 @@ router.post('/:id/canva-sync', isAuthenticated, canManageTasks, validateMongoId(
     //     quality: 'high'
     //   })
     // });
+    // if (!exportResponse.ok) {
+    //   const errorData = await exportResponse.json();
+    //   throw new Error(`Canva API error: ${errorData.message || exportResponse.statusText}`);
+    // }
     // const { url } = await exportResponse.json();
+    // Download from url and upload to S3
+    // const s3Url = await uploadToS3(url);
 
     // For demo purposes, simulate a successful sync
     // In production, you would download the exported image and upload to S3
@@ -542,16 +615,30 @@ router.post('/:id/canva-sync', isAuthenticated, canManageTasks, validateMongoId(
     task.lastModifiedBy = req.user!._id;
     await task.save();
 
+    console.log(`[Canva Sync] Successfully synced task ${task._id}`);
+
+    const populatedTask = await Task.findById(task._id)
+      .populate('projectId', 'name')
+      .populate('campaignId', 'name')
+      .populate('createdBy', 'firstName lastName')
+      .populate('lastModifiedBy', 'firstName lastName');
+
     res.json({
       success: true,
       message: 'Design synced from Canva successfully',
-      task
+      task: populatedTask
     });
   } catch (error: any) {
-    console.error('Error syncing from Canva:', error);
+    console.error(`[Canva Sync] Error for task ${req.params.id}:`, {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
     res.status(500).json({
       success: false,
-      message: error.message || 'Error syncing from Canva'
+      message: 'Failed to sync from Canva. Please try again.',
+      error: error.message || 'INTERNAL_SERVER_ERROR',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
