@@ -1,8 +1,102 @@
 import express, { Request, Response } from 'express';
 import { isAuthenticated } from '../middleware/auth';
 import { User } from '../models/User';
+import crypto from 'crypto';
 
 const router = express.Router();
+
+// Store state values temporarily (in production, use Redis or session store)
+const oauthStates = new Map<string, { userId: string; timestamp: number }>();
+
+// Clean up old states (older than 10 minutes)
+setInterval(() => {
+  const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
+  for (const [state, data] of oauthStates.entries()) {
+    if (data.timestamp < tenMinutesAgo) {
+      oauthStates.delete(state);
+    }
+  }
+}, 60 * 1000);
+
+/**
+ * Helper function to refresh Canva access token if expired
+ * @param user User document with Canva integration
+ * @returns Updated user document with fresh token
+ */
+export async function refreshCanvaTokenIfNeeded(user: any): Promise<any> {
+  if (!user.integrations?.canva?.connected) {
+    throw new Error('Canva integration not connected');
+  }
+
+  const { accessToken, refreshToken, expiresAt } = user.integrations.canva;
+
+  if (!refreshToken) {
+    throw new Error('No refresh token available');
+  }
+
+  // Check if token is expired or expiring soon (within 5 minutes)
+  const fiveMinutesFromNow = new Date(Date.now() + 5 * 60 * 1000);
+  const tokenExpired = !expiresAt || new Date(expiresAt) <= fiveMinutesFromNow;
+
+  if (!tokenExpired) {
+    console.log('[Canva Token] Access token still valid for user:', user.email);
+    return user;
+  }
+
+  console.log('[Canva Token] Refreshing expired access token for user:', user.email);
+
+  const clientId = process.env.CANVA_CLIENT_ID;
+  const clientSecret = process.env.CANVA_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
+    throw new Error('Canva client credentials not configured');
+  }
+
+  // Create Basic Auth header: base64(client_id:client_secret)
+  const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+
+  const tokenResponse = await fetch('https://api.canva.com/rest/v1/oauth/token', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Basic ${basicAuth}`,
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken
+    })
+  });
+
+  if (!tokenResponse.ok) {
+    const errorText = await tokenResponse.text();
+    console.error('[Canva Token] Refresh failed:', {
+      status: tokenResponse.status,
+      error: errorText
+    });
+
+    // If refresh fails, disconnect the integration
+    user.integrations.canva.connected = false;
+    await user.save();
+
+    throw new Error('Failed to refresh Canva token. Please reconnect your Canva account.');
+  }
+
+  const tokenData = await tokenResponse.json();
+  const { access_token, refresh_token, expires_in } = tokenData;
+
+  console.log('[Canva Token] Token refreshed successfully for user:', user.email);
+
+  // Update user's tokens
+  user.integrations.canva.accessToken = access_token;
+  if (refresh_token) {
+    user.integrations.canva.refreshToken = refresh_token;
+  }
+  user.integrations.canva.expiresAt = new Date(Date.now() + expires_in * 1000);
+
+  await user.save();
+
+  return user;
+}
 
 /**
  * @route   GET /api/integrations/canva
@@ -13,7 +107,6 @@ router.get('/canva', isAuthenticated, (req: Request, res: Response) => {
   try {
     const clientId = process.env.CANVA_CLIENT_ID;
     const redirectUri = process.env.CANVA_CALLBACK_URL || 'http://localhost:5000/api/integrations/canva/callback';
-    const state = req.user?._id.toString();
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
     console.log('[Canva OAuth] Initiated by user:', req.user?.email);
@@ -25,20 +118,43 @@ router.get('/canva', isAuthenticated, (req: Request, res: Response) => {
       return res.redirect(`${frontendUrl}/settings?integration=canva&status=error&message=not_configured`);
     }
 
-    if (!state) {
+    if (!req.user?._id) {
       console.error('[Canva OAuth] User ID not found in session');
       return res.redirect(`${frontendUrl}/settings?integration=canva&status=error&message=user_not_authenticated`);
     }
 
-    // For demo purposes, we'll simulate a successful connection without actual Canva OAuth
-    // In production, you would use the actual Canva OAuth URL:
-    // const canvaAuthUrl = `https://www.canva.com/api/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=${state}&scope=design:read design:content:read design:content:write asset:read asset:write`;
-    // return res.redirect(canvaAuthUrl);
+    // Generate random state for CSRF protection
+    const state = crypto.randomBytes(32).toString('hex');
 
-    // For now, redirect directly to callback with a demo code
-    console.log('[Canva OAuth] Demo mode: Simulating OAuth success');
-    const demoCode = `demo_${Date.now()}`;
-    res.redirect(`${redirectUri}?code=${demoCode}&state=${state}`);
+    // Store state with user ID (expires in 10 minutes)
+    oauthStates.set(state, {
+      userId: req.user._id.toString(),
+      timestamp: Date.now()
+    });
+
+    // Required scopes for Canva Connect API
+    // Based on official docs: https://www.canva.com/api/docs/connect/quickstart
+    const scopes = [
+      'design:content:read',
+      'design:content:write',
+      'design:meta:read',
+      'asset:read',
+      'asset:write',
+      'profile:read'
+    ].join(' ');
+
+    // Build Canva OAuth URL following official Quickstart guide
+    const canvaAuthUrl = new URL('https://www.canva.com/api/oauth/authorize');
+    canvaAuthUrl.searchParams.append('client_id', clientId);
+    canvaAuthUrl.searchParams.append('redirect_uri', redirectUri);
+    canvaAuthUrl.searchParams.append('response_type', 'code');
+    canvaAuthUrl.searchParams.append('state', state);
+    canvaAuthUrl.searchParams.append('scope', scopes);
+
+    console.log('[Canva OAuth] Redirecting to Canva authorization:', canvaAuthUrl.toString());
+
+    // Redirect user to Canva for authorization
+    res.redirect(canvaAuthUrl.toString());
   } catch (error: any) {
     console.error('[Canva OAuth] Error initiating OAuth:', {
       message: error.message,
@@ -75,49 +191,92 @@ router.get('/canva/callback', async (req: Request, res: Response) => {
   }
 
   try {
-    const userId = state as string;
+    // Validate state parameter to prevent CSRF attacks
+    const stateData = oauthStates.get(state as string);
+    if (!stateData) {
+      console.error('[Canva Callback] Invalid or expired state:', state);
+      return res.redirect(`${frontendUrl}/settings?integration=canva&status=error&message=invalid_state`);
+    }
+
+    const { userId } = stateData;
     console.log('[Canva Callback] Looking up user:', userId);
 
     const user = await User.findById(userId);
     if (!user) {
       console.error('[Canva Callback] User not found:', userId);
+      oauthStates.delete(state as string); // Clean up state
       return res.redirect(`${frontendUrl}/settings?integration=canva&status=error&message=user_not_found`);
     }
 
     console.log('[Canva Callback] Processing for user:', user.email);
 
-    // In a real implementation, exchange code for access token:
-    // const tokenResponse = await fetch('https://api.canva.com/oauth/token', {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    //   body: new URLSearchParams({
-    //     grant_type: 'authorization_code',
-    //     code: code as string,
-    //     client_id: process.env.CANVA_CLIENT_ID!,
-    //     client_secret: process.env.CANVA_CLIENT_SECRET!,
-    //     redirect_uri: process.env.CANVA_CALLBACK_URL!
-    //   })
-    // });
-    // if (!tokenResponse.ok) {
-    //   throw new Error('Failed to exchange code for token');
-    // }
-    // const tokenData = await tokenResponse.json();
-    // const { access_token, refresh_token, expires_in } = tokenData;
+    // Exchange authorization code for access token
+    // Following Canva Connect API Quickstart: https://www.canva.com/api/docs/connect/quickstart
+    const clientId = process.env.CANVA_CLIENT_ID;
+    const clientSecret = process.env.CANVA_CLIENT_SECRET;
+    const redirectUri = process.env.CANVA_CALLBACK_URL || 'http://localhost:5000/api/integrations/canva/callback';
 
-    // Update user's Canva integration
+    if (!clientId || !clientSecret) {
+      console.error('[Canva Callback] Missing client credentials');
+      oauthStates.delete(state as string);
+      return res.redirect(`${frontendUrl}/settings?integration=canva&status=error&message=server_misconfigured`);
+    }
+
+    // Create Basic Auth header: base64(client_id:client_secret)
+    const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+
+    console.log('[Canva Callback] Exchanging code for tokens...');
+
+    const tokenResponse = await fetch('https://api.canva.com/rest/v1/oauth/token', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${basicAuth}`,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: code as string,
+        redirect_uri: redirectUri
+      })
+    });
+
+    if (!tokenResponse.ok) {
+      const errorText = await tokenResponse.text();
+      console.error('[Canva Callback] Token exchange failed:', {
+        status: tokenResponse.status,
+        statusText: tokenResponse.statusText,
+        error: errorText
+      });
+      oauthStates.delete(state as string);
+      return res.redirect(`${frontendUrl}/settings?integration=canva&status=error&message=token_exchange_failed`);
+    }
+
+    const tokenData = await tokenResponse.json();
+    const { access_token, refresh_token, expires_in } = tokenData;
+
+    console.log('[Canva Callback] Tokens received successfully:', {
+      hasAccessToken: !!access_token,
+      hasRefreshToken: !!refresh_token,
+      expiresIn: expires_in
+    });
+
+    // Update user's Canva integration with real tokens
     if (!user.integrations) {
       user.integrations = {};
     }
 
     user.integrations.canva = {
-      accessToken: code as string, // In production, use actual access_token
-      refreshToken: undefined, // In production, store refresh_token
-      expiresAt: undefined, // In production, calculate expiry: new Date(Date.now() + expires_in * 1000)
+      accessToken: access_token,
+      refreshToken: refresh_token,
+      expiresAt: new Date(Date.now() + expires_in * 1000),
       connected: true,
       connectedAt: new Date()
     };
 
     await user.save();
+
+    // Clean up used state
+    oauthStates.delete(state as string);
 
     console.log('[Canva Callback] Integration saved successfully for:', user.email);
     res.redirect(`${frontendUrl}/settings?integration=canva&status=success`);

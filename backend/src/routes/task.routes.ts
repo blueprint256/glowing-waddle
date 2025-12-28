@@ -11,6 +11,7 @@ import { validateMongoId } from '../middleware/validation';
 import { logAudit } from '../utils/auditLogger';
 import { AuditAction } from '../models/AuditLog';
 import { uploadTaskImage } from '../utils/s3Service';
+import { refreshCanvaTokenIfNeeded } from './integrations.routes';
 import mongoose from 'mongoose';
 
 const router = express.Router();
@@ -444,6 +445,18 @@ router.post('/:id/canva-edit', isAuthenticated, canManageTasks, validateMongoId(
       });
     }
 
+    // Refresh token if needed
+    try {
+      await refreshCanvaTokenIfNeeded(user);
+    } catch (refreshError: any) {
+      console.error(`[Canva Edit] Token refresh failed for user ${user.email}:`, refreshError.message);
+      return res.status(403).json({
+        success: false,
+        message: refreshError.message || 'Failed to refresh Canva token. Please reconnect your Canva account.',
+        error: 'CANVA_TOKEN_REFRESH_FAILED'
+      });
+    }
+
     const accessToken = user.integrations.canva.accessToken;
     if (!accessToken) {
       console.error(`[Canva Edit] User ${user.email} has no Canva access token`);
@@ -570,6 +583,18 @@ router.post('/:id/canva-sync', isAuthenticated, canManageTasks, validateMongoId(
         success: false,
         message: 'Canva integration not connected. Please reconnect your Canva account.',
         error: 'CANVA_NOT_CONNECTED'
+      });
+    }
+
+    // Refresh token if needed
+    try {
+      await refreshCanvaTokenIfNeeded(user);
+    } catch (refreshError: any) {
+      console.error(`[Canva Sync] Token refresh failed for user ${user.email}:`, refreshError.message);
+      return res.status(403).json({
+        success: false,
+        message: refreshError.message || 'Failed to refresh Canva token. Please reconnect your Canva account.',
+        error: 'CANVA_TOKEN_REFRESH_FAILED'
       });
     }
 
