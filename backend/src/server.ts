@@ -1,5 +1,9 @@
-import express, { Request, Response, NextFunction } from 'express';
 import dotenv from 'dotenv';
+
+// Load environment variables FIRST before any other imports that use them
+dotenv.config();
+
+import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -17,9 +21,7 @@ import projectRoutes from './routes/project.routes';
 import taskRoutes from './routes/task.routes';
 import commentRoutes from './routes/comment.routes';
 import assetRoutes from './routes/asset.routes';
-
-// Load environment variables
-dotenv.config();
+import integrationsRoutes from './routes/integrations.routes';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -91,6 +93,7 @@ app.use('/api/projects', projectRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/comments', commentRoutes);
 app.use('/api/assets', assetRoutes);
+app.use('/api/integrations', integrationsRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response) => {

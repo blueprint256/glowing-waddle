@@ -8,11 +8,21 @@ export enum UserRole {
 
 export interface IUser extends Document {
   email: string;
-  password: string;
+  password?: string;
+  googleId?: string;
   firstName: string;
   lastName: string;
   role: UserRole;
   isActive: boolean;
+  integrations?: {
+    canva?: {
+      accessToken?: string;
+      refreshToken?: string;
+      expiresAt?: Date;
+      connected: boolean;
+      connectedAt?: Date;
+    };
+  };
   createdAt: Date;
   updatedAt: Date;
   comparePassword(candidatePassword: string): Promise<boolean>;
@@ -31,8 +41,13 @@ const userSchema = new Schema<IUser>(
     },
     password: {
       type: String,
-      required: true,
+      required: false,
       minlength: 6
+    },
+    googleId: {
+      type: String,
+      sparse: true,
+      unique: true
     },
     firstName: {
       type: String,
@@ -53,6 +68,15 @@ const userSchema = new Schema<IUser>(
     isActive: {
       type: Boolean,
       default: true
+    },
+    integrations: {
+      canva: {
+        accessToken: String,
+        refreshToken: String,
+        expiresAt: Date,
+        connected: { type: Boolean, default: false },
+        connectedAt: Date
+      }
     }
   },
   {
@@ -62,7 +86,7 @@ const userSchema = new Schema<IUser>(
 
 // Hash password before saving
 userSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) return next();
+  if (!this.isModified('password') || !this.password) return next();
 
   try {
     const salt = await bcrypt.genSalt(10);

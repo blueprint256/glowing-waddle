@@ -1,6 +1,7 @@
 import passport from 'passport';
 import { Strategy as LocalStrategy } from 'passport-local';
-import { User, IUser } from '../models/User';
+import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
+import { User, IUser, UserRole } from '../models/User';
 
 // Configure Local Strategy
 passport.use(
@@ -37,6 +38,61 @@ passport.use(
     }
   )
 );
+
+// Configure Google OAuth2 Strategy
+if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+  passport.use(
+    new GoogleStrategy(
+      {
+        clientID: process.env.GOOGLE_CLIENT_ID,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+        callbackURL: process.env.GOOGLE_CALLBACK_URL || 'http://localhost:5000/api/auth/google/callback'
+      },
+      async (accessToken, refreshToken, profile, done) => {
+        try {
+          // Check if user already exists with this Google ID
+          let user = await User.findOne({ googleId: profile.id });
+
+          if (user) {
+            // User exists, check if active
+            if (!user.isActive) {
+              return done(null, false, { message: 'Account is deactivated' });
+            }
+            return done(null, user);
+          }
+
+          // Check if user exists with this email
+          const email = profile.emails?.[0]?.value;
+          if (email) {
+            user = await User.findOne({ email: email.toLowerCase() });
+
+            if (user) {
+              // Link Google account to existing user
+              user.googleId = profile.id;
+              await user.save();
+              return done(null, user);
+            }
+          }
+
+          // Create new user
+          const newUser = new User({
+            googleId: profile.id,
+            email: email?.toLowerCase(),
+            firstName: profile.name?.givenName || profile.displayName || 'User',
+            lastName: profile.name?.familyName || '',
+            role: UserRole.HYBRID,
+            isActive: true
+          });
+
+          await newUser.save();
+          return done(null, newUser);
+        } catch (error) {
+          return done(error as Error);
+        }
+      }
+    )
+  );
+}
 
 // Serialize user for session
 passport.serializeUser((user: any, done) => {
