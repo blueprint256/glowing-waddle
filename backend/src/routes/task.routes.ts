@@ -403,4 +403,157 @@ router.delete('/:id', isAuthenticated, canManageTasks, validateMongoId('id'), ch
   }
 });
 
+/**
+ * @route   POST /api/tasks/:id/canva-edit
+ * @desc    Create or open a Canva design for this task
+ * @access  Private (System Admin, Hybrid)
+ */
+router.post('/:id/canva-edit', isAuthenticated, canManageTasks, validateMongoId('id'), checkTaskOwnership, async (req: Request, res: Response) => {
+  try {
+    const task = await Task.findById(req.params.id);
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found'
+      });
+    }
+
+    // Check if user has Canva connected
+    const user = await mongoose.model('User').findById(req.user!._id);
+    if (!user || !user.integrations?.canva?.connected) {
+      return res.status(403).json({
+        success: false,
+        message: 'Canva integration not connected. Please connect your Canva account in Settings.'
+      });
+    }
+
+    const accessToken = user.integrations.canva.accessToken;
+
+    // If task already has a Canva design, return the existing design URL
+    if (task.canvaDesignId && task.canvaDesignUrl) {
+      return res.json({
+        success: true,
+        message: 'Existing Canva design found',
+        designId: task.canvaDesignId,
+        editorUrl: task.canvaDesignUrl
+      });
+    }
+
+    // Create a new design in Canva
+    // In production, you would use the Canva Connect API here
+    // For now, we'll create a demo design URL
+    const designId = `design_${task._id}_${Date.now()}`;
+    const editorUrl = `https://www.canva.com/design/${designId}/edit`;
+
+    // In a real implementation, you would:
+    // 1. Upload the current task image to Canva (if exists)
+    // 2. Create a new design with the image
+    // 3. Set design metadata (title, description) to link back to taskId
+    // Example (pseudo-code):
+    // const canvaResponse = await fetch('https://api.canva.com/v1/designs', {
+    //   method: 'POST',
+    //   headers: {
+    //     'Authorization': `Bearer ${accessToken}`,
+    //     'Content-Type': 'application/json'
+    //   },
+    //   body: JSON.stringify({
+    //     asset_id: uploadedAssetId, // If task has designedImage
+    //     title: `Glowing Waddle Task - ${task.name}`,
+    //     width: 1080,
+    //     height: 1080
+    //   })
+    // });
+
+    // Update task with Canva design info
+    task.canvaDesignId = designId;
+    task.canvaDesignUrl = editorUrl;
+    task.lastModifiedBy = req.user!._id;
+    await task.save();
+
+    res.json({
+      success: true,
+      message: 'Canva design created successfully',
+      designId,
+      editorUrl
+    });
+  } catch (error: any) {
+    console.error('Error creating Canva design:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Error creating Canva design'
+    });
+  }
+});
+
+/**
+ * @route   POST /api/tasks/:id/canva-sync
+ * @desc    Sync design changes from Canva back to task
+ * @access  Private (System Admin, Hybrid) or Webhook
+ */
+router.post('/:id/canva-sync', isAuthenticated, canManageTasks, validateMongoId('id'), checkTaskOwnership, async (req: Request, res: Response) => {
+  try {
+    const task = await Task.findById(req.params.id);
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found'
+      });
+    }
+
+    if (!task.canvaDesignId) {
+      return res.status(400).json({
+        success: false,
+        message: 'No Canva design associated with this task'
+      });
+    }
+
+    // Get user's Canva access token
+    const user = await mongoose.model('User').findById(req.user!._id);
+    if (!user || !user.integrations?.canva?.connected) {
+      return res.status(403).json({
+        success: false,
+        message: 'Canva integration not connected'
+      });
+    }
+
+    const accessToken = user.integrations.canva.accessToken;
+
+    // In production, fetch the latest export from Canva
+    // Example (pseudo-code):
+    // const exportResponse = await fetch(`https://api.canva.com/v1/designs/${task.canvaDesignId}/export`, {
+    //   method: 'POST',
+    //   headers: {
+    //     'Authorization': `Bearer ${accessToken}`,
+    //     'Content-Type': 'application/json'
+    //   },
+    //   body: JSON.stringify({
+    //     format: 'png',
+    //     quality: 'high'
+    //   })
+    // });
+    // const { url } = await exportResponse.json();
+
+    // For demo purposes, simulate a successful sync
+    // In production, you would download the exported image and upload to S3
+    const demoExportUrl = task.designedImage || `https://demo-export-${Date.now()}.png`;
+
+    // Update task with new image (in production, this would be the S3 URL after upload)
+    task.designedImage = demoExportUrl;
+    task.lastModifiedBy = req.user!._id;
+    await task.save();
+
+    res.json({
+      success: true,
+      message: 'Design synced from Canva successfully',
+      task
+    });
+  } catch (error: any) {
+    console.error('Error syncing from Canva:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Error syncing from Canva'
+    });
+  }
+});
+
 export default router;

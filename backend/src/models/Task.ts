@@ -15,6 +15,8 @@ export interface ITask extends Document {
   taskDate?: Date; // Single date for when task should be carried out
   content?: string;
   designedImage?: string; // S3 URL for product marketing image
+  canvaDesignId?: string; // Canva design ID for tracking edits
+  canvaDesignUrl?: string; // Canva editor URL for this design
   createdBy: mongoose.Types.ObjectId;
   lastModifiedBy?: mongoose.Types.ObjectId;
   createdAt: Date;
@@ -55,6 +57,12 @@ const taskSchema = new Schema<ITask>(
     },
     designedImage: {
       type: String // S3 URL
+    },
+    canvaDesignId: {
+      type: String // Canva design ID for tracking edits
+    },
+    canvaDesignUrl: {
+      type: String // Canva editor URL
     },
     createdBy: {
       type: Schema.Types.ObjectId,

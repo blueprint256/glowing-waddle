@@ -91,6 +91,8 @@ export interface Task {
   taskDate?: string; // Single date for when task should be carried out
   content?: string;
   designedImage?: string;
+  canvaDesignId?: string;
+  canvaDesignUrl?: string;
   createdBy: any;
   lastModifiedBy?: any;
   createdAt: string;

@@ -30,10 +30,11 @@ import {
   Close as CloseIcon,
   ExpandMore as ExpandMoreIcon,
   CalendarToday as CalendarIcon,
-  Visibility as VisibilityIcon
+  Visibility as VisibilityIcon,
+  Brush as BrushIcon
 } from '@mui/icons-material';
 import { useAuthStore } from '../store/authStore';
-import { taskAPI } from '../services/api';
+import { taskAPI, integrationsAPI } from '../services/api';
 import { Task, TaskStatus, UserRole, Campaign, Project } from '../types';
 import FilterToolbar, { FilterOptions } from '../components/FilterToolbar';
 import SocialPreviewModal from '../components/SocialPreviewModal';
@@ -53,6 +54,8 @@ export default function TasksSheet() {
   const [editValue, setEditValue] = useState('');
   const editInputRef = useRef<HTMLInputElement>(null);
   const [previewTask, setPreviewTask] = useState<Task | null>(null);
+  const [canvaConnected, setCanvaConnected] = useState(false);
+  const [syncingTask, setSyncingTask] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterOptions>({
     search: '',
     campaignIds: [],
@@ -74,6 +77,22 @@ export default function TasksSheet() {
       editInputRef.current.select();
     }
   }, [editingCell]);
+
+  // Check Canva connection status
+  useEffect(() => {
+    checkCanvaConnection();
+  }, []);
+
+  const checkCanvaConnection = async () => {
+    try {
+      const response = await integrationsAPI.getStatus();
+      if (response.data.success) {
+        setCanvaConnected(response.data.integrations.canva.connected);
+      }
+    } catch (error) {
+      console.error('Error checking Canva connection:', error);
+    }
+  };
 
   const loadTasks = async () => {
     try {
@@ -187,6 +206,54 @@ export default function TasksSheet() {
       );
     } catch (error) {
       console.error('Error updating task date:', error);
+    }
+  };
+
+  const handleEditInCanva = async (task: Task) => {
+    if (!canvaConnected) {
+      alert('Please connect your Canva account in Settings → Integrations before editing designs.');
+      return;
+    }
+
+    try {
+      const response = await taskAPI.canvaEdit(task._id);
+      if (response.data.success) {
+        const { editorUrl, designId } = response.data;
+
+        // Update local state with Canva design info
+        setTasks((prev) =>
+          prev.map((t) =>
+            t._id === task._id ? { ...t, canvaDesignId: designId, canvaDesignUrl: editorUrl } : t
+          )
+        );
+
+        // Open Canva editor in new tab
+        window.open(editorUrl, '_blank');
+      }
+    } catch (error: any) {
+      console.error('Error opening Canva editor:', error);
+      alert(error.response?.data?.message || 'Failed to open Canva editor. Please try again.');
+    }
+  };
+
+  const handleSyncFromCanva = async (taskId: string) => {
+    try {
+      setSyncingTask(taskId);
+      const response = await taskAPI.canvaSync(taskId);
+      if (response.data.success) {
+        // Update local state with synced task
+        setTasks((prev) =>
+          prev.map((t) =>
+            t._id === taskId ? response.data.task : t
+          )
+        );
+        alert('Design synced from Canva successfully!');
+      }
+    } catch (error: any) {
+      console.error('Error syncing from Canva:', error);
+      alert(error.response?.data?.message || 'Failed to sync from Canva. Please try again.');
+    } finally {
+      setSyncingTask(null);
     }
   };
 
@@ -410,16 +477,30 @@ export default function TasksSheet() {
                       {renderEditableCell(task, 'description', task.description || '')}
                     </TableCell>
                     <TableCell sx={{ textAlign: 'center' }}>
-                      <Tooltip title="Preview on Social Media">
-                        <IconButton
-                          size="small"
-                          onClick={() => setPreviewTask(task)}
-                          color="primary"
-                          disabled={!task.name && !task.designedImage}
-                        >
-                          <VisibilityIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
+                      <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
+                        <Tooltip title="Edit in Canva - Open this image in Canva for editing">
+                          <span>
+                            <IconButton
+                              size="small"
+                              onClick={() => handleEditInCanva(task)}
+                              color="secondary"
+                              disabled={!canvaConnected}
+                            >
+                              <BrushIcon fontSize="small" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                        <Tooltip title="Preview on Social Media">
+                          <IconButton
+                            size="small"
+                            onClick={() => setPreviewTask(task)}
+                            color="primary"
+                            disabled={!task.name && !task.designedImage}
+                          >
+                            <VisibilityIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
                     </TableCell>
                   </TableRow>
                 ))}

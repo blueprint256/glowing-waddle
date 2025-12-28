@@ -77,7 +77,9 @@ export const taskAPI = {
   uploadImage: (id: string, formData: FormData) => api.post(`/tasks/${id}/upload-image`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
-  delete: (id: string) => api.delete(`/tasks/${id}`)
+  delete: (id: string) => api.delete(`/tasks/${id}`),
+  canvaEdit: (id: string) => api.post(`/tasks/${id}/canva-edit`),
+  canvaSync: (id: string) => api.post(`/tasks/${id}/canva-sync`)
 };
 
 // Comment API
@@ -97,6 +99,13 @@ export const assetAPI = {
   }),
   download: (id: string) => api.get(`/assets/${id}/download`, { responseType: 'blob' }),
   delete: (id: string) => api.delete(`/assets/${id}`)
+};
+
+// Integrations API
+export const integrationsAPI = {
+  getStatus: () => api.get('/integrations/status'),
+  connectCanva: () => api.get('/integrations/canva'),
+  disconnectCanva: () => api.post('/integrations/canva/disconnect')
 };
 
 export default api;

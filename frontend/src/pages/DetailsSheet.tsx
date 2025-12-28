@@ -36,10 +36,11 @@ import {
   Edit as EditIcon,
   Check as CheckIcon,
   Close as CloseIcon,
-  Visibility as VisibilityIcon
+  Visibility as VisibilityIcon,
+  Brush as BrushIcon
 } from '@mui/icons-material';
 import { useAuthStore } from '../store/authStore';
-import { campaignAPI, projectAPI, taskAPI } from '../services/api';
+import { campaignAPI, projectAPI, taskAPI, integrationsAPI } from '../services/api';
 import { Campaign, Project, Task, TaskStatus, CampaignStatus, ProjectStatus, UserRole, User } from '../types';
 import CreateTaskModal from '../components/CreateTaskModal';
 import CampaignFormModal from '../components/CampaignFormModal';
@@ -84,6 +85,8 @@ export default function DetailsSheet() {
   const [editValue, setEditValue] = useState('');
   const editInputRef = useRef<HTMLInputElement>(null);
   const [previewTask, setPreviewTask] = useState<Task | null>(null);
+  const [canvaConnected, setCanvaConnected] = useState(false);
+  const [syncingTask, setSyncingTask] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterOptions>({
     search: '',
     campaignIds: [],
@@ -138,6 +141,22 @@ export default function DetailsSheet() {
       editInputRef.current.select();
     }
   }, [editingCell]);
+
+  // Check Canva connection status
+  useEffect(() => {
+    checkCanvaConnection();
+  }, []);
+
+  const checkCanvaConnection = async () => {
+    try {
+      const response = await integrationsAPI.getStatus();
+      if (response.data.success) {
+        setCanvaConnected(response.data.integrations.canva.connected);
+      }
+    } catch (error) {
+      console.error('Error checking Canva connection:', error);
+    }
+  };
 
   const loadCampaigns = async () => {
     try {
@@ -547,6 +566,56 @@ export default function DetailsSheet() {
     }
   };
 
+  const handleEditInCanva = async (task: Task, campaignId: string, projectId: string) => {
+    if (!canvaConnected) {
+      alert('Please connect your Canva account in Settings → Integrations before editing designs.');
+      return;
+    }
+
+    try {
+      const response = await taskAPI.canvaEdit(task._id);
+      if (response.data.success) {
+        const { editorUrl, designId } = response.data;
+
+        // Update local state with Canva design info
+        setCampaigns(prev =>
+          prev.map(c => ({
+            ...c,
+            projects: c.projects?.map(p => ({
+              ...p,
+              tasks: p.tasks?.map(t =>
+                t._id === task._id ? { ...t, canvaDesignId: designId, canvaDesignUrl: editorUrl } : t
+              )
+            }))
+          }))
+        );
+
+        // Open Canva editor in new tab
+        window.open(editorUrl, '_blank');
+      }
+    } catch (error: any) {
+      console.error('Error opening Canva editor:', error);
+      alert(error.response?.data?.message || 'Failed to open Canva editor. Please try again.');
+    }
+  };
+
+  const handleSyncFromCanva = async (taskId: string, campaignId: string, projectId: string) => {
+    try {
+      setSyncingTask(taskId);
+      const response = await taskAPI.canvaSync(taskId);
+      if (response.data.success) {
+        // Reload tasks to get updated image
+        await loadTasksForProject(campaignId, projectId);
+        alert('Design synced from Canva successfully!');
+      }
+    } catch (error: any) {
+      console.error('Error syncing from Canva:', error);
+      alert(error.response?.data?.message || 'Failed to sync from Canva. Please try again.');
+    } finally {
+      setSyncingTask(null);
+    }
+  };
+
   // Helper function to render a single campaign with its hierarchical structure
   const renderCampaign = (campaign: CampaignWithProjects) => {
     const progress = expandedCampaigns.has(campaign._id)
@@ -910,6 +979,18 @@ export default function DetailsSheet() {
                                   </TableCell>
                                   <TableCell align="right">
                                     <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'flex-end' }}>
+                                      <Tooltip title="Edit in Canva - Open this image in Canva for editing">
+                                        <span>
+                                          <IconButton
+                                            size="small"
+                                            color="secondary"
+                                            onClick={() => handleEditInCanva(task, campaign._id, project._id)}
+                                            disabled={!canvaConnected}
+                                          >
+                                            <BrushIcon fontSize="small" />
+                                          </IconButton>
+                                        </span>
+                                      </Tooltip>
                                       <Tooltip title="Preview on Social Media">
                                         <IconButton
                                           size="small"
