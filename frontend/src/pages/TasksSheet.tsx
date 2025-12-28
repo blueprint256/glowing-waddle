@@ -30,13 +30,15 @@ import {
   Close as CloseIcon,
   ExpandMore as ExpandMoreIcon,
   CalendarToday as CalendarIcon,
-  Visibility as VisibilityIcon
+  Visibility as VisibilityIcon,
+  Add as AddIcon
 } from '@mui/icons-material';
 import { useAuthStore } from '../store/authStore';
 import { taskAPI } from '../services/api';
 import { Task, TaskStatus, UserRole, Campaign, Project } from '../types';
 import FilterToolbar, { FilterOptions } from '../components/FilterToolbar';
 import SocialPreviewModal from '../components/SocialPreviewModal';
+import CreateTaskModal from '../components/CreateTaskModal';
 
 interface EditingCell {
   taskId: string;
@@ -53,6 +55,7 @@ export default function TasksSheet() {
   const [editValue, setEditValue] = useState('');
   const editInputRef = useRef<HTMLInputElement>(null);
   const [previewTask, setPreviewTask] = useState<Task | null>(null);
+  const [createTaskModalOpen, setCreateTaskModalOpen] = useState(false);
   const [filters, setFilters] = useState<FilterOptions>({
     search: '',
     campaignIds: [],
@@ -294,12 +297,29 @@ export default function TasksSheet() {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, mb: 1 }}>
-        Tasks Sheet
-      </Typography>
-      <Typography variant="body2" color="text.secondary" paragraph>
-        Flat view of all tasks with inline editing and advanced filtering
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+        <Box>
+          <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, mb: 1 }}>
+            Tasks Sheet
+          </Typography>
+          <Typography variant="body2" color="text.secondary" paragraph>
+            Flat view of all tasks with inline editing and advanced filtering
+          </Typography>
+        </Box>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => setCreateTaskModalOpen(true)}
+          sx={{
+            backgroundColor: '#2563EB',
+            '&:hover': { backgroundColor: '#1E40AF' },
+            px: 3,
+            py: 1.5
+          }}
+        >
+          Create Task
+        </Button>
+      </Box>
 
       {/* Filter Toolbar */}
       <FilterToolbar
@@ -351,9 +371,25 @@ export default function TasksSheet() {
                       }
                     }}
                   >
-                    <TableCell>{renderEditableCell(task, 'name', task.name)}</TableCell>
                     <TableCell>
-                      <Typography variant="body2" color="primary">
+                      <Typography
+                        variant="body2"
+                        onClick={() => navigate(`/tasks/${task._id}`)}
+                        sx={{
+                          cursor: 'pointer',
+                          color: 'primary.main',
+                          fontWeight: 500,
+                          '&:hover': {
+                            textDecoration: 'underline',
+                            color: 'primary.dark'
+                          }
+                        }}
+                      >
+                        {task.name}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" color="text.secondary">
                         {getCampaignName(task)}
                       </Typography>
                     </TableCell>
@@ -475,6 +511,16 @@ export default function TasksSheet() {
           </Paper>
         </>
       )}
+
+      {/* Create Task Modal */}
+      <CreateTaskModal
+        open={createTaskModalOpen}
+        onClose={() => setCreateTaskModalOpen(false)}
+        onTaskCreated={() => {
+          setCreateTaskModalOpen(false);
+          loadTasks(); // Refresh tasks list
+        }}
+      />
     </Box>
   );
 }
