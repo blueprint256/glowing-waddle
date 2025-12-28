@@ -35,7 +35,8 @@ import {
   Upload as UploadIcon,
   Edit as EditIcon,
   Check as CheckIcon,
-  Close as CloseIcon
+  Close as CloseIcon,
+  Visibility as VisibilityIcon
 } from '@mui/icons-material';
 import { useAuthStore } from '../store/authStore';
 import { campaignAPI, projectAPI, taskAPI } from '../services/api';
@@ -45,6 +46,7 @@ import CampaignFormModal from '../components/CampaignFormModal';
 import ProjectFormDialog from '../components/Projects/ProjectFormDialog';
 import Pagination from '../components/Pagination';
 import FilterToolbar, { FilterOptions } from '../components/FilterToolbar';
+import SocialPreviewModal from '../components/SocialPreviewModal';
 
 interface CampaignWithProjects extends Campaign {
   projects?: ProjectWithTasks[];
@@ -81,6 +83,7 @@ export default function DetailsSheet() {
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [editValue, setEditValue] = useState('');
   const editInputRef = useRef<HTMLInputElement>(null);
+  const [previewTask, setPreviewTask] = useState<Task | null>(null);
   const [filters, setFilters] = useState<FilterOptions>({
     search: '',
     campaignIds: [],
@@ -906,15 +909,27 @@ export default function DetailsSheet() {
                                     </Typography>
                                   </TableCell>
                                   <TableCell align="right">
-                                    <Tooltip title="Delete Task">
-                                      <IconButton
-                                        size="small"
-                                        color="error"
-                                        onClick={() => handleDeleteTask(task._id, campaign._id, project._id)}
-                                      >
-                                        <DeleteIcon fontSize="small" />
-                                      </IconButton>
-                                    </Tooltip>
+                                    <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'flex-end' }}>
+                                      <Tooltip title="Preview on Social Media">
+                                        <IconButton
+                                          size="small"
+                                          color="primary"
+                                          onClick={() => setPreviewTask(task)}
+                                          disabled={!task.name && !task.designedImage}
+                                        >
+                                          <VisibilityIcon fontSize="small" />
+                                        </IconButton>
+                                      </Tooltip>
+                                      <Tooltip title="Delete Task">
+                                        <IconButton
+                                          size="small"
+                                          color="error"
+                                          onClick={() => handleDeleteTask(task._id, campaign._id, project._id)}
+                                        >
+                                          <DeleteIcon fontSize="small" />
+                                        </IconButton>
+                                      </Tooltip>
+                                    </Box>
                                   </TableCell>
                                 </TableRow>
                               );
@@ -1131,6 +1146,15 @@ export default function DetailsSheet() {
           onClose={handleCloseCreateProjectModal}
           campaignId={selectedCampaignForProject}
           onSuccess={handleProjectCreated}
+        />
+      )}
+
+      {/* Social Preview Modal */}
+      {previewTask && (
+        <SocialPreviewModal
+          open={!!previewTask}
+          onClose={() => setPreviewTask(null)}
+          task={previewTask}
         />
       )}
     </Box>

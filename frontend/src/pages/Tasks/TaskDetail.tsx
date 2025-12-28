@@ -20,10 +20,11 @@ import {
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import { CloudUpload as CloudUploadIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import { CloudUpload as CloudUploadIcon, Delete as DeleteIcon, Visibility as VisibilityIcon } from '@mui/icons-material';
 import { taskAPI, commentAPI } from '../../services/api';
 import { Task, Comment, TaskStatus } from '../../types';
 import { useAuthStore } from '../../store/authStore';
+import SocialPreviewModal from '../../components/SocialPreviewModal';
 
 export default function TaskDetail() {
   const { id } = useParams<{ id: string }>();
@@ -36,6 +37,7 @@ export default function TaskDetail() {
   const [error, setError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const [editForm, setEditForm] = useState({
     name: '',
@@ -261,7 +263,16 @@ export default function TaskDetail() {
                 </Button>
               </Box>
 
-              <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
+              <Box sx={{ mt: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                <Button
+                  variant="contained"
+                  startIcon={<VisibilityIcon />}
+                  onClick={() => setPreviewOpen(true)}
+                  disabled={!task.name && !task.designedImage}
+                  sx={{ backgroundColor: '#1DA1F2', '&:hover': { backgroundColor: '#1A91DA' } }}
+                >
+                  Preview on Social Media
+                </Button>
                 <Button variant="contained" onClick={() => setIsEditing(true)}>
                   Edit Task
                 </Button>
@@ -351,6 +362,15 @@ export default function TaskDetail() {
             </Box>
           )}
         </Paper>
+
+        {/* Social Preview Modal */}
+        {task && (
+          <SocialPreviewModal
+            open={previewOpen}
+            onClose={() => setPreviewOpen(false)}
+            task={task}
+          />
+        )}
 
         {/* Comments Section */}
         <Paper sx={{ p: 3 }}>
