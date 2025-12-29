@@ -15,12 +15,21 @@ import {
   MenuItem,
   CircularProgress,
   Alert,
-  CardMedia
+  CardMedia,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
 } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import { CloudUpload as CloudUploadIcon, Delete as DeleteIcon, Visibility as VisibilityIcon } from '@mui/icons-material';
+import {
+  CloudUpload as CloudUploadIcon,
+  Delete as DeleteIcon,
+  Visibility as VisibilityIcon,
+  AutoAwesome as AutoAwesomeIcon
+} from '@mui/icons-material';
 import { taskAPI, commentAPI } from '../../services/api';
 import { Task, Comment, TaskStatus } from '../../types';
 import { useAuthStore } from '../../store/authStore';
@@ -38,6 +47,10 @@ export default function TaskDetail() {
   const [isEditing, setIsEditing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [refineModalOpen, setRefineModalOpen] = useState(false);
+  const [refining, setRefining] = useState(false);
+  const [refinedDescription, setRefinedDescription] = useState('');
+  const [refineError, setRefineError] = useState<string | null>(null);
 
   const [editForm, setEditForm] = useState({
     name: '',
@@ -151,6 +164,39 @@ export default function TaskDetail() {
       console.error('Error deleting task:', error);
       alert(error.response?.data?.message || 'Failed to delete task');
     }
+  };
+
+  const handleRefineDescription = async () => {
+    if (!editForm.description.trim()) {
+      alert('Please enter a description before refining');
+      return;
+    }
+
+    try {
+      setRefining(true);
+      setRefineError(null);
+      const res = await taskAPI.refineDescription(id!);
+      setRefinedDescription(res.data.refinedDescription);
+      setRefineModalOpen(true);
+    } catch (error: any) {
+      console.error('Error refining description:', error);
+      setRefineError(error.response?.data?.message || 'Failed to refine description');
+      alert(error.response?.data?.message || 'Failed to refine description');
+    } finally {
+      setRefining(false);
+    }
+  };
+
+  const handleApplyRefinedDescription = () => {
+    setEditForm({ ...editForm, description: refinedDescription });
+    setRefineModalOpen(false);
+    setRefinedDescription('');
+  };
+
+  const handleCloseRefineModal = () => {
+    setRefineModalOpen(false);
+    setRefinedDescription('');
+    setRefineError(null);
   };
 
   const getStatusColor = (status: TaskStatus) => {
@@ -304,6 +350,15 @@ export default function TaskDetail() {
                 multiline
                 rows={3}
               />
+              <Button
+                variant="outlined"
+                startIcon={refining ? <CircularProgress size={20} /> : <AutoAwesomeIcon />}
+                onClick={handleRefineDescription}
+                disabled={refining || !editForm.description.trim()}
+                sx={{ mt: 1, mb: 1 }}
+              >
+                {refining ? 'Refining...' : 'Refine Description with AI'}
+              </Button>
 
               <Grid container spacing={2} sx={{ mt: 1 }}>
                 <Grid item xs={12} md={6}>
@@ -371,6 +426,55 @@ export default function TaskDetail() {
             task={task}
           />
         )}
+
+        {/* Refine Description Modal */}
+        <Dialog
+          open={refineModalOpen}
+          onClose={handleCloseRefineModal}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle>Refine Task Description</DialogTitle>
+          <DialogContent>
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                Original Description:
+              </Typography>
+              <Paper sx={{ p: 2, mb: 3, bgcolor: 'grey.50' }}>
+                <Typography variant="body1" style={{ whiteSpace: 'pre-wrap' }}>
+                  {editForm.description}
+                </Typography>
+              </Paper>
+
+              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                Refined Description:
+              </Typography>
+              <Paper sx={{ p: 2, bgcolor: 'primary.50', border: '1px solid', borderColor: 'primary.200' }}>
+                <Typography variant="body1" style={{ whiteSpace: 'pre-wrap' }}>
+                  {refinedDescription}
+                </Typography>
+              </Paper>
+
+              {refineError && (
+                <Alert severity="error" sx={{ mt: 2 }}>
+                  {refineError}
+                </Alert>
+              )}
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseRefineModal} color="inherit">
+              Cancel
+            </Button>
+            <Button
+              onClick={handleApplyRefinedDescription}
+              variant="contained"
+              color="primary"
+            >
+              Apply Refined Description
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         {/* Comments Section */}
         <Paper sx={{ p: 3 }}>

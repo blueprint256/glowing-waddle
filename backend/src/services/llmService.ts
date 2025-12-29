@@ -145,6 +145,7 @@ export interface SuperPromptParams {
     startDate?: Date;
     endDate?: Date;
   };
+  taskDescription?: string;
   [key: string]: any;
 }
 
@@ -169,6 +170,7 @@ export async function getPromptByName(name: string): Promise<string | null> {
  * - {companyName} - just the company name
  * - {campaignDetails} - full campaign details as JSON
  * - {campaignName} - just the campaign name
+ * - {taskDescription} - current task description
  * - Any custom placeholder that matches a key in the params
  */
 export function compileSuperPrompt(promptTemplate: string, params: SuperPromptParams): string {
@@ -208,9 +210,14 @@ export function compileSuperPrompt(promptTemplate: string, params: SuperPromptPa
     compiledPrompt = compiledPrompt.replace(/\{hashtags\}/g, params.campaignDetails.hashtags.join(', '));
   }
 
+  // Replace {taskDescription} if provided
+  if (params.taskDescription) {
+    compiledPrompt = compiledPrompt.replace(/\{taskDescription\}/g, params.taskDescription);
+  }
+
   // Replace any custom placeholders
   Object.keys(params).forEach(key => {
-    if (key !== 'companyInfo' && key !== 'campaignDetails') {
+    if (key !== 'companyInfo' && key !== 'campaignDetails' && key !== 'taskDescription') {
       const value = typeof params[key] === 'object'
         ? JSON.stringify(params[key], null, 2)
         : String(params[key]);

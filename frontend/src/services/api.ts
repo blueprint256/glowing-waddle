@@ -78,6 +78,7 @@ export const taskAPI = {
   uploadImage: (id: string, formData: FormData) => api.post(`/tasks/${id}/upload-image`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
+  refineDescription: (id: string) => api.post(`/tasks/${id}/refine-description`),
   delete: (id: string) => api.delete(`/tasks/${id}`)
 };
 
