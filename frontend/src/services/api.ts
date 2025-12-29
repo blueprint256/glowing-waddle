@@ -55,7 +55,8 @@ export const campaignAPI = {
   create: (data: any) => api.post('/campaigns', data),
   update: (id: string, data: any) => api.put(`/campaigns/${id}`, data),
   archive: (id: string) => api.put(`/campaigns/${id}/archive`),
-  delete: (id: string) => api.delete(`/campaigns/${id}`)
+  delete: (id: string) => api.delete(`/campaigns/${id}`),
+  generate: (id: string, data: { promptName: string }) => api.post(`/campaigns/${id}/generate`, data)
 };
 
 // Project API
@@ -115,6 +116,21 @@ export const llmAPI = {
   generateCampaignTasks: (data: { campaignId: string; promptName?: string }) =>
     api.post('/llm/generate-campaign-tasks', data),
   getUsage: (params?: any) => api.get('/llm/usage', { params })
+};
+
+// Integrations API
+export const integrationsAPI = {
+  getStatus: () => api.get('/integrations/status'),
+  canva: {
+    connect: () => window.location.href = `${API_URL}/integrations/canva`,
+    disconnect: () => api.post('/integrations/canva/disconnect')
+  },
+  openai: {
+    getStatus: () => api.get('/integrations/openai/status'),
+    saveKey: (apiKey: string) => api.patch('/integrations/openai/key', { apiKey }),
+    testConnection: () => api.post('/integrations/openai/test'),
+    removeKey: () => api.delete('/integrations/openai/key')
+  }
 };
 
 export default api;

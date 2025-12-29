@@ -20,13 +20,23 @@ import {
   DialogContent,
   DialogActions,
   Alert,
-  IconButton
+  IconButton,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem
 } from '@mui/material';
-import { Add as AddIcon, AutoAwesome as AiIcon, Close as CloseIcon, ContentCopy as CopyIcon } from '@mui/icons-material';
-import { campaignAPI, projectAPI, llmAPI } from '../../services/api';
+import { Add as AddIcon, AutoAwesome as AiIcon, Close as CloseIcon, ContentCopy as CopyIcon, CheckCircle as CheckIcon } from '@mui/icons-material';
+import { campaignAPI, projectAPI, llmAPI, promptAPI } from '../../services/api';
 import { Campaign, Project, UserRole } from '../../types';
 import { useAuthStore } from '../../store/authStore';
 import ProjectFormDialog from '../../components/Projects/ProjectFormDialog';
+
+interface Prompt {
+  _id: string;
+  name: string;
+  details: string;
+}
 
 export default function CampaignDetail() {
   const { id } = useParams<{ id: string }>();
@@ -37,11 +47,19 @@ export default function CampaignDetail() {
   const [loading, setLoading] = useState(true);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
 
-  // AI Generation states
+  // AI Generation states (System Admin)
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedContent, setGeneratedContent] = useState<string | null>(null);
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [showGenerationDialog, setShowGenerationDialog] = useState(false);
+
+  // Hybrid User Generation states
+  const [prompts, setPrompts] = useState<Prompt[]>([]);
+  const [selectedPromptId, setSelectedPromptId] = useState<string>('');
+  const [showPromptDialog, setShowPromptDialog] = useState(false);
+  const [isGeneratingCampaign, setIsGeneratingCampaign] = useState(false);
+  const [campaignGenerationSuccess, setCampaignGenerationSuccess] = useState<string | null>(null);
+  const [campaignGenerationError, setCampaignGenerationError] = useState<string | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -111,6 +129,57 @@ export default function CampaignDetail() {
   const handleCopyContent = () => {
     if (generatedContent) {
       navigator.clipboard.writeText(generatedContent);
+    }
+  };
+
+  // Hybrid User Generation handlers
+  const loadPrompts = async () => {
+    try {
+      const res = await promptAPI.getAll();
+      setPrompts(res.data.prompts || []);
+    } catch (error) {
+      console.error('Error loading prompts:', error);
+    }
+  };
+
+  const handleOpenPromptDialog = () => {
+    loadPrompts();
+    setShowPromptDialog(true);
+    setCampaignGenerationSuccess(null);
+    setCampaignGenerationError(null);
+    setSelectedPromptId('');
+  };
+
+  const handleClosePromptDialog = () => {
+    setShowPromptDialog(false);
+    setSelectedPromptId('');
+    setCampaignGenerationSuccess(null);
+    setCampaignGenerationError(null);
+  };
+
+  const handleGenerateCampaign = async () => {
+    if (!id || !selectedPromptId) return;
+
+    const selectedPrompt = prompts.find(p => p._id === selectedPromptId);
+    if (!selectedPrompt) return;
+
+    setIsGeneratingCampaign(true);
+    setCampaignGenerationError(null);
+    setCampaignGenerationSuccess(null);
+
+    try {
+      const response = await campaignAPI.generate(id, { promptName: selectedPrompt.name });
+      if (response.data.success) {
+        setCampaignGenerationSuccess(response.data.message);
+        // Reload projects to show the newly created ones
+        loadProjects();
+      }
+    } catch (error: any) {
+      console.error('Error generating campaign:', error);
+      const errorMessage = error.response?.data?.message || 'Failed to generate campaign content. Please try again.';
+      setCampaignGenerationError(errorMessage);
+    } finally {
+      setIsGeneratingCampaign(false);
     }
   };
 
@@ -220,6 +289,17 @@ export default function CampaignDetail() {
               {isGenerating ? 'Generating...' : 'Generate with AI'}
             </Button>
           )}
+          {user?.role === UserRole.HYBRID && canCreateProject() && (
+            <Button
+              variant="outlined"
+              startIcon={<AiIcon />}
+              onClick={handleOpenPromptDialog}
+              disabled={isGeneratingCampaign}
+              color="primary"
+            >
+              Generate Campaign
+            </Button>
+          )}
           <Button
             variant="contained"
             startIcon={<AddIcon />}
@@ -266,7 +346,7 @@ export default function CampaignDetail() {
         onSuccess={handleProjectCreated}
       />
 
-      {/* AI Generation Dialog */}
+      {/* AI Generation Dialog (System Admin) */}
       <Dialog
         open={showGenerationDialog}
         onClose={handleCloseGenerationDialog}
@@ -319,6 +399,84 @@ export default function CampaignDetail() {
           <Button onClick={handleCloseGenerationDialog} variant="contained">
             Close
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Generate Campaign Dialog (Hybrid User) */}
+      <Dialog
+        open={showPromptDialog}
+        onClose={handleClosePromptDialog}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h6">Generate Campaign Content</Typography>
+            <IconButton onClick={handleClosePromptDialog} size="small">
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {campaignGenerationSuccess ? (
+            <Alert severity="success" icon={<CheckIcon />} sx={{ mb: 2 }}>
+              {campaignGenerationSuccess}
+            </Alert>
+          ) : (
+            <>
+              {campaignGenerationError && (
+                <Alert severity="error" sx={{ mb: 2 }}>
+                  {campaignGenerationError}
+                </Alert>
+              )}
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                Select a prompt to generate projects and tasks for this campaign using AI.
+              </Typography>
+              <FormControl fullWidth disabled={isGeneratingCampaign}>
+                <InputLabel>Select Prompt</InputLabel>
+                <Select
+                  value={selectedPromptId}
+                  onChange={(e) => setSelectedPromptId(e.target.value)}
+                  label="Select Prompt"
+                >
+                  {prompts.map((prompt) => (
+                    <MenuItem key={prompt._id} value={prompt._id}>
+                      {prompt.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              {isGeneratingCampaign && (
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mt: 3 }}>
+                  <CircularProgress sx={{ mb: 2 }} />
+                  <Typography variant="body2" color="text.secondary">
+                    Generating projects and tasks... This may take a few moments.
+                  </Typography>
+                </Box>
+              )}
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          {campaignGenerationSuccess ? (
+            <Button onClick={handleClosePromptDialog} variant="contained">
+              Close
+            </Button>
+          ) : (
+            <>
+              <Button onClick={handleClosePromptDialog} disabled={isGeneratingCampaign}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleGenerateCampaign}
+                variant="contained"
+                disabled={!selectedPromptId || isGeneratingCampaign}
+                startIcon={<AiIcon />}
+              >
+                Generate
+              </Button>
+            </>
+          )}
         </DialogActions>
       </Dialog>
     </Box>
