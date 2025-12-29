@@ -600,6 +600,48 @@ router.post('/:id/generate', isAuthenticated, validateMongoId('id'), async (req:
         });
       }
 
+      // Helper function to normalize project status from LLM response
+      const normalizeProjectStatus = (status: any): ProjectStatus => {
+        if (!status || typeof status !== 'string') return ProjectStatus.PLANNING;
+
+        const normalized = status.toLowerCase().trim();
+        switch (normalized) {
+          case 'planning':
+            return ProjectStatus.PLANNING;
+          case 'in progress':
+          case 'in-progress':
+          case 'inprogress':
+            return ProjectStatus.IN_PROGRESS;
+          case 'completed':
+            return ProjectStatus.COMPLETED;
+          case 'on hold':
+          case 'on-hold':
+          case 'onhold':
+            return ProjectStatus.ON_HOLD;
+          default:
+            return ProjectStatus.PLANNING;
+        }
+      };
+
+      // Helper function to normalize task status from LLM response
+      const normalizeTaskStatus = (status: any): TaskStatus => {
+        if (!status || typeof status !== 'string') return TaskStatus.PENDING;
+
+        const normalized = status.toLowerCase().trim();
+        switch (normalized) {
+          case 'pending':
+            return TaskStatus.PENDING;
+          case 'in progress':
+          case 'in-progress':
+          case 'inprogress':
+            return TaskStatus.IN_PROGRESS;
+          case 'completed':
+            return TaskStatus.COMPLETED;
+          default:
+            return TaskStatus.PENDING;
+        }
+      };
+
       // Create projects and tasks
       const createdProjects: any[] = [];
       const createdTasksCount: number[] = [];
@@ -616,7 +658,7 @@ router.post('/:id/generate', isAuthenticated, validateMongoId('id'), async (req:
           description: projectData.projectDescription || '',
           campaignId: campaign._id,
           createdBy: req.user!._id,
-          status: projectData.status || ProjectStatus.PLANNING,
+          status: normalizeProjectStatus(projectData.status),
           startDate: projectData.startDate ? new Date(projectData.startDate) : undefined,
           dueDate: projectData.dueDate ? new Date(projectData.dueDate) : undefined,
           assignments: [] // No assignments initially
@@ -638,7 +680,7 @@ router.post('/:id/generate', isAuthenticated, validateMongoId('id'), async (req:
               projectId: project._id,
               campaignId: campaign._id,
               createdBy: req.user!._id,
-              status: taskData.status || TaskStatus.PENDING,
+              status: normalizeTaskStatus(taskData.status),
               taskDate: taskData.taskDate ? new Date(taskData.taskDate) : undefined,
               content: taskData.content || ''
             });
