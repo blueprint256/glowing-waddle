@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -25,6 +26,7 @@ import { User, UserRole } from '../../types';
 import Pagination from '../../components/Pagination';
 
 export default function UserManagement() {
+  const navigate = useNavigate();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -106,7 +108,12 @@ export default function UserManagement() {
           </TableHead>
           <TableBody>
             {users.map((user) => (
-              <TableRow key={user.id}>
+              <TableRow
+                key={user.id || user._id}
+                hover
+                onClick={() => navigate(`/admin/users/${user.id || user._id}`)}
+                sx={{ cursor: 'pointer' }}
+              >
                 <TableCell>
                   {user.firstName} {user.lastName}
                 </TableCell>

@@ -39,6 +39,7 @@ router.post('/signup', async (req: Request, res: Response) => {
       firstName,
       lastName,
       role: 'hybrid',
+      authProvider: 'local',
       isActive: true
     });
 

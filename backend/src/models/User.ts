@@ -10,10 +10,21 @@ export interface IUser extends Document {
   email: string;
   password?: string;
   googleId?: string;
+  authProvider: 'local' | 'google';
   firstName: string;
   lastName: string;
   role: UserRole;
   isActive: boolean;
+  companyInfo?: {
+    companyName?: string;
+    sector?: string;
+    about?: string;
+    productsServices?: string;
+    usp?: string;
+    brandTone?: string;
+    audienceProfile?: string;
+    globalRules?: string;
+  };
   integrations?: {
     canva?: {
       accessToken?: string;
@@ -49,6 +60,11 @@ const userSchema = new Schema<IUser>(
       sparse: true,
       unique: true
     },
+    authProvider: {
+      type: String,
+      enum: ['local', 'google'],
+      default: 'local'
+    },
     firstName: {
       type: String,
       required: true,
@@ -68,6 +84,16 @@ const userSchema = new Schema<IUser>(
     isActive: {
       type: Boolean,
       default: true
+    },
+    companyInfo: {
+      companyName: { type: String, trim: true },
+      sector: { type: String, trim: true },
+      about: { type: String, trim: true },
+      productsServices: { type: String, trim: true },
+      usp: { type: String, trim: true },
+      brandTone: { type: String, trim: true },
+      audienceProfile: { type: String, trim: true },
+      globalRules: { type: String, trim: true }
     },
     integrations: {
       canva: {

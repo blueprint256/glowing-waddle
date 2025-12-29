@@ -16,7 +16,7 @@ const router = express.Router();
  */
 router.post('/', isAuthenticated, canCreateCampaign, validateCampaignCreation, async (req: Request, res: Response) => {
   try {
-    const { name, description, status, startDate, endDate, goals } = req.body;
+    const { name, description, status, startDate, endDate, goals, coreMessages, hashtags } = req.body;
 
     // Create campaign owned by the creator
     const campaign = await Campaign.create({
@@ -26,6 +26,8 @@ router.post('/', isAuthenticated, canCreateCampaign, validateCampaignCreation, a
       startDate,
       endDate,
       goals,
+      coreMessages,
+      hashtags,
       createdBy: req.user!._id
     });
 
@@ -219,7 +221,7 @@ router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), as
     }
 
     const oldData = { ...campaign.toObject() };
-    const { name, description, status, startDate, endDate, goals } = req.body;
+    const { name, description, status, startDate, endDate, goals, coreMessages, hashtags } = req.body;
 
     // Update fields
     if (name) campaign.name = name;
@@ -228,6 +230,8 @@ router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), as
     if (startDate !== undefined) campaign.startDate = startDate;
     if (endDate !== undefined) campaign.endDate = endDate;
     if (goals !== undefined) campaign.goals = goals;
+    if (coreMessages !== undefined) campaign.coreMessages = coreMessages;
+    if (hashtags !== undefined) campaign.hashtags = hashtags;
 
     await campaign.save();
 

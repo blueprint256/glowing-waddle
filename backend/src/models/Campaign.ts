@@ -16,6 +16,8 @@ export interface ICampaign extends Document {
   endDate?: Date;
   createdBy: mongoose.Types.ObjectId;
   goals?: string[];
+  coreMessages?: string;
+  hashtags?: string[];
   archived: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -50,6 +52,14 @@ const campaignSchema = new Schema<ICampaign>(
     },
     goals: [{
       type: String
+    }],
+    coreMessages: {
+      type: String,
+      trim: true
+    },
+    hashtags: [{
+      type: String,
+      trim: true
     }],
     archived: {
       type: Boolean,

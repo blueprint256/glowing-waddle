@@ -11,6 +11,7 @@ import CampaignDetail from './pages/Campaigns/CampaignDetail';
 import ProjectDetail from './pages/Projects/ProjectDetail';
 import TaskDetail from './pages/Tasks/TaskDetail';
 import UserManagement from './pages/Admin/UserManagement';
+import UserDetail from './pages/Admin/UserDetail';
 import DetailsSheet from './pages/DetailsSheet';
 import Calendar from './pages/Calendar';
 import TasksSheet from './pages/TasksSheet';
@@ -61,6 +62,7 @@ function App() {
         <Route path="tasks-sheet" element={<TasksSheet />} />
         <Route path="settings" element={<Settings />} />
         <Route path="admin/users" element={<UserManagement />} />
+        <Route path="admin/users/:id" element={<UserDetail />} />
       </Route>
     </Routes>
   );

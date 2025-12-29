@@ -15,10 +15,12 @@ import {
   CardActions,
   Chip,
   Divider,
-  CircularProgress
+  CircularProgress,
+  MenuItem
 } from '@mui/material';
 import { CheckCircle, Cancel, Link as LinkIcon } from '@mui/icons-material';
 import { useAuthStore } from '../store/authStore';
+import { UserRole } from '../types';
 import api from '../services/api';
 
 interface TabPanelProps {
@@ -43,6 +45,9 @@ function TabPanel(props: TabPanelProps) {
   );
 }
 
+const SECTORS = ['Tech', 'Retail', 'Healthcare', 'Finance', 'Education', 'Manufacturing', 'Other'];
+const BRAND_TONES = ['Professional', 'Fun', 'Serious', 'Casual', 'Formal', 'Friendly'];
+
 export default function Settings() {
   const [searchParams] = useSearchParams();
   const { user } = useAuthStore();
@@ -52,6 +57,18 @@ export default function Settings() {
   const [canvaConnectedAt, setCanvaConnectedAt] = useState<Date | null>(null);
   const [loading, setLoading] = useState(true);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [companyInfoLoading, setCompanyInfoLoading] = useState(false);
+  const [companyInfoSaving, setCompanyInfoSaving] = useState(false);
+  const [companyInfo, setCompanyInfo] = useState({
+    companyName: '',
+    sector: '',
+    about: '',
+    productsServices: '',
+    usp: '',
+    brandTone: '',
+    audienceProfile: '',
+    globalRules: ''
+  });
 
   useEffect(() => {
     // Check for integration callback status
@@ -61,16 +78,59 @@ export default function Settings() {
     if (integration === 'canva' && status) {
       if (status === 'success') {
         setMessage({ type: 'success', text: 'Canva integration connected successfully!' });
-        setActiveTab(1); // Switch to Integrations tab
+        setActiveTab(2); // Switch to Integrations tab
         fetchIntegrationStatus();
       } else {
         setMessage({ type: 'error', text: 'Failed to connect Canva integration. Please try again.' });
-        setActiveTab(1);
+        setActiveTab(2);
       }
     } else {
       fetchIntegrationStatus();
     }
-  }, [searchParams]);
+
+    // Fetch company info if user is Hybrid
+    if (user?.role === UserRole.HYBRID) {
+      fetchCompanyInfo();
+    }
+  }, [searchParams, user]);
+
+  const fetchCompanyInfo = async () => {
+    try {
+      setCompanyInfoLoading(true);
+      const response = await api.get('/users/me/company-info');
+      if (response.data.success && response.data.companyInfo) {
+        setCompanyInfo({
+          companyName: response.data.companyInfo.companyName || '',
+          sector: response.data.companyInfo.sector || '',
+          about: response.data.companyInfo.about || '',
+          productsServices: response.data.companyInfo.productsServices || '',
+          usp: response.data.companyInfo.usp || '',
+          brandTone: response.data.companyInfo.brandTone || '',
+          audienceProfile: response.data.companyInfo.audienceProfile || '',
+          globalRules: response.data.companyInfo.globalRules || ''
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching company info:', error);
+    } finally {
+      setCompanyInfoLoading(false);
+    }
+  };
+
+  const saveCompanyInfo = async () => {
+    try {
+      setCompanyInfoSaving(true);
+      const response = await api.patch('/users/me/company-info', companyInfo);
+      if (response.data.success) {
+        setMessage({ type: 'success', text: 'Company information saved successfully!' });
+      }
+    } catch (error) {
+      console.error('Error saving company info:', error);
+      setMessage({ type: 'error', text: 'Failed to save company information. Please try again.' });
+    } finally {
+      setCompanyInfoSaving(false);
+    }
+  };
 
   const fetchIntegrationStatus = async () => {
     try {
@@ -134,6 +194,7 @@ export default function Settings() {
         <Paper>
           <Tabs value={activeTab} onChange={handleTabChange} aria-label="settings tabs">
             <Tab label="Profile" />
+            {user?.role === UserRole.HYBRID && <Tab label="Company Information" />}
             <Tab label="Integrations" />
             <Tab label="Account" />
           </Tabs>
@@ -177,7 +238,123 @@ export default function Settings() {
             </Box>
           </TabPanel>
 
-          <TabPanel value={activeTab} index={1}>
+          {user?.role === UserRole.HYBRID && (
+            <TabPanel value={activeTab} index={1}>
+              <Typography variant="h6" gutterBottom>
+                Company Information
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                Provide your company details to personalize your campaigns and content
+              </Typography>
+
+              {companyInfoLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                  <CircularProgress />
+                </Box>
+              ) : (
+                <Box sx={{ mt: 3 }}>
+                  <TextField
+                    fullWidth
+                    label="Company Name"
+                    value={companyInfo.companyName}
+                    onChange={(e) => setCompanyInfo({ ...companyInfo, companyName: e.target.value })}
+                    margin="normal"
+                    placeholder="e.g., Acme Corporation"
+                  />
+                  <TextField
+                    fullWidth
+                    select
+                    label="Sector"
+                    value={companyInfo.sector}
+                    onChange={(e) => setCompanyInfo({ ...companyInfo, sector: e.target.value })}
+                    margin="normal"
+                    placeholder="Select your industry"
+                  >
+                    {SECTORS.map((sector) => (
+                      <MenuItem key={sector} value={sector}>
+                        {sector}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                  <TextField
+                    fullWidth
+                    label="About"
+                    value={companyInfo.about}
+                    onChange={(e) => setCompanyInfo({ ...companyInfo, about: e.target.value })}
+                    margin="normal"
+                    multiline
+                    rows={2}
+                    placeholder="Brief description of your company"
+                  />
+                  <TextField
+                    fullWidth
+                    label="Products and Services"
+                    value={companyInfo.productsServices}
+                    onChange={(e) => setCompanyInfo({ ...companyInfo, productsServices: e.target.value })}
+                    margin="normal"
+                    multiline
+                    rows={3}
+                    placeholder="Describe your products and services"
+                  />
+                  <TextField
+                    fullWidth
+                    label="Unique Selling Position (USP)"
+                    value={companyInfo.usp}
+                    onChange={(e) => setCompanyInfo({ ...companyInfo, usp: e.target.value })}
+                    margin="normal"
+                    multiline
+                    rows={2}
+                    placeholder="What makes your company unique?"
+                  />
+                  <TextField
+                    fullWidth
+                    select
+                    label="Brand Tone"
+                    value={companyInfo.brandTone}
+                    onChange={(e) => setCompanyInfo({ ...companyInfo, brandTone: e.target.value })}
+                    margin="normal"
+                    placeholder="Select your brand voice"
+                  >
+                    {BRAND_TONES.map((tone) => (
+                      <MenuItem key={tone} value={tone}>
+                        {tone}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                  <TextField
+                    fullWidth
+                    label="Audience Profile"
+                    value={companyInfo.audienceProfile}
+                    onChange={(e) => setCompanyInfo({ ...companyInfo, audienceProfile: e.target.value })}
+                    margin="normal"
+                    multiline
+                    rows={3}
+                    placeholder="Describe your target audience"
+                  />
+                  <TextField
+                    fullWidth
+                    label="Global Rules"
+                    value={companyInfo.globalRules}
+                    onChange={(e) => setCompanyInfo({ ...companyInfo, globalRules: e.target.value })}
+                    margin="normal"
+                    multiline
+                    rows={3}
+                    placeholder="Content guidelines, dos and don'ts"
+                  />
+                  <Button
+                    variant="contained"
+                    onClick={saveCompanyInfo}
+                    disabled={companyInfoSaving}
+                    sx={{ mt: 2 }}
+                  >
+                    {companyInfoSaving ? 'Saving...' : 'Save Changes'}
+                  </Button>
+                </Box>
+              )}
+            </TabPanel>
+          )}
+
+          <TabPanel value={activeTab} index={user?.role === UserRole.HYBRID ? 2 : 1}>
             <Typography variant="h6" gutterBottom>
               Integrations
             </Typography>
@@ -269,7 +446,7 @@ export default function Settings() {
             )}
           </TabPanel>
 
-          <TabPanel value={activeTab} index={2}>
+          <TabPanel value={activeTab} index={user?.role === UserRole.HYBRID ? 3 : 2}>
             <Typography variant="h6" gutterBottom>
               Account Settings
             </Typography>

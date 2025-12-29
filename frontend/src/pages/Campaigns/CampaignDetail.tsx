@@ -12,7 +12,9 @@ import {
   Chip,
   Breadcrumbs,
   Link,
-  CircularProgress
+  CircularProgress,
+  Stack,
+  Divider
 } from '@mui/material';
 import { Add as AddIcon } from '@mui/icons-material';
 import { campaignAPI, projectAPI } from '../../services/api';
@@ -98,9 +100,44 @@ export default function CampaignDetail() {
           <Typography variant="h4">{campaign.name}</Typography>
           <Chip label={campaign.status} color="primary" />
         </Box>
-        <Typography variant="body1" paragraph>
-          {campaign.description}
-        </Typography>
+        {campaign.description && (
+          <Typography variant="body1" paragraph>
+            {campaign.description}
+          </Typography>
+        )}
+
+        {campaign.coreMessages && (
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="subtitle2" color="primary" gutterBottom>
+              Core Messages / Theme
+            </Typography>
+            <Typography variant="body1" paragraph>
+              {campaign.coreMessages}
+            </Typography>
+          </Box>
+        )}
+
+        {campaign.hashtags && campaign.hashtags.length > 0 && (
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="subtitle2" color="primary" gutterBottom>
+              Hashtags
+            </Typography>
+            <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+              {campaign.hashtags.map((tag, index) => (
+                <Chip
+                  key={index}
+                  label={`#${tag}`}
+                  color="primary"
+                  variant="outlined"
+                  size="small"
+                />
+              ))}
+            </Stack>
+          </Box>
+        )}
+
+        {(campaign.budget || campaign.startDate) && <Divider sx={{ my: 2 }} />}
+
         <Grid container spacing={2}>
           {campaign.budget && (
             <Grid item xs={12} sm={6}>
