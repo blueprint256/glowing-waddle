@@ -1,20 +1,64 @@
 import OpenAI from 'openai';
 import { Prompt } from '../models/Prompt';
 import { LLMUsage } from '../models/LLMUsage';
+import { AppConfig } from '../models/AppConfig';
 import mongoose from 'mongoose';
 
-// Initialize OpenAI client
-let openai: OpenAI | null = null;
+// Cache for OpenAI client and key
+let cachedClient: { client: OpenAI; key: string; timestamp: number } | null = null;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-function getOpenAIClient(): OpenAI {
-  if (!openai) {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      throw new Error('OPENAI_API_KEY environment variable is not set');
+/**
+ * Get OpenAI API key from database or environment variable
+ * Priority: Database > Environment Variable
+ */
+async function getOpenAIKey(): Promise<string> {
+  try {
+    // Try to get key from database first
+    const config = await AppConfig.getConfig();
+
+    if (config.openAIApiKey) {
+      // Decrypt and return the key from database
+      return config.decryptApiKey(config.openAIApiKey);
     }
-    openai = new OpenAI({ apiKey });
+  } catch (error) {
+    console.warn('Failed to fetch OpenAI key from database:', error);
   }
-  return openai;
+
+  // Fallback to environment variable
+  const envKey = process.env.OPENAI_API_KEY;
+  if (envKey) {
+    return envKey;
+  }
+
+  throw new Error('OpenAI API key not configured. Please configure it in Settings → Integrations or set OPENAI_API_KEY environment variable.');
+}
+
+/**
+ * Get OpenAI client with cached key management
+ */
+async function getOpenAIClient(): Promise<OpenAI> {
+  const now = Date.now();
+
+  // Get current key
+  const currentKey = await getOpenAIKey();
+
+  // Check if we have a valid cached client
+  if (cachedClient && cachedClient.key === currentKey && (now - cachedClient.timestamp) < CACHE_TTL) {
+    return cachedClient.client;
+  }
+
+  // Create new client with current key
+  const client = new OpenAI({ apiKey: currentKey });
+
+  // Update cache
+  cachedClient = {
+    client,
+    key: currentKey,
+    timestamp: now
+  };
+
+  return client;
 }
 
 /**
@@ -275,7 +319,7 @@ export async function sendToLLM(
   const maxTokens = options?.maxTokens || parseInt(process.env.OPENAI_MAX_TOKENS || '2000');
 
   try {
-    const client = getOpenAIClient();
+    const client = await getOpenAIClient();
 
     const response = await client.chat.completions.create({
       model,

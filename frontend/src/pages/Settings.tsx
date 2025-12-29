@@ -30,7 +30,19 @@ import {
   IconButton,
   Tooltip
 } from '@mui/material';
-import { CheckCircle, Cancel, Link as LinkIcon, Add, Edit, Delete, Info } from '@mui/icons-material';
+import {
+  CheckCircle,
+  Cancel,
+  Link as LinkIcon,
+  Add,
+  Edit,
+  Delete,
+  Info,
+  Visibility,
+  VisibilityOff,
+  CheckCircleOutline,
+  WarningAmber
+} from '@mui/icons-material';
 import { useAuthStore } from '../store/authStore';
 import { UserRole } from '../types';
 import api, { promptAPI } from '../services/api';
@@ -92,6 +104,13 @@ export default function Settings() {
     details: ''
   });
   const [promptSaving, setPromptSaving] = useState(false);
+
+  // OpenAI state (System Admin only)
+  const [openAIConfigured, setOpenAIConfigured] = useState(false);
+  const [openAIApiKey, setOpenAIApiKey] = useState('');
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [savingApiKey, setSavingApiKey] = useState(false);
+  const [testingConnection, setTestingConnection] = useState(false);
 
   useEffect(() => {
     // Check for integration callback status
@@ -168,6 +187,11 @@ export default function Settings() {
         setCanvaConnected(response.data.integrations.canva.connected);
         if (response.data.integrations.canva.connectedAt) {
           setCanvaConnectedAt(new Date(response.data.integrations.canva.connectedAt));
+        }
+
+        // Fetch OpenAI status for System Admins
+        if (user?.role === UserRole.SYSTEM_ADMIN && response.data.integrations.openai) {
+          setOpenAIConfigured(response.data.integrations.openai.configured);
         }
       }
     } catch (error) {
@@ -288,6 +312,75 @@ export default function Settings() {
     } catch (error) {
       console.error('Error deleting prompt:', error);
       setMessage({ type: 'error', text: 'Failed to delete prompt. Please try again.' });
+    }
+  };
+
+  // OpenAI configuration functions
+  const handleSaveApiKey = async () => {
+    if (!openAIApiKey.trim()) {
+      setMessage({ type: 'error', text: 'Please enter an API key.' });
+      return;
+    }
+
+    try {
+      setSavingApiKey(true);
+      const response = await api.patch('/integrations/openai/key', { apiKey: openAIApiKey });
+      if (response.data.success) {
+        setMessage({ type: 'success', text: 'OpenAI API key saved successfully!' });
+        setOpenAIConfigured(true);
+        setOpenAIApiKey(''); // Clear input after saving
+        setShowApiKey(false);
+      }
+    } catch (error: any) {
+      console.error('Error saving OpenAI key:', error);
+      setMessage({
+        type: 'error',
+        text: error.response?.data?.message || 'Failed to save API key. Please try again.'
+      });
+    } finally {
+      setSavingApiKey(false);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    try {
+      setTestingConnection(true);
+      const response = await api.post('/integrations/openai/test');
+      if (response.data.success) {
+        setMessage({
+          type: 'success',
+          text: `OpenAI connection successful! ${response.data.modelCount} models available.`
+        });
+      }
+    } catch (error: any) {
+      console.error('Error testing OpenAI connection:', error);
+      setMessage({
+        type: 'error',
+        text: error.response?.data?.message || 'Connection test failed. Please check your API key.'
+      });
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
+  const handleRemoveApiKey = async () => {
+    if (!window.confirm('Are you sure you want to remove the OpenAI API key? AI features will be unavailable.')) {
+      return;
+    }
+
+    try {
+      setSavingApiKey(true);
+      const response = await api.delete('/integrations/openai/key');
+      if (response.data.success) {
+        setMessage({ type: 'success', text: 'OpenAI API key removed successfully.' });
+        setOpenAIConfigured(false);
+        setOpenAIApiKey('');
+      }
+    } catch (error: any) {
+      console.error('Error removing OpenAI key:', error);
+      setMessage({ type: 'error', text: 'Failed to remove API key. Please try again.' });
+    } finally {
+      setSavingApiKey(false);
     }
   };
 
@@ -543,6 +636,90 @@ export default function Settings() {
                     )}
                   </CardActions>
                 </Card>
+
+                {/* OpenAI Integration (System Admin only) */}
+                {user?.role === UserRole.SYSTEM_ADMIN && (
+                  <Card sx={{ mb: 2 }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <Typography variant="h6">OpenAI (ChatGPT)</Typography>
+                          {openAIConfigured ? (
+                            <Chip
+                              icon={<CheckCircleOutline />}
+                              label="Configured"
+                              color="success"
+                              size="small"
+                            />
+                          ) : (
+                            <Chip
+                              icon={<WarningAmber />}
+                              label="Not Configured"
+                              color="warning"
+                              size="small"
+                            />
+                          )}
+                        </Box>
+                      </Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Configure your OpenAI API key to enable AI-powered content generation features.
+                        Your key is encrypted and stored securely.
+                      </Typography>
+
+                      <TextField
+                        fullWidth
+                        type={showApiKey ? 'text' : 'password'}
+                        label="OpenAI API Key"
+                        value={openAIApiKey}
+                        onChange={(e) => setOpenAIApiKey(e.target.value)}
+                        placeholder={openAIConfigured ? '••••••••••••••••' : 'sk-...'}
+                        helperText={openAIConfigured ? 'Enter a new key to update' : 'Enter your OpenAI API key (starts with sk-)'}
+                        InputProps={{
+                          endAdornment: (
+                            <IconButton
+                              onClick={() => setShowApiKey(!showApiKey)}
+                              edge="end"
+                              size="small"
+                            >
+                              {showApiKey ? <VisibilityOff /> : <Visibility />}
+                            </IconButton>
+                          )
+                        }}
+                      />
+                    </CardContent>
+                    <Divider />
+                    <CardActions>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        onClick={handleSaveApiKey}
+                        disabled={savingApiKey || !openAIApiKey.trim()}
+                      >
+                        {savingApiKey ? 'Saving...' : 'Save Key'}
+                      </Button>
+                      {openAIConfigured && (
+                        <>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={handleTestConnection}
+                            disabled={testingConnection}
+                          >
+                            {testingConnection ? 'Testing...' : 'Test Connection'}
+                          </Button>
+                          <Button
+                            size="small"
+                            color="error"
+                            onClick={handleRemoveApiKey}
+                            disabled={savingApiKey}
+                          >
+                            Remove Key
+                          </Button>
+                        </>
+                      )}
+                    </CardActions>
+                  </Card>
+                )}
 
                 {/* Future Integrations Placeholder */}
                 <Card sx={{ opacity: 0.6 }}>
