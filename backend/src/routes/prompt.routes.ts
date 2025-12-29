@@ -149,7 +149,7 @@ router.post('/', isAuthenticated, isSystemAdmin, async (req: Request, res: Respo
  */
 router.patch('/:id', isAuthenticated, isSystemAdmin, validateMongoId('id'), async (req: Request, res: Response) => {
   try {
-    const { name, details } = req.body;
+    const { name, details, llmProvider, llmModel } = req.body;
 
     const prompt = await Prompt.findById(req.params.id);
     if (!prompt) {
@@ -171,8 +171,17 @@ router.patch('/:id', isAuthenticated, isSystemAdmin, validateMongoId('id'), asyn
       prompt.name = name;
     }
 
-    if (details) {
+    if (details !== undefined) {
       prompt.details = details;
+    }
+
+    // Handle LLM provider/model overrides
+    if (llmProvider !== undefined) {
+      prompt.llmProvider = llmProvider || undefined;
+    }
+
+    if (llmModel !== undefined) {
+      prompt.llmModel = llmModel || undefined;
     }
 
     await prompt.save();
