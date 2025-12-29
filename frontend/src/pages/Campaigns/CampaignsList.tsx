@@ -17,7 +17,8 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  CircularProgress
+  CircularProgress,
+  Tooltip
 } from '@mui/material';
 import { Add as AddIcon, ExpandMore as ExpandMoreIcon } from '@mui/icons-material';
 import { useAuthStore } from '../../store/authStore';
@@ -95,15 +96,73 @@ export default function CampaignsList() {
   // Render a single campaign card
   const renderCampaignCard = (campaign: Campaign) => (
     <Grid item xs={12} md={6} lg={4} key={campaign._id}>
-      <Card>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
+      <Card
+        sx={{
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: '280px'
+        }}
+      >
+        <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+          <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
             {campaign.name}
           </Typography>
-          <Typography variant="body2" color="text.secondary" paragraph>
-            {campaign.description}
-          </Typography>
-          <Chip label={campaign.status} size="small" color="primary" />
+
+          {/* Core Messages / Theme */}
+          {campaign.coreMessages && (
+            <Box sx={{ mb: 2 }}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ fontWeight: 600, textTransform: 'uppercase', display: 'block', mb: 0.5 }}
+              >
+                Core Messages / Theme
+              </Typography>
+              <Tooltip title={campaign.coreMessages} arrow placement="top">
+                <Typography
+                  variant="body2"
+                  color="text.primary"
+                  sx={{
+                    display: '-webkit-box',
+                    WebkitLineClamp: 3,
+                    WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    lineHeight: 1.4
+                  }}
+                >
+                  {campaign.coreMessages}
+                </Typography>
+              </Tooltip>
+            </Box>
+          )}
+
+          {/* Description */}
+          {campaign.description && (
+            <Box sx={{ mb: 2 }}>
+              <Tooltip title={campaign.description} arrow placement="top">
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    lineHeight: 1.4
+                  }}
+                >
+                  {campaign.description}
+                </Typography>
+              </Tooltip>
+            </Box>
+          )}
+
+          <Box sx={{ mt: 'auto' }}>
+            <Chip label={campaign.status} size="small" color="primary" />
+          </Box>
         </CardContent>
         <CardActions>
           <Button size="small" onClick={() => navigate(`/campaigns/${campaign._id}`)}>
