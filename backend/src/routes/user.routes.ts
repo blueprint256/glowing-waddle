@@ -109,7 +109,7 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
 
 /**
  * @route   GET /api/users/:id
- * @desc    Get user by ID
+ * @desc    Get user by ID with detailed information
  * @access  Private (System Admin only)
  */
 router.get('/:id', isAuthenticated, validateMongoId('id'), async (req: Request, res: Response) => {
@@ -132,9 +132,21 @@ router.get('/:id', isAuthenticated, validateMongoId('id'), async (req: Request, 
       });
     }
 
+    // Get campaign count for this user
+    const { Campaign } = await import('../models/Campaign');
+    const campaignCount = await Campaign.countDocuments({ createdBy: user._id });
+
+    // Prepare user data with additional info
+    const userData = {
+      ...user.toObject(),
+      campaignCount,
+      loginMethod: user.authProvider === 'google' ? 'Google OAuth' : 'Email/Password',
+      hasCanvaIntegration: user.integrations?.canva?.connected || false
+    };
+
     res.json({
       success: true,
-      user
+      user: userData
     });
   } catch (error: any) {
     console.error('Error fetching user:', error);
@@ -200,6 +212,89 @@ router.put('/:id', isAuthenticated, canManageUsers, validateMongoId('id'), valid
     res.status(500).json({
       success: false,
       message: 'Error updating user'
+    });
+  }
+});
+
+/**
+ * @route   GET /api/users/me/company-info
+ * @desc    Get company information for current user
+ * @access  Private
+ */
+router.get('/me/company-info', isAuthenticated, async (req: Request, res: Response) => {
+  try {
+    const user = await User.findById(req.user!._id).select('companyInfo');
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      companyInfo: user.companyInfo || {}
+    });
+  } catch (error: any) {
+    console.error('Error fetching company info:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching company information'
+    });
+  }
+});
+
+/**
+ * @route   PATCH /api/users/me/company-info
+ * @desc    Update company information for current user
+ * @access  Private (Hybrid Users)
+ */
+router.patch('/me/company-info', isAuthenticated, async (req: Request, res: Response) => {
+  try {
+    const { companyName, sector, about, productsServices, usp, brandTone, audienceProfile, globalRules } = req.body;
+
+    const user = await User.findById(req.user!._id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Update company info (only for Hybrid users, but we'll allow it for all authenticated users)
+    user.companyInfo = {
+      companyName: companyName || user.companyInfo?.companyName,
+      sector: sector || user.companyInfo?.sector,
+      about: about || user.companyInfo?.about,
+      productsServices: productsServices || user.companyInfo?.productsServices,
+      usp: usp || user.companyInfo?.usp,
+      brandTone: brandTone || user.companyInfo?.brandTone,
+      audienceProfile: audienceProfile || user.companyInfo?.audienceProfile,
+      globalRules: globalRules || user.companyInfo?.globalRules
+    };
+
+    await user.save();
+
+    // Log update
+    await logAudit({
+      action: AuditAction.USER_UPDATED,
+      userId: req.user!._id,
+      targetType: 'User',
+      targetId: user._id,
+      metadata: { companyInfoUpdated: true },
+      req
+    });
+
+    res.json({
+      success: true,
+      message: 'Company information updated successfully',
+      companyInfo: user.companyInfo
+    });
+  } catch (error: any) {
+    console.error('Error updating company info:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error updating company information'
     });
   }
 });

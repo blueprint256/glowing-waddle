@@ -4,6 +4,17 @@ export enum UserRole {
   HYBRID = 'hybrid'
 }
 
+export interface CompanyInfo {
+  companyName?: string;
+  sector?: string;
+  about?: string;
+  productsServices?: string;
+  usp?: string;
+  brandTone?: string;
+  audienceProfile?: string;
+  globalRules?: string;
+}
+
 export interface User {
   _id?: string;
   id?: string;
@@ -12,6 +23,12 @@ export interface User {
   lastName: string;
   role: UserRole;
   isActive: boolean;
+  authProvider?: 'local' | 'google';
+  companyInfo?: CompanyInfo;
+  campaignCount?: number;
+  loginMethod?: string;
+  hasCanvaIntegration?: boolean;
+  createdAt?: string;
 }
 
 // Campaign types
@@ -31,6 +48,8 @@ export interface Campaign {
   startDate?: string;
   endDate?: string;
   goals?: string[];
+  coreMessages?: string;
+  hashtags?: string[];
   archived: boolean;
   createdBy: User | string;
   createdAt: string;

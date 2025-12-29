@@ -58,6 +58,11 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
             if (!user.isActive) {
               return done(null, false, { message: 'Account is deactivated' });
             }
+            // Update authProvider if not already set
+            if (!user.authProvider || user.authProvider === 'local') {
+              user.authProvider = 'google';
+              await user.save();
+            }
             return done(null, user);
           }
 
@@ -69,6 +74,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
             if (user) {
               // Link Google account to existing user
               user.googleId = profile.id;
+              user.authProvider = 'google';
               await user.save();
               return done(null, user);
             }
@@ -81,6 +87,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
             firstName: profile.name?.givenName || profile.displayName || 'User',
             lastName: profile.name?.familyName || '',
             role: UserRole.HYBRID,
+            authProvider: 'google',
             isActive: true
           });
 
