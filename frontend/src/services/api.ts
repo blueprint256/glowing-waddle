@@ -109,4 +109,12 @@ export const promptAPI = {
   delete: (id: string) => api.delete(`/prompts/${id}`)
 };
 
+// LLM API (System Admin only)
+export const llmAPI = {
+  run: (data: { promptName: string; dynamicData: any }) => api.post('/llm/run', data),
+  generateCampaignTasks: (data: { campaignId: string; promptName?: string }) =>
+    api.post('/llm/generate-campaign-tasks', data),
+  getUsage: (params?: any) => api.get('/llm/usage', { params })
+};
+
 export default api;

@@ -380,13 +380,20 @@ router.delete('/:id', isAuthenticated, validateMongoId('id'), async (req: Reques
 
 /**
  * @route   POST /api/campaigns/:id/generate-tasks
- * @desc    Generate campaign tasks using LLM with prompt compilation
- * @access  Private (System Admin, Hybrid - owner only)
+ * @desc    Generate campaign tasks using LLM with prompt compilation (Admin only)
+ * @access  Private (System Admin only)
  */
-router.post('/:id/generate-tasks', isAuthenticated, canCreateCampaign, validateMongoId('id'), async (req: Request, res: Response) => {
+router.post('/:id/generate-tasks', isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const campaign = await Campaign.findById(req.params.id)
-      .populate('createdBy', 'firstName lastName email companyInfo');
+    // CRITICAL: Only System Admins can generate tasks with AI
+    if (req.user!.role !== UserRole.SYSTEM_ADMIN) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only System Administrators can generate content with AI'
+      });
+    }
+
+    const campaign = await Campaign.findById(req.params.id);
 
     if (!campaign) {
       return res.status(404).json({
@@ -395,28 +402,18 @@ router.post('/:id/generate-tasks', isAuthenticated, canCreateCampaign, validateM
       });
     }
 
-    // CRITICAL: Hybrid Users can ONLY generate tasks for campaigns they own
-    if (req.user!.role === UserRole.HYBRID) {
-      if (campaign.createdBy._id.toString() !== req.user!._id.toString()) {
-        return res.status(403).json({
-          success: false,
-          message: 'Access denied: You can only generate tasks for campaigns you created'
-        });
-      }
-    }
-
-    // Get the full user object to access company info
-    const user = await User.findById(req.user!._id);
-    if (!user) {
+    // Get campaign creator to access their company info
+    const campaignOwner = await User.findById(campaign.createdBy);
+    if (!campaignOwner) {
       return res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: 'Campaign owner not found'
       });
     }
 
     // Prepare parameters for prompt compilation
     const promptParams = {
-      companyInfo: user.companyInfo || {},
+      companyInfo: campaignOwner.companyInfo || {},
       campaignDetails: {
         name: campaign.name,
         description: campaign.description,
@@ -433,22 +430,20 @@ router.post('/:id/generate-tasks', isAuthenticated, canCreateCampaign, validateM
     // Frontend can pass a custom prompt name in the request body
     const promptName = req.body.promptName || 'Generate Campaign Tasks';
 
-    let generatedContent: string;
     try {
-      // Compile the super prompt with dynamic data
-      const compiledPrompt = await fetchAndCompilePrompt(promptName, promptParams);
-
-      // For now, return the compiled prompt
-      // In a real implementation with LLM API integration, uncomment the line below:
-      // generatedContent = await generateWithPrompt(promptName, promptParams);
-      generatedContent = compiledPrompt;
+      // Generate content with OpenAI
+      const result = await generateWithPrompt(promptName, promptParams, {
+        userId: req.user!._id
+      });
 
       res.json({
         success: true,
-        message: 'Tasks generated successfully',
-        compiledPrompt,
-        generatedContent,
-        note: 'This is a demonstration. Integrate with actual LLM API (OpenAI, Anthropic, etc.) to generate real content.'
+        message: 'Tasks generated successfully with AI',
+        content: result.content,
+        compiledPrompt: result.compiledPrompt,
+        usage: result.usage,
+        campaignId: campaign._id,
+        campaignName: campaign.name
       });
 
       // Log the generation
@@ -457,7 +452,7 @@ router.post('/:id/generate-tasks', isAuthenticated, canCreateCampaign, validateM
         userId: req.user!._id,
         targetType: 'Campaign',
         targetId: campaign._id,
-        metadata: { action: 'generate_tasks', promptName },
+        metadata: { action: 'generate_tasks_ai', promptName, tokens: result.usage.total_tokens },
         req
       });
     } catch (error: any) {
@@ -466,6 +461,16 @@ router.post('/:id/generate-tasks', isAuthenticated, canCreateCampaign, validateM
         return res.status(404).json({
           success: false,
           message: `Prompt '${promptName}' not found. Please create it in Settings > Prompts first.`
+        });
+      } else if (error.message.includes('API key')) {
+        return res.status(500).json({
+          success: false,
+          message: 'OpenAI API is not configured. Please contact your administrator.'
+        });
+      } else if (error.message.includes('rate limit')) {
+        return res.status(429).json({
+          success: false,
+          message: error.message
         });
       }
       throw error;

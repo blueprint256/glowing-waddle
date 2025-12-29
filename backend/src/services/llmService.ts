@@ -1,4 +1,21 @@
+import OpenAI from 'openai';
 import { Prompt } from '../models/Prompt';
+import { LLMUsage } from '../models/LLMUsage';
+import mongoose from 'mongoose';
+
+// Initialize OpenAI client
+let openai: OpenAI | null = null;
+
+function getOpenAIClient(): OpenAI {
+  if (!openai) {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error('OPENAI_API_KEY environment variable is not set');
+    }
+    openai = new OpenAI({ apiKey });
+  }
+  return openai;
+}
 
 /**
  * Interface for super prompt compilation parameters
@@ -186,33 +203,131 @@ export async function fetchAndCompilePrompt(
 }
 
 /**
- * Send compiled prompt to LLM API (placeholder implementation)
- * This can be extended to integrate with OpenAI, Anthropic, or other LLM providers
+ * Calculate estimated cost based on model and token usage
+ * Pricing as of 2024 (approximate, subject to change)
  */
-export async function sendToLLM(prompt: string, options?: {
-  model?: string;
-  temperature?: number;
-  maxTokens?: number;
-}): Promise<string> {
-  // Placeholder implementation
-  // In a real implementation, this would call OpenAI API:
-  /*
-  const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY
-  });
+function calculateEstimatedCost(model: string, promptTokens: number, completionTokens: number): number {
+  // Prices per 1M tokens (in USD)
+  const pricing: Record<string, { input: number; output: number }> = {
+    'gpt-4o': { input: 2.5, output: 10 },
+    'gpt-4o-mini': { input: 0.15, output: 0.6 },
+    'gpt-4-turbo': { input: 10, output: 30 },
+    'gpt-4': { input: 30, output: 60 },
+    'gpt-3.5-turbo': { input: 0.5, output: 1.5 }
+  };
 
-  const response = await openai.chat.completions.create({
-    model: options?.model || 'gpt-4',
-    messages: [{ role: 'user', content: prompt }],
-    temperature: options?.temperature || 0.7,
-    max_tokens: options?.maxTokens || 2000
-  });
+  const modelPricing = pricing[model] || pricing['gpt-4o'];
+  const inputCost = (promptTokens / 1000000) * modelPricing.input;
+  const outputCost = (completionTokens / 1000000) * modelPricing.output;
 
-  return response.choices[0].message.content || '';
-  */
+  return inputCost + outputCost;
+}
 
-  console.log('LLM Prompt:', prompt);
-  return 'LLM response placeholder - integrate with actual LLM API (OpenAI, Anthropic, etc.)';
+/**
+ * Log LLM usage to database for tracking and cost analysis
+ */
+async function logLLMUsage(
+  userId: mongoose.Types.ObjectId,
+  promptName: string,
+  model: string,
+  usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number },
+  duration: number,
+  success: boolean,
+  errorMessage?: string
+): Promise<void> {
+  try {
+    const estimatedCost = calculateEstimatedCost(model, usage.prompt_tokens, usage.completion_tokens);
+
+    await LLMUsage.create({
+      userId,
+      promptName,
+      model,
+      promptTokens: usage.prompt_tokens,
+      completionTokens: usage.completion_tokens,
+      totalTokens: usage.total_tokens,
+      estimatedCost,
+      success,
+      errorMessage,
+      requestDuration: duration
+    });
+  } catch (error) {
+    console.error('Error logging LLM usage:', error);
+    // Don't throw - logging failure shouldn't break the main flow
+  }
+}
+
+/**
+ * Send compiled prompt to OpenAI ChatGPT API
+ */
+export async function sendToLLM(
+  prompt: string,
+  options?: {
+    model?: string;
+    temperature?: number;
+    maxTokens?: number;
+    userId?: mongoose.Types.ObjectId;
+    promptName?: string;
+  }
+): Promise<{ content: string; usage: any }> {
+  const startTime = Date.now();
+  const model = options?.model || process.env.OPENAI_MODEL || 'gpt-4o';
+  const temperature = options?.temperature || parseFloat(process.env.OPENAI_TEMPERATURE || '0.7');
+  const maxTokens = options?.maxTokens || parseInt(process.env.OPENAI_MAX_TOKENS || '2000');
+
+  try {
+    const client = getOpenAIClient();
+
+    const response = await client.chat.completions.create({
+      model,
+      messages: [{ role: 'user', content: prompt }],
+      temperature,
+      max_tokens: maxTokens
+    });
+
+    const duration = Date.now() - startTime;
+    const content = response.choices[0]?.message?.content || '';
+    const usage = response.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+
+    // Log usage if userId and promptName are provided
+    if (options?.userId && options?.promptName) {
+      await logLLMUsage(
+        options.userId,
+        options.promptName,
+        model,
+        usage,
+        duration,
+        true
+      );
+    }
+
+    return { content, usage };
+  } catch (error: any) {
+    const duration = Date.now() - startTime;
+
+    // Log failed attempt if userId and promptName are provided
+    if (options?.userId && options?.promptName) {
+      await logLLMUsage(
+        options.userId,
+        options.promptName,
+        model,
+        { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+        duration,
+        false,
+        error.message
+      );
+    }
+
+    // Handle specific OpenAI errors
+    if (error.status === 401) {
+      throw new Error('Invalid OpenAI API key. Please check your configuration.');
+    } else if (error.status === 429) {
+      throw new Error('OpenAI API rate limit exceeded. Please try again later.');
+    } else if (error.status === 500 || error.status === 503) {
+      throw new Error('OpenAI API is currently unavailable. Please try again later.');
+    }
+
+    throw new Error(`OpenAI API error: ${error.message}`);
+  }
 }
 
 /**
@@ -225,8 +340,17 @@ export async function generateWithPrompt(
     model?: string;
     temperature?: number;
     maxTokens?: number;
+    userId?: mongoose.Types.ObjectId;
   }
-): Promise<string> {
+): Promise<{ content: string; usage: any; compiledPrompt: string }> {
   const compiledPrompt = await fetchAndCompilePrompt(promptName, params);
-  return await sendToLLM(compiledPrompt, options);
+  const result = await sendToLLM(compiledPrompt, {
+    ...options,
+    promptName
+  });
+
+  return {
+    ...result,
+    compiledPrompt
+  };
 }
