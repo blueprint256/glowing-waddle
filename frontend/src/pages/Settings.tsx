@@ -16,12 +16,36 @@ import {
   Chip,
   Divider,
   CircularProgress,
-  MenuItem
+  MenuItem,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  IconButton,
+  Tooltip
 } from '@mui/material';
-import { CheckCircle, Cancel, Link as LinkIcon } from '@mui/icons-material';
+import {
+  CheckCircle,
+  Cancel,
+  Link as LinkIcon,
+  Add,
+  Edit,
+  Delete,
+  Info,
+  Visibility,
+  VisibilityOff,
+  CheckCircleOutline,
+  WarningAmber
+} from '@mui/icons-material';
 import { useAuthStore } from '../store/authStore';
 import { UserRole } from '../types';
-import api from '../services/api';
+import api, { promptAPI, commandMappingAPI } from '../services/api';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -70,6 +94,35 @@ export default function Settings() {
     globalRules: ''
   });
 
+  // Prompts state (System Admin only)
+  const [prompts, setPrompts] = useState<any[]>([]);
+  const [promptsLoading, setPromptsLoading] = useState(false);
+  const [promptModalOpen, setPromptModalOpen] = useState(false);
+  const [editingPrompt, setEditingPrompt] = useState<any>(null);
+  const [promptForm, setPromptForm] = useState({
+    name: '',
+    details: ''
+  });
+  const [promptSaving, setPromptSaving] = useState(false);
+
+  // OpenAI state (System Admin only)
+  const [openAIConfigured, setOpenAIConfigured] = useState(false);
+  const [openAIApiKey, setOpenAIApiKey] = useState('');
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [savingApiKey, setSavingApiKey] = useState(false);
+  const [testingConnection, setTestingConnection] = useState(false);
+
+  // Command Mappings state (System Admin only)
+  const [commandMappings, setCommandMappings] = useState<any[]>([]);
+  const [commandMappingsLoading, setCommandMappingsLoading] = useState(false);
+  const [commandMappingModalOpen, setCommandMappingModalOpen] = useState(false);
+  const [editingCommandMapping, setEditingCommandMapping] = useState<any>(null);
+  const [commandMappingForm, setCommandMappingForm] = useState({
+    command: '',
+    promptId: ''
+  });
+  const [commandMappingSaving, setCommandMappingSaving] = useState(false);
+
   useEffect(() => {
     // Check for integration callback status
     const integration = searchParams.get('integration');
@@ -91,6 +144,12 @@ export default function Settings() {
     // Fetch company info if user is Hybrid
     if (user?.role === UserRole.HYBRID) {
       fetchCompanyInfo();
+    }
+
+    // Fetch prompts and command mappings if user is System Admin
+    if (user?.role === UserRole.SYSTEM_ADMIN) {
+      fetchPrompts();
+      fetchCommandMappings();
     }
   }, [searchParams, user]);
 
@@ -141,6 +200,11 @@ export default function Settings() {
         if (response.data.integrations.canva.connectedAt) {
           setCanvaConnectedAt(new Date(response.data.integrations.canva.connectedAt));
         }
+
+        // Fetch OpenAI status for System Admins
+        if (user?.role === UserRole.SYSTEM_ADMIN && response.data.integrations.openai) {
+          setOpenAIConfigured(response.data.integrations.openai.configured);
+        }
       }
     } catch (error) {
       console.error('Error fetching integration status:', error);
@@ -175,6 +239,256 @@ export default function Settings() {
     }
   };
 
+  // Prompt management functions
+  const fetchPrompts = async () => {
+    try {
+      setPromptsLoading(true);
+      const response = await promptAPI.getAll();
+      if (response.data.success) {
+        setPrompts(response.data.prompts);
+      }
+    } catch (error) {
+      console.error('Error fetching prompts:', error);
+      setMessage({ type: 'error', text: 'Failed to load prompts. Please try again.' });
+    } finally {
+      setPromptsLoading(false);
+    }
+  };
+
+  const handleCreatePrompt = () => {
+    setEditingPrompt(null);
+    setPromptForm({ name: '', details: '' });
+    setPromptModalOpen(true);
+  };
+
+  const handleEditPrompt = (prompt: any) => {
+    setEditingPrompt(prompt);
+    setPromptForm({ name: prompt.name, details: prompt.details });
+    setPromptModalOpen(true);
+  };
+
+  const handleClosePromptModal = () => {
+    setPromptModalOpen(false);
+    setEditingPrompt(null);
+    setPromptForm({ name: '', details: '' });
+  };
+
+  const handleSavePrompt = async () => {
+    try {
+      setPromptSaving(true);
+
+      if (!promptForm.name.trim() || !promptForm.details.trim()) {
+        setMessage({ type: 'error', text: 'Name and details are required.' });
+        return;
+      }
+
+      if (editingPrompt) {
+        // Update existing prompt
+        const response = await promptAPI.update(editingPrompt._id, promptForm);
+        if (response.data.success) {
+          setMessage({ type: 'success', text: 'Prompt updated successfully!' });
+          fetchPrompts();
+          handleClosePromptModal();
+        }
+      } else {
+        // Create new prompt
+        const response = await promptAPI.create(promptForm);
+        if (response.data.success) {
+          setMessage({ type: 'success', text: 'Prompt created successfully!' });
+          fetchPrompts();
+          handleClosePromptModal();
+        }
+      }
+    } catch (error: any) {
+      console.error('Error saving prompt:', error);
+      setMessage({
+        type: 'error',
+        text: error.response?.data?.message || 'Failed to save prompt. Please try again.'
+      });
+    } finally {
+      setPromptSaving(false);
+    }
+  };
+
+  const handleDeletePrompt = async (promptId: string) => {
+    if (!window.confirm('Are you sure you want to delete this prompt? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const response = await promptAPI.delete(promptId);
+      if (response.data.success) {
+        setMessage({ type: 'success', text: 'Prompt deleted successfully!' });
+        fetchPrompts();
+        // Also refresh command mappings in case deleted prompt was used in a mapping
+        fetchCommandMappings();
+      }
+    } catch (error) {
+      console.error('Error deleting prompt:', error);
+      setMessage({ type: 'error', text: 'Failed to delete prompt. Please try again.' });
+    }
+  };
+
+  // Command Mapping management functions
+  const fetchCommandMappings = async () => {
+    try {
+      setCommandMappingsLoading(true);
+      const response = await commandMappingAPI.getAll();
+      if (response.data.success) {
+        setCommandMappings(response.data.mappings);
+      }
+    } catch (error) {
+      console.error('Error fetching command mappings:', error);
+      setMessage({ type: 'error', text: 'Failed to load command mappings. Please try again.' });
+    } finally {
+      setCommandMappingsLoading(false);
+    }
+  };
+
+  const handleCreateCommandMapping = () => {
+    setEditingCommandMapping(null);
+    setCommandMappingForm({ command: '', promptId: '' });
+    setCommandMappingModalOpen(true);
+  };
+
+  const handleEditCommandMapping = (mapping: any) => {
+    setEditingCommandMapping(mapping);
+    setCommandMappingForm({
+      command: mapping.command,
+      promptId: mapping.promptId._id
+    });
+    setCommandMappingModalOpen(true);
+  };
+
+  const handleCloseCommandMappingModal = () => {
+    setCommandMappingModalOpen(false);
+    setEditingCommandMapping(null);
+    setCommandMappingForm({ command: '', promptId: '' });
+  };
+
+  const handleSaveCommandMapping = async () => {
+    try {
+      setCommandMappingSaving(true);
+
+      if (!commandMappingForm.command.trim() || !commandMappingForm.promptId) {
+        setMessage({ type: 'error', text: 'Command and prompt are required.' });
+        return;
+      }
+
+      if (editingCommandMapping) {
+        // Update existing mapping
+        const response = await commandMappingAPI.update(editingCommandMapping._id, commandMappingForm);
+        if (response.data.success) {
+          setMessage({ type: 'success', text: 'Command mapping updated successfully!' });
+          fetchCommandMappings();
+          handleCloseCommandMappingModal();
+        }
+      } else {
+        // Create new mapping
+        const response = await commandMappingAPI.create(commandMappingForm);
+        if (response.data.success) {
+          setMessage({ type: 'success', text: 'Command mapping created successfully!' });
+          fetchCommandMappings();
+          handleCloseCommandMappingModal();
+        }
+      }
+    } catch (error: any) {
+      console.error('Error saving command mapping:', error);
+      setMessage({
+        type: 'error',
+        text: error.response?.data?.message || 'Failed to save command mapping. Please try again.'
+      });
+    } finally {
+      setCommandMappingSaving(false);
+    }
+  };
+
+  const handleDeleteCommandMapping = async (mappingId: string) => {
+    if (!window.confirm('Are you sure you want to delete this command mapping? Users will no longer be able to use this command.')) {
+      return;
+    }
+
+    try {
+      const response = await commandMappingAPI.delete(mappingId);
+      if (response.data.success) {
+        setMessage({ type: 'success', text: 'Command mapping deleted successfully!' });
+        fetchCommandMappings();
+      }
+    } catch (error) {
+      console.error('Error deleting command mapping:', error);
+      setMessage({ type: 'error', text: 'Failed to delete command mapping. Please try again.' });
+    }
+  };
+
+  // OpenAI configuration functions
+  const handleSaveApiKey = async () => {
+    if (!openAIApiKey.trim()) {
+      setMessage({ type: 'error', text: 'Please enter an API key.' });
+      return;
+    }
+
+    try {
+      setSavingApiKey(true);
+      const response = await api.patch('/integrations/openai/key', { apiKey: openAIApiKey });
+      if (response.data.success) {
+        setMessage({ type: 'success', text: 'OpenAI API key saved successfully!' });
+        setOpenAIConfigured(true);
+        setOpenAIApiKey(''); // Clear input after saving
+        setShowApiKey(false);
+      }
+    } catch (error: any) {
+      console.error('Error saving OpenAI key:', error);
+      setMessage({
+        type: 'error',
+        text: error.response?.data?.message || 'Failed to save API key. Please try again.'
+      });
+    } finally {
+      setSavingApiKey(false);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    try {
+      setTestingConnection(true);
+      const response = await api.post('/integrations/openai/test');
+      if (response.data.success) {
+        setMessage({
+          type: 'success',
+          text: `OpenAI connection successful! ${response.data.modelCount} models available.`
+        });
+      }
+    } catch (error: any) {
+      console.error('Error testing OpenAI connection:', error);
+      setMessage({
+        type: 'error',
+        text: error.response?.data?.message || 'Connection test failed. Please check your API key.'
+      });
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
+  const handleRemoveApiKey = async () => {
+    if (!window.confirm('Are you sure you want to remove the OpenAI API key? AI features will be unavailable.')) {
+      return;
+    }
+
+    try {
+      setSavingApiKey(true);
+      const response = await api.delete('/integrations/openai/key');
+      if (response.data.success) {
+        setMessage({ type: 'success', text: 'OpenAI API key removed successfully.' });
+        setOpenAIConfigured(false);
+        setOpenAIApiKey('');
+      }
+    } catch (error: any) {
+      console.error('Error removing OpenAI key:', error);
+      setMessage({ type: 'error', text: 'Failed to remove API key. Please try again.' });
+    } finally {
+      setSavingApiKey(false);
+    }
+  };
+
   return (
     <Container maxWidth="lg">
       <Box sx={{ py: 4 }}>
@@ -196,6 +510,7 @@ export default function Settings() {
             <Tab label="Profile" />
             {user?.role === UserRole.HYBRID && <Tab label="Company Information" />}
             <Tab label="Integrations" />
+            {user?.role === UserRole.SYSTEM_ADMIN && <Tab label="Prompts" />}
             <Tab label="Account" />
           </Tabs>
 
@@ -427,6 +742,90 @@ export default function Settings() {
                   </CardActions>
                 </Card>
 
+                {/* OpenAI Integration (System Admin only) */}
+                {user?.role === UserRole.SYSTEM_ADMIN && (
+                  <Card sx={{ mb: 2 }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <Typography variant="h6">OpenAI (ChatGPT)</Typography>
+                          {openAIConfigured ? (
+                            <Chip
+                              icon={<CheckCircleOutline />}
+                              label="Configured"
+                              color="success"
+                              size="small"
+                            />
+                          ) : (
+                            <Chip
+                              icon={<WarningAmber />}
+                              label="Not Configured"
+                              color="warning"
+                              size="small"
+                            />
+                          )}
+                        </Box>
+                      </Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Configure your OpenAI API key to enable AI-powered content generation features.
+                        Your key is encrypted and stored securely.
+                      </Typography>
+
+                      <TextField
+                        fullWidth
+                        type={showApiKey ? 'text' : 'password'}
+                        label="OpenAI API Key"
+                        value={openAIApiKey}
+                        onChange={(e) => setOpenAIApiKey(e.target.value)}
+                        placeholder={openAIConfigured ? '••••••••••••••••' : 'sk-...'}
+                        helperText={openAIConfigured ? 'Enter a new key to update' : 'Enter your OpenAI API key (starts with sk-)'}
+                        InputProps={{
+                          endAdornment: (
+                            <IconButton
+                              onClick={() => setShowApiKey(!showApiKey)}
+                              edge="end"
+                              size="small"
+                            >
+                              {showApiKey ? <VisibilityOff /> : <Visibility />}
+                            </IconButton>
+                          )
+                        }}
+                      />
+                    </CardContent>
+                    <Divider />
+                    <CardActions>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        onClick={handleSaveApiKey}
+                        disabled={savingApiKey || !openAIApiKey.trim()}
+                      >
+                        {savingApiKey ? 'Saving...' : 'Save Key'}
+                      </Button>
+                      {openAIConfigured && (
+                        <>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={handleTestConnection}
+                            disabled={testingConnection}
+                          >
+                            {testingConnection ? 'Testing...' : 'Test Connection'}
+                          </Button>
+                          <Button
+                            size="small"
+                            color="error"
+                            onClick={handleRemoveApiKey}
+                            disabled={savingApiKey}
+                          >
+                            Remove Key
+                          </Button>
+                        </>
+                      )}
+                    </CardActions>
+                  </Card>
+                )}
+
                 {/* Future Integrations Placeholder */}
                 <Card sx={{ opacity: 0.6 }}>
                   <CardContent>
@@ -446,7 +845,200 @@ export default function Settings() {
             )}
           </TabPanel>
 
-          <TabPanel value={activeTab} index={user?.role === UserRole.HYBRID ? 3 : 2}>
+          {user?.role === UserRole.SYSTEM_ADMIN && (
+            <TabPanel value={activeTab} index={2}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                <Box>
+                  <Typography variant="h6" gutterBottom>
+                    Prompt Management
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Manage LLM prompts for dynamic content generation
+                  </Typography>
+                </Box>
+                <Button
+                  variant="contained"
+                  startIcon={<Add />}
+                  onClick={handleCreatePrompt}
+                >
+                  Create Prompt
+                </Button>
+              </Box>
+
+              {promptsLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                  <CircularProgress />
+                </Box>
+              ) : prompts.length === 0 ? (
+                <Box sx={{ textAlign: 'center', py: 4 }}>
+                  <Typography variant="body1" color="text.secondary">
+                    No prompts created yet. Create your first prompt to get started.
+                  </Typography>
+                </Box>
+              ) : (
+                <TableContainer>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Name</TableCell>
+                        <TableCell>Details Preview</TableCell>
+                        <TableCell align="right">Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {prompts.map((prompt) => (
+                        <TableRow key={prompt._id}>
+                          <TableCell>
+                            <Typography variant="body2" fontWeight="500">
+                              {prompt.name}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography
+                              variant="body2"
+                              color="text.secondary"
+                              sx={{
+                                maxWidth: 400,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              {prompt.details}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="right">
+                            <Tooltip title="Edit prompt">
+                              <IconButton
+                                size="small"
+                                onClick={() => handleEditPrompt(prompt)}
+                                color="primary"
+                              >
+                                <Edit fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Delete prompt">
+                              <IconButton
+                                size="small"
+                                onClick={() => handleDeletePrompt(prompt._id)}
+                                color="error"
+                              >
+                                <Delete fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+
+              <Box sx={{ mt: 2 }}>
+                <Alert severity="info" icon={<Info />}>
+                  <Typography variant="body2">
+                    <strong>Tip:</strong> Use placeholders like {'{companyInfo}'}, {'{campaignDetails}'}, {'{companyName}'}, etc. in your prompts.
+                    These will be automatically replaced with actual data when generating content.
+                  </Typography>
+                </Alert>
+              </Box>
+
+              {/* Command Mappings Section */}
+              <Divider sx={{ my: 4 }} />
+
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                <Box>
+                  <Typography variant="h6" gutterBottom>
+                    Command Mappings
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Map commands to prompts for dynamic LLM execution
+                  </Typography>
+                </Box>
+                <Button
+                  variant="contained"
+                  startIcon={<Add />}
+                  onClick={handleCreateCommandMapping}
+                >
+                  Add Mapping
+                </Button>
+              </Box>
+
+              {commandMappingsLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                  <CircularProgress />
+                </Box>
+              ) : commandMappings.length === 0 ? (
+                <Box sx={{ textAlign: 'center', py: 4 }}>
+                  <Typography variant="body1" color="text.secondary">
+                    No command mappings configured yet. Create your first mapping to get started.
+                  </Typography>
+                </Box>
+              ) : (
+                <TableContainer>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Command</TableCell>
+                        <TableCell>Mapped Prompt</TableCell>
+                        <TableCell align="right">Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {commandMappings.map((mapping) => (
+                        <TableRow key={mapping._id}>
+                          <TableCell>
+                            <Chip
+                              label={mapping.command}
+                              size="small"
+                              color="primary"
+                              variant="outlined"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2">
+                              {mapping.promptId?.name || 'N/A'}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="right">
+                            <Tooltip title="Edit mapping">
+                              <IconButton
+                                size="small"
+                                onClick={() => handleEditCommandMapping(mapping)}
+                                color="primary"
+                              >
+                                <Edit fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Delete mapping">
+                              <IconButton
+                                size="small"
+                                onClick={() => handleDeleteCommandMapping(mapping._id)}
+                                color="error"
+                              >
+                                <Delete fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+
+              <Box sx={{ mt: 2 }}>
+                <Alert severity="info" icon={<Info />}>
+                  <Typography variant="body2">
+                    <strong>How it works:</strong> Commands like "generate-campaign" can be configured to use specific prompts.
+                    When users trigger these commands, the system automatically uses the mapped prompt for LLM execution.
+                  </Typography>
+                </Alert>
+              </Box>
+            </TabPanel>
+          )}
+
+          <TabPanel value={activeTab} index={user?.role === UserRole.SYSTEM_ADMIN ? 3 : (user?.role === UserRole.HYBRID ? 3 : 2)}>
             <Typography variant="h6" gutterBottom>
               Account Settings
             </Typography>
@@ -458,6 +1050,117 @@ export default function Settings() {
             </Box>
           </TabPanel>
         </Paper>
+
+        {/* Prompt Create/Edit Modal */}
+        <Dialog open={promptModalOpen} onClose={handleClosePromptModal} maxWidth="md" fullWidth>
+          <DialogTitle>
+            {editingPrompt ? 'Edit Prompt' : 'Create New Prompt'}
+          </DialogTitle>
+          <DialogContent>
+            <Box sx={{ mt: 2 }}>
+              <TextField
+                fullWidth
+                label="Prompt Name"
+                value={promptForm.name}
+                onChange={(e) => setPromptForm({ ...promptForm, name: e.target.value })}
+                margin="normal"
+                placeholder="e.g., Generate Campaign Tasks"
+                helperText="Unique identifier for this prompt"
+                required
+              />
+              <TextField
+                fullWidth
+                label="Prompt Details"
+                value={promptForm.details}
+                onChange={(e) => setPromptForm({ ...promptForm, details: e.target.value })}
+                margin="normal"
+                multiline
+                rows={10}
+                placeholder="Enter your prompt template here. Use placeholders like {companyInfo}, {campaignDetails}, {companyName}, etc."
+                helperText="The prompt text with placeholders that will be replaced with actual data"
+                required
+              />
+              <Alert severity="info" sx={{ mt: 2 }}>
+                <Typography variant="body2">
+                  <strong>Available placeholders:</strong><br />
+                  {'{companyInfo}'} - Full company information<br />
+                  {'{companyName}'}, {'{sector}'}, {'{brandTone}'} - Individual company fields<br />
+                  {'{campaignDetails}'} - Full campaign information<br />
+                  {'{campaignName}'}, {'{coreMessages}'}, {'{hashtags}'} - Individual campaign fields
+                </Typography>
+              </Alert>
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleClosePromptModal}>Cancel</Button>
+            <Button
+              onClick={handleSavePrompt}
+              variant="contained"
+              disabled={promptSaving}
+            >
+              {promptSaving ? 'Saving...' : (editingPrompt ? 'Update' : 'Create')}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Command Mapping Create/Edit Modal */}
+        <Dialog open={commandMappingModalOpen} onClose={handleCloseCommandMappingModal} maxWidth="sm" fullWidth>
+          <DialogTitle>
+            {editingCommandMapping ? 'Edit Command Mapping' : 'Create New Command Mapping'}
+          </DialogTitle>
+          <DialogContent>
+            <Box sx={{ mt: 2 }}>
+              <TextField
+                fullWidth
+                label="Command Name"
+                value={commandMappingForm.command}
+                onChange={(e) => setCommandMappingForm({ ...commandMappingForm, command: e.target.value })}
+                margin="normal"
+                placeholder="e.g., generate-campaign"
+                helperText="Unique command identifier (e.g., generate-campaign, summarize-campaign)"
+                required
+                disabled={!!editingCommandMapping}
+              />
+              <TextField
+                fullWidth
+                select
+                label="Select Prompt"
+                value={commandMappingForm.promptId}
+                onChange={(e) => setCommandMappingForm({ ...commandMappingForm, promptId: e.target.value })}
+                margin="normal"
+                helperText="Choose which prompt this command should use"
+                required
+              >
+                {prompts.length === 0 ? (
+                  <MenuItem value="" disabled>
+                    No prompts available. Create a prompt first.
+                  </MenuItem>
+                ) : (
+                  prompts.map((prompt) => (
+                    <MenuItem key={prompt._id} value={prompt._id}>
+                      {prompt.name}
+                    </MenuItem>
+                  ))
+                )}
+              </TextField>
+              <Alert severity="info" sx={{ mt: 2 }}>
+                <Typography variant="body2">
+                  This mapping allows the specified command to dynamically use the selected prompt for LLM execution.
+                </Typography>
+              </Alert>
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseCommandMappingModal}>Cancel</Button>
+            <Button
+              onClick={handleSaveCommandMapping}
+              variant="contained"
+              disabled={commandMappingSaving}
+            >
+              {commandMappingSaving ? 'Saving...' : (editingCommandMapping ? 'Update' : 'Create')}
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Box>
     </Container>
   );

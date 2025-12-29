@@ -14,10 +14,16 @@ import {
   Link,
   CircularProgress,
   Stack,
-  Divider
+  Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Alert,
+  IconButton
 } from '@mui/material';
-import { Add as AddIcon } from '@mui/icons-material';
-import { campaignAPI, projectAPI } from '../../services/api';
+import { Add as AddIcon, AutoAwesome as AiIcon, Close as CloseIcon, ContentCopy as CopyIcon, CheckCircle as CheckIcon } from '@mui/icons-material';
+import { campaignAPI, projectAPI, llmAPI } from '../../services/api';
 import { Campaign, Project, UserRole } from '../../types';
 import { useAuthStore } from '../../store/authStore';
 import ProjectFormDialog from '../../components/Projects/ProjectFormDialog';
@@ -30,6 +36,18 @@ export default function CampaignDetail() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+
+  // AI Generation states (System Admin)
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedContent, setGeneratedContent] = useState<string | null>(null);
+  const [generationError, setGenerationError] = useState<string | null>(null);
+  const [showGenerationDialog, setShowGenerationDialog] = useState(false);
+
+  // Hybrid User Generation states
+  const [isGeneratingCampaign, setIsGeneratingCampaign] = useState(false);
+  const [campaignGenerationSuccess, setCampaignGenerationSuccess] = useState<string | null>(null);
+  const [campaignGenerationError, setCampaignGenerationError] = useState<string | null>(null);
+  const [showCampaignGenerationDialog, setShowCampaignGenerationDialog] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -67,6 +85,73 @@ export default function CampaignDetail() {
     loadProjects();
   };
 
+  // AI Generation handlers
+  const handleGenerateWithAI = async () => {
+    if (!id) return;
+
+    setIsGenerating(true);
+    setGenerationError(null);
+    setGeneratedContent(null);
+    setShowGenerationDialog(true);
+
+    try {
+      const response = await llmAPI.generateCampaignTasks({ campaignId: id });
+      if (response.data.success) {
+        setGeneratedContent(response.data.content);
+      }
+    } catch (error: any) {
+      console.error('Error generating with AI:', error);
+      const errorMessage = error.response?.data?.message || 'Failed to generate content. Please try again.';
+      setGenerationError(errorMessage);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleCloseGenerationDialog = () => {
+    setShowGenerationDialog(false);
+    setGeneratedContent(null);
+    setGenerationError(null);
+  };
+
+  const handleCopyContent = () => {
+    if (generatedContent) {
+      navigator.clipboard.writeText(generatedContent);
+    }
+  };
+
+  // Hybrid User Generation handlers
+  const handleGenerateCampaign = async () => {
+    if (!id) return;
+
+    setIsGeneratingCampaign(true);
+    setCampaignGenerationError(null);
+    setCampaignGenerationSuccess(null);
+    setShowCampaignGenerationDialog(true);
+
+    try {
+      // Use the "generate-campaign" command which maps to admin-configured prompt
+      const response = await campaignAPI.generate(id, { command: 'generate-campaign' });
+      if (response.data.success) {
+        setCampaignGenerationSuccess(response.data.message);
+        // Reload projects to show the newly created ones
+        loadProjects();
+      }
+    } catch (error: any) {
+      console.error('Error generating campaign:', error);
+      const errorMessage = error.response?.data?.message || 'Failed to generate campaign content. Please try again.';
+      setCampaignGenerationError(errorMessage);
+    } finally {
+      setIsGeneratingCampaign(false);
+    }
+  };
+
+  const handleCloseCampaignGenerationDialog = () => {
+    setShowCampaignGenerationDialog(false);
+    setCampaignGenerationSuccess(null);
+    setCampaignGenerationError(null);
+  };
+
   // Check if user can create projects
   const canCreateProject = () => {
     if (!user || !campaign) return false;
@@ -74,6 +159,11 @@ export default function CampaignDetail() {
     if (user.role === UserRole.SYSTEM_ADMIN) return true;
     // Hybrid users can only create projects in campaigns they own
     return campaign.createdBy === user.id || campaign.createdBy?._id === user.id;
+  };
+
+  // Check if user is System Admin
+  const isSystemAdmin = () => {
+    return user?.role === UserRole.SYSTEM_ADMIN;
   };
 
   if (loading) {
@@ -156,14 +246,38 @@ export default function CampaignDetail() {
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
         <Typography variant="h5">Projects</Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={handleCreateProject}
-          disabled={!canCreateProject()}
-        >
-          New Project
-        </Button>
+        <Stack direction="row" spacing={2}>
+          {isSystemAdmin() && (
+            <Button
+              variant="outlined"
+              startIcon={<AiIcon />}
+              onClick={handleGenerateWithAI}
+              disabled={isGenerating}
+              color="secondary"
+            >
+              {isGenerating ? 'Generating...' : 'Generate with AI'}
+            </Button>
+          )}
+          {user?.role === UserRole.HYBRID && canCreateProject() && (
+            <Button
+              variant="outlined"
+              startIcon={<AiIcon />}
+              onClick={handleGenerateCampaign}
+              disabled={isGeneratingCampaign}
+              color="primary"
+            >
+              {isGeneratingCampaign ? 'Generating...' : 'Generate Campaign'}
+            </Button>
+          )}
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={handleCreateProject}
+            disabled={!canCreateProject()}
+          >
+            New Project
+          </Button>
+        </Stack>
       </Box>
 
       <Grid container spacing={2}>
@@ -200,6 +314,102 @@ export default function CampaignDetail() {
         campaignId={id!}
         onSuccess={handleProjectCreated}
       />
+
+      {/* AI Generation Dialog (System Admin) */}
+      <Dialog
+        open={showGenerationDialog}
+        onClose={handleCloseGenerationDialog}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h6">AI Generated Content</Typography>
+            <IconButton onClick={handleCloseGenerationDialog} size="small">
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {isGenerating ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 4 }}>
+              <CircularProgress sx={{ mb: 2 }} />
+              <Typography variant="body2" color="text.secondary">
+                Generating content with AI... This may take a few moments.
+              </Typography>
+            </Box>
+          ) : generationError ? (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {generationError}
+            </Alert>
+          ) : generatedContent ? (
+            <>
+              <Alert severity="success" sx={{ mb: 2 }}>
+                Content generated successfully! You can copy and use it for your campaign tasks.
+              </Alert>
+              <Paper sx={{ p: 2, bgcolor: 'grey.50', maxHeight: '400px', overflow: 'auto' }}>
+                <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
+                  {generatedContent}
+                </Typography>
+              </Paper>
+            </>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          {generatedContent && (
+            <Button
+              startIcon={<CopyIcon />}
+              onClick={handleCopyContent}
+              variant="outlined"
+            >
+              Copy to Clipboard
+            </Button>
+          )}
+          <Button onClick={handleCloseGenerationDialog} variant="contained">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Generate Campaign Dialog (Hybrid User) */}
+      <Dialog
+        open={showCampaignGenerationDialog}
+        onClose={handleCloseCampaignGenerationDialog}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h6">Generate Campaign Content</Typography>
+            <IconButton onClick={handleCloseCampaignGenerationDialog} size="small">
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {isGeneratingCampaign ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 4 }}>
+              <CircularProgress sx={{ mb: 2 }} />
+              <Typography variant="body2" color="text.secondary">
+                Generating projects and tasks... This may take a few moments.
+              </Typography>
+            </Box>
+          ) : campaignGenerationSuccess ? (
+            <Alert severity="success" icon={<CheckIcon />}>
+              {campaignGenerationSuccess}
+            </Alert>
+          ) : campaignGenerationError ? (
+            <Alert severity="error">
+              {campaignGenerationError}
+            </Alert>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseCampaignGenerationDialog} variant="contained">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

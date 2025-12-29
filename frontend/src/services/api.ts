@@ -55,7 +55,8 @@ export const campaignAPI = {
   create: (data: any) => api.post('/campaigns', data),
   update: (id: string, data: any) => api.put(`/campaigns/${id}`, data),
   archive: (id: string) => api.put(`/campaigns/${id}/archive`),
-  delete: (id: string) => api.delete(`/campaigns/${id}`)
+  delete: (id: string) => api.delete(`/campaigns/${id}`),
+  generate: (id: string, data: { command: string }) => api.post(`/campaigns/${id}/generate`, data)
 };
 
 // Project API
@@ -97,6 +98,48 @@ export const assetAPI = {
   }),
   download: (id: string) => api.get(`/assets/${id}/download`, { responseType: 'blob' }),
   delete: (id: string) => api.delete(`/assets/${id}`)
+};
+
+// Prompt API
+export const promptAPI = {
+  getAll: (params?: any) => api.get('/prompts', { params }),
+  getById: (id: string) => api.get(`/prompts/${id}`),
+  getByName: (name: string) => api.get(`/prompts/name/${name}`),
+  create: (data: any) => api.post('/prompts', data),
+  update: (id: string, data: any) => api.patch(`/prompts/${id}`, data),
+  delete: (id: string) => api.delete(`/prompts/${id}`)
+};
+
+// LLM API (System Admin only)
+export const llmAPI = {
+  run: (data: { promptName: string; dynamicData: any }) => api.post('/llm/run', data),
+  generateCampaignTasks: (data: { campaignId: string; promptName?: string }) =>
+    api.post('/llm/generate-campaign-tasks', data),
+  getUsage: (params?: any) => api.get('/llm/usage', { params })
+};
+
+// Integrations API
+export const integrationsAPI = {
+  getStatus: () => api.get('/integrations/status'),
+  canva: {
+    connect: () => window.location.href = `${API_URL}/integrations/canva`,
+    disconnect: () => api.post('/integrations/canva/disconnect')
+  },
+  openai: {
+    getStatus: () => api.get('/integrations/openai/status'),
+    saveKey: (apiKey: string) => api.patch('/integrations/openai/key', { apiKey }),
+    testConnection: () => api.post('/integrations/openai/test'),
+    removeKey: () => api.delete('/integrations/openai/key')
+  }
+};
+
+// Command Mapping API (System Admin only)
+export const commandMappingAPI = {
+  getAll: () => api.get('/command-mappings'),
+  getByCommand: (commandName: string) => api.get(`/command-mappings/command/${commandName}`),
+  create: (data: { command: string; promptId: string }) => api.post('/command-mappings', data),
+  update: (id: string, data: { command?: string; promptId?: string }) => api.patch(`/command-mappings/${id}`, data),
+  delete: (id: string) => api.delete(`/command-mappings/${id}`)
 };
 
 export default api;

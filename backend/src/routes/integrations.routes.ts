@@ -1,6 +1,9 @@
 import express, { Request, Response } from 'express';
 import { isAuthenticated } from '../middleware/auth';
-import { User } from '../models/User';
+import { isSystemAdmin } from '../middleware/rbac';
+import { User, UserRole } from '../models/User';
+import { AppConfig } from '../models/AppConfig';
+import OpenAI from 'openai';
 
 const router = express.Router();
 
@@ -146,13 +149,25 @@ router.get('/status', isAuthenticated, async (req: Request, res: Response) => {
       });
     }
 
+    // Get OpenAI status for System Admins
+    let openAIConfigured = false;
+    if (req.user?.role === UserRole.SYSTEM_ADMIN) {
+      const config = await AppConfig.getConfig();
+      openAIConfigured = !!config.openAIApiKey;
+    }
+
     res.json({
       success: true,
       integrations: {
         canva: {
           connected: user.integrations?.canva?.connected || false,
           connectedAt: user.integrations?.canva?.connectedAt
-        }
+        },
+        ...(req.user?.role === UserRole.SYSTEM_ADMIN && {
+          openai: {
+            configured: openAIConfigured
+          }
+        })
       }
     });
   } catch (error) {
@@ -160,6 +175,163 @@ router.get('/status', isAuthenticated, async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: 'Failed to get integration status'
+    });
+  }
+});
+
+/**
+ * @route   GET /api/integrations/openai/status
+ * @desc    Get OpenAI configuration status (Admin only)
+ * @access  Private (System Admin)
+ */
+router.get('/openai/status', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
+  try {
+    const config = await AppConfig.getConfig();
+
+    res.json({
+      success: true,
+      configured: !!config.openAIApiKey,
+      updatedAt: config.openAIKeyUpdatedAt,
+      updatedBy: config.openAIKeyUpdatedBy
+    });
+  } catch (error: any) {
+    console.error('OpenAI status error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get OpenAI status'
+    });
+  }
+});
+
+/**
+ * @route   PATCH /api/integrations/openai/key
+ * @desc    Save OpenAI API key (Admin only)
+ * @access  Private (System Admin)
+ */
+router.patch('/openai/key', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
+  try {
+    const { apiKey } = req.body;
+
+    if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'API key is required'
+      });
+    }
+
+    // Basic validation: OpenAI keys start with 'sk-'
+    if (!apiKey.startsWith('sk-')) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid OpenAI API key format. Keys should start with "sk-"'
+      });
+    }
+
+    const config = await AppConfig.getConfig();
+
+    // Encrypt and save the key
+    config.openAIApiKey = config.encryptApiKey(apiKey.trim());
+    config.openAIKeyUpdatedAt = new Date();
+    config.openAIKeyUpdatedBy = req.user!._id;
+
+    await config.save();
+
+    console.log(`OpenAI API key updated by: ${req.user!.email}`);
+
+    res.json({
+      success: true,
+      message: 'OpenAI API key saved successfully',
+      configured: true,
+      updatedAt: config.openAIKeyUpdatedAt
+    });
+  } catch (error: any) {
+    console.error('OpenAI key save error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to save OpenAI API key'
+    });
+  }
+});
+
+/**
+ * @route   POST /api/integrations/openai/test
+ * @desc    Test OpenAI API connection (Admin only)
+ * @access  Private (System Admin)
+ */
+router.post('/openai/test', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
+  try {
+    const config = await AppConfig.getConfig();
+
+    if (!config.openAIApiKey) {
+      return res.status(400).json({
+        success: false,
+        message: 'OpenAI API key not configured. Please save a key first.'
+      });
+    }
+
+    // Decrypt the key and test it
+    const decryptedKey = config.decryptApiKey(config.openAIApiKey);
+    const openai = new OpenAI({ apiKey: decryptedKey });
+
+    // Test the key by listing available models
+    const models = await openai.models.list();
+
+    res.json({
+      success: true,
+      message: 'OpenAI API connection successful',
+      modelCount: models.data.length
+    });
+  } catch (error: any) {
+    console.error('OpenAI test error:', error);
+
+    // Handle specific OpenAI errors
+    if (error.status === 401) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid OpenAI API key. Please check your key and try again.'
+      });
+    } else if (error.status === 429) {
+      return res.status(429).json({
+        success: false,
+        message: 'OpenAI API rate limit exceeded. Please try again later.'
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to test OpenAI connection',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * @route   DELETE /api/integrations/openai/key
+ * @desc    Remove OpenAI API key (Admin only)
+ * @access  Private (System Admin)
+ */
+router.delete('/openai/key', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
+  try {
+    const config = await AppConfig.getConfig();
+
+    config.openAIApiKey = undefined;
+    config.openAIKeyUpdatedAt = new Date();
+    config.openAIKeyUpdatedBy = req.user!._id;
+
+    await config.save();
+
+    console.log(`OpenAI API key removed by: ${req.user!.email}`);
+
+    res.json({
+      success: true,
+      message: 'OpenAI API key removed successfully',
+      configured: false
+    });
+  } catch (error: any) {
+    console.error('OpenAI key removal error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to remove OpenAI API key'
     });
   }
 });
