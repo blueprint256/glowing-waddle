@@ -99,4 +99,14 @@ export const assetAPI = {
   delete: (id: string) => api.delete(`/assets/${id}`)
 };
 
+// Prompt API
+export const promptAPI = {
+  getAll: (params?: any) => api.get('/prompts', { params }),
+  getById: (id: string) => api.get(`/prompts/${id}`),
+  getByName: (name: string) => api.get(`/prompts/name/${name}`),
+  create: (data: any) => api.post('/prompts', data),
+  update: (id: string, data: any) => api.patch(`/prompts/${id}`, data),
+  delete: (id: string) => api.delete(`/prompts/${id}`)
+};
+
 export default api;

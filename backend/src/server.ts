@@ -22,6 +22,7 @@ import taskRoutes from './routes/task.routes';
 import commentRoutes from './routes/comment.routes';
 import assetRoutes from './routes/asset.routes';
 import integrationsRoutes from './routes/integrations.routes';
+import promptRoutes from './routes/prompt.routes';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -94,6 +95,7 @@ app.use('/api/tasks', taskRoutes);
 app.use('/api/comments', commentRoutes);
 app.use('/api/assets', assetRoutes);
 app.use('/api/integrations', integrationsRoutes);
+app.use('/api/prompts', promptRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response) => {
