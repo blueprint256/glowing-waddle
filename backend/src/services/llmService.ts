@@ -1,37 +1,77 @@
 import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Prompt } from '../models/Prompt';
 import { LLMUsage } from '../models/LLMUsage';
 import { AppConfig } from '../models/AppConfig';
 import mongoose from 'mongoose';
 
-// Cache for OpenAI client and key
-let cachedClient: { client: OpenAI; key: string; timestamp: number } | null = null;
+// Cache for LLM clients and keys
+let cachedOpenAI: { client: OpenAI; key: string; timestamp: number } | null = null;
+let cachedAnthropic: { client: Anthropic; key: string; timestamp: number } | null = null;
+let cachedGemini: { client: GoogleGenerativeAI; key: string; timestamp: number } | null = null;
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+// Supported providers
+export type LLMProvider = 'openai' | 'anthropic' | 'grok' | 'gemini';
+
+// LLM configuration
+export interface LLMConfig {
+  provider: LLMProvider;
+  model: string;
+}
+
 /**
- * Get OpenAI API key from database or environment variable
+ * Get API key for a specific provider from database or environment variable
  * Priority: Database > Environment Variable
  */
-async function getOpenAIKey(): Promise<string> {
+async function getProviderKey(provider: LLMProvider): Promise<string> {
   try {
-    // Try to get key from database first
     const config = await AppConfig.getConfig();
 
-    if (config.openAIApiKey) {
-      // Decrypt and return the key from database
-      return config.decryptApiKey(config.openAIApiKey);
+    switch (provider) {
+      case 'openai':
+        if (config.openAIApiKey) {
+          return config.decryptApiKey(config.openAIApiKey);
+        }
+        if (process.env.OPENAI_API_KEY) {
+          return process.env.OPENAI_API_KEY;
+        }
+        throw new Error('OpenAI API key not configured. Please configure it in Settings → Integrations.');
+
+      case 'anthropic':
+        if (config.anthropicApiKey) {
+          return config.decryptApiKey(config.anthropicApiKey);
+        }
+        if (process.env.ANTHROPIC_API_KEY) {
+          return process.env.ANTHROPIC_API_KEY;
+        }
+        throw new Error('Anthropic API key not configured. Please configure it in Settings → Integrations.');
+
+      case 'grok':
+        if (config.grokApiKey) {
+          return config.decryptApiKey(config.grokApiKey);
+        }
+        if (process.env.GROK_API_KEY) {
+          return process.env.GROK_API_KEY;
+        }
+        throw new Error('Grok API key not configured. Please configure it in Settings → Integrations.');
+
+      case 'gemini':
+        if (config.geminiApiKey) {
+          return config.decryptApiKey(config.geminiApiKey);
+        }
+        if (process.env.GEMINI_API_KEY) {
+          return process.env.GEMINI_API_KEY;
+        }
+        throw new Error('Gemini API key not configured. Please configure it in Settings → Integrations.');
+
+      default:
+        throw new Error(`Unknown provider: ${provider}`);
     }
-  } catch (error) {
-    console.warn('Failed to fetch OpenAI key from database:', error);
+  } catch (error: any) {
+    throw error;
   }
-
-  // Fallback to environment variable
-  const envKey = process.env.OPENAI_API_KEY;
-  if (envKey) {
-    return envKey;
-  }
-
-  throw new Error('OpenAI API key not configured. Please configure it in Settings → Integrations or set OPENAI_API_KEY environment variable.');
 }
 
 /**
@@ -39,25 +79,46 @@ async function getOpenAIKey(): Promise<string> {
  */
 async function getOpenAIClient(): Promise<OpenAI> {
   const now = Date.now();
+  const currentKey = await getProviderKey('openai');
 
-  // Get current key
-  const currentKey = await getOpenAIKey();
-
-  // Check if we have a valid cached client
-  if (cachedClient && cachedClient.key === currentKey && (now - cachedClient.timestamp) < CACHE_TTL) {
-    return cachedClient.client;
+  if (cachedOpenAI && cachedOpenAI.key === currentKey && (now - cachedOpenAI.timestamp) < CACHE_TTL) {
+    return cachedOpenAI.client;
   }
 
-  // Create new client with current key
   const client = new OpenAI({ apiKey: currentKey });
+  cachedOpenAI = { client, key: currentKey, timestamp: now };
+  return client;
+}
 
-  // Update cache
-  cachedClient = {
-    client,
-    key: currentKey,
-    timestamp: now
-  };
+/**
+ * Get Anthropic client with cached key management
+ */
+async function getAnthropicClient(): Promise<Anthropic> {
+  const now = Date.now();
+  const currentKey = await getProviderKey('anthropic');
 
+  if (cachedAnthropic && cachedAnthropic.key === currentKey && (now - cachedAnthropic.timestamp) < CACHE_TTL) {
+    return cachedAnthropic.client;
+  }
+
+  const client = new Anthropic({ apiKey: currentKey });
+  cachedAnthropic = { client, key: currentKey, timestamp: now };
+  return client;
+}
+
+/**
+ * Get Gemini client with cached key management
+ */
+async function getGeminiClient(): Promise<GoogleGenerativeAI> {
+  const now = Date.now();
+  const currentKey = await getProviderKey('gemini');
+
+  if (cachedGemini && cachedGemini.key === currentKey && (now - cachedGemini.timestamp) < CACHE_TTL) {
+    return cachedGemini.client;
+  }
+
+  const client = new GoogleGenerativeAI(currentKey);
+  cachedGemini = { client, key: currentKey, timestamp: now };
   return client;
 }
 
@@ -247,20 +308,66 @@ export async function fetchAndCompilePrompt(
 }
 
 /**
- * Calculate estimated cost based on model and token usage
- * Pricing as of 2024 (approximate, subject to change)
+ * Resolve LLM configuration (provider and model) for a given prompt
+ * Priority: Prompt override > Default config > Fallback
  */
-function calculateEstimatedCost(model: string, promptTokens: number, completionTokens: number): number {
+async function resolveLLMConfig(promptName?: string): Promise<LLMConfig> {
+  const config = await AppConfig.getConfig();
+
+  // If promptName is provided, check for per-prompt overrides
+  if (promptName) {
+    try {
+      const prompt = await Prompt.findOne({ name: promptName });
+      if (prompt && prompt.llmProvider && prompt.llmModel) {
+        return {
+          provider: prompt.llmProvider as LLMProvider,
+          model: prompt.llmModel
+        };
+      }
+    } catch (error) {
+      console.warn('Failed to fetch prompt for LLM config resolution:', error);
+    }
+  }
+
+  // Use default configuration
+  const provider = (config.defaultLLMProvider || 'openai') as LLMProvider;
+  const model = config.defaultLLMModel || 'gpt-4o-mini';
+
+  return { provider, model };
+}
+
+/**
+ * Calculate estimated cost based on provider, model and token usage
+ * Pricing as of December 2024 (approximate, subject to change)
+ */
+function calculateEstimatedCost(
+  provider: LLMProvider,
+  model: string,
+  promptTokens: number,
+  completionTokens: number
+): number {
   // Prices per 1M tokens (in USD)
   const pricing: Record<string, { input: number; output: number }> = {
+    // OpenAI
     'gpt-4o': { input: 2.5, output: 10 },
     'gpt-4o-mini': { input: 0.15, output: 0.6 },
-    'gpt-4-turbo': { input: 10, output: 30 },
-    'gpt-4': { input: 30, output: 60 },
-    'gpt-3.5-turbo': { input: 0.5, output: 1.5 }
+    'gpt-3.5-turbo': { input: 0.5, output: 1.5 },
+
+    // Anthropic
+    'claude-3-5-sonnet-20241022': { input: 3.0, output: 15.0 },
+    'claude-3-opus-20240229': { input: 15.0, output: 75.0 },
+    'claude-3-haiku-20240307': { input: 0.25, output: 1.25 },
+
+    // Grok (xAI)
+    'grok-beta': { input: 5.0, output: 15.0 },
+    'grok-2': { input: 2.0, output: 10.0 },
+
+    // Google Gemini
+    'gemini-1.5-pro': { input: 1.25, output: 5.0 },
+    'gemini-1.5-flash': { input: 0.075, output: 0.3 }
   };
 
-  const modelPricing = pricing[model] || pricing['gpt-4o'];
+  const modelPricing = pricing[model] || pricing['gpt-4o-mini'];
   const inputCost = (promptTokens / 1000000) * modelPricing.input;
   const outputCost = (completionTokens / 1000000) * modelPricing.output;
 
@@ -273,6 +380,7 @@ function calculateEstimatedCost(model: string, promptTokens: number, completionT
 async function logLLMUsage(
   userId: mongoose.Types.ObjectId,
   promptName: string,
+  provider: LLMProvider,
   model: string,
   usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number },
   duration: number,
@@ -280,12 +388,12 @@ async function logLLMUsage(
   errorMessage?: string
 ): Promise<void> {
   try {
-    const estimatedCost = calculateEstimatedCost(model, usage.prompt_tokens, usage.completion_tokens);
+    const estimatedCost = calculateEstimatedCost(provider, model, usage.prompt_tokens, usage.completion_tokens);
 
     await LLMUsage.create({
       userId,
       promptName,
-      model,
+      model: `${provider}/${model}`, // Store as "provider/model"
       promptTokens: usage.prompt_tokens,
       completionTokens: usage.completion_tokens,
       totalTokens: usage.total_tokens,
@@ -301,12 +409,14 @@ async function logLLMUsage(
 }
 
 /**
- * Send compiled prompt to OpenAI ChatGPT API
+ * Send compiled prompt to configured LLM provider
+ * Automatically resolves provider and model based on prompt configuration
  */
 export async function sendToLLM(
   prompt: string,
   options?: {
     model?: string;
+    provider?: LLMProvider;
     temperature?: number;
     maxTokens?: number;
     userId?: mongoose.Types.ObjectId;
@@ -314,29 +424,107 @@ export async function sendToLLM(
   }
 ): Promise<{ content: string; usage: any }> {
   const startTime = Date.now();
-  const model = options?.model || process.env.OPENAI_MODEL || 'gpt-4o';
-  const temperature = options?.temperature || parseFloat(process.env.OPENAI_TEMPERATURE || '0.7');
-  const maxTokens = options?.maxTokens || parseInt(process.env.OPENAI_MAX_TOKENS || '2000');
+
+  // Resolve LLM configuration
+  const llmConfig = await resolveLLMConfig(options?.promptName);
+  const provider = options?.provider || llmConfig.provider;
+  const model = options?.model || llmConfig.model;
+  const temperature = options?.temperature || 0.7;
+  const maxTokens = options?.maxTokens || 2000;
 
   try {
-    const client = await getOpenAIClient();
+    let content: string;
+    let usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
 
-    const response = await client.chat.completions.create({
-      model,
-      messages: [{ role: 'user', content: prompt }],
-      temperature,
-      max_tokens: maxTokens
-    });
+    switch (provider) {
+      case 'openai': {
+        const client = await getOpenAIClient();
+        const response = await client.chat.completions.create({
+          model,
+          messages: [{ role: 'user', content: prompt }],
+          temperature,
+          max_tokens: maxTokens
+        });
+        content = response.choices[0]?.message?.content || '';
+        usage = response.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+        break;
+      }
+
+      case 'anthropic': {
+        const client = await getAnthropicClient();
+        const response = await client.messages.create({
+          model,
+          max_tokens: maxTokens,
+          temperature,
+          messages: [{ role: 'user', content: prompt }]
+        });
+        content = response.content[0]?.type === 'text' ? response.content[0].text : '';
+        usage = {
+          prompt_tokens: response.usage.input_tokens,
+          completion_tokens: response.usage.output_tokens,
+          total_tokens: response.usage.input_tokens + response.usage.output_tokens
+        };
+        break;
+      }
+
+      case 'grok': {
+        const apiKey = await getProviderKey('grok');
+        const response = await fetch('https://api.x.ai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: 'user', content: prompt }],
+            temperature,
+            max_tokens: maxTokens
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({})) as any;
+          throw new Error(errorData.error?.message || `Grok API error: ${response.statusText}`);
+        }
+
+        const data = await response.json() as any;
+        content = data.choices[0]?.message?.content || '';
+        usage = data.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+        break;
+      }
+
+      case 'gemini': {
+        const client = await getGeminiClient();
+        const geminiModel = client.getGenerativeModel({ model });
+        const result = await geminiModel.generateContent(prompt);
+        const response = await result.response;
+        content = response.text();
+
+        // Gemini doesn't provide detailed token usage in the same format
+        // We'll estimate based on response
+        const estimatedPromptTokens = Math.ceil(prompt.length / 4);
+        const estimatedCompletionTokens = Math.ceil(content.length / 4);
+        usage = {
+          prompt_tokens: estimatedPromptTokens,
+          completion_tokens: estimatedCompletionTokens,
+          total_tokens: estimatedPromptTokens + estimatedCompletionTokens
+        };
+        break;
+      }
+
+      default:
+        throw new Error(`Unsupported provider: ${provider}`);
+    }
 
     const duration = Date.now() - startTime;
-    const content = response.choices[0]?.message?.content || '';
-    const usage = response.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
 
     // Log usage if userId and promptName are provided
     if (options?.userId && options?.promptName) {
       await logLLMUsage(
         options.userId,
         options.promptName,
+        provider,
         model,
         usage,
         duration,
@@ -353,6 +541,7 @@ export async function sendToLLM(
       await logLLMUsage(
         options.userId,
         options.promptName,
+        provider,
         model,
         { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
         duration,
@@ -361,16 +550,16 @@ export async function sendToLLM(
       );
     }
 
-    // Handle specific OpenAI errors
-    if (error.status === 401) {
-      throw new Error('Invalid OpenAI API key. Please check your configuration.');
-    } else if (error.status === 429) {
-      throw new Error('OpenAI API rate limit exceeded. Please try again later.');
+    // Handle provider-specific errors
+    if (error.status === 401 || error.message?.includes('401') || error.message?.includes('Invalid API key')) {
+      throw new Error(`Invalid ${provider} API key. Please check your configuration.`);
+    } else if (error.status === 429 || error.message?.includes('429') || error.message?.includes('rate limit')) {
+      throw new Error(`${provider} API rate limit exceeded. Please try again later.`);
     } else if (error.status === 500 || error.status === 503) {
-      throw new Error('OpenAI API is currently unavailable. Please try again later.');
+      throw new Error(`${provider} API is currently unavailable. Please try again later.`);
     }
 
-    throw new Error(`OpenAI API error: ${error.message}`);
+    throw new Error(`${provider} API error: ${error.message}`);
   }
 }
 

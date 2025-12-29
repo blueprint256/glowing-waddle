@@ -72,6 +72,14 @@ function TabPanel(props: TabPanelProps) {
 const SECTORS = ['Tech', 'Retail', 'Healthcare', 'Finance', 'Education', 'Manufacturing', 'Other'];
 const BRAND_TONES = ['Professional', 'Fun', 'Serious', 'Casual', 'Formal', 'Friendly'];
 
+// LLM Provider models
+const LLM_MODELS: Record<string, string[]> = {
+  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo'],
+  anthropic: ['claude-3-5-sonnet-20241022', 'claude-3-opus-20240229', 'claude-3-haiku-20240307'],
+  grok: ['grok-beta', 'grok-2'],
+  gemini: ['gemini-1.5-pro', 'gemini-1.5-flash']
+};
+
 export default function Settings() {
   const [searchParams] = useSearchParams();
   const { user } = useAuthStore();
@@ -105,12 +113,23 @@ export default function Settings() {
   });
   const [promptSaving, setPromptSaving] = useState(false);
 
-  // OpenAI state (System Admin only)
+  // LLM Provider states (System Admin only)
   const [openAIConfigured, setOpenAIConfigured] = useState(false);
   const [openAIApiKey, setOpenAIApiKey] = useState('');
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [savingApiKey, setSavingApiKey] = useState(false);
-  const [testingConnection, setTestingConnection] = useState(false);
+  const [anthropicConfigured, setAnthropicConfigured] = useState(false);
+  const [anthropicApiKey, setAnthropicApiKey] = useState('');
+  const [grokConfigured, setGrokConfigured] = useState(false);
+  const [grokApiKey, setGrokApiKey] = useState('');
+  const [geminiConfigured, setGeminiConfigured] = useState(false);
+  const [geminiApiKey, setGeminiApiKey] = useState('');
+  const [showApiKey, setShowApiKey] = useState<{[key: string]: boolean}>({});
+  const [savingApiKey, setSavingApiKey] = useState<{[key: string]: boolean}>({});
+  const [testingConnection, setTestingConnection] = useState<{[key: string]: boolean}>({});
+
+  // Default LLM configuration state (System Admin only)
+  const [defaultProvider, setDefaultProvider] = useState('openai');
+  const [defaultModel, setDefaultModel] = useState('gpt-4o-mini');
+  const [savingDefaultConfig, setSavingDefaultConfig] = useState(false);
 
   // Command Mappings state (System Admin only)
   const [commandMappings, setCommandMappings] = useState<any[]>([]);
@@ -150,6 +169,7 @@ export default function Settings() {
     if (user?.role === UserRole.SYSTEM_ADMIN) {
       fetchPrompts();
       fetchCommandMappings();
+      fetchDefaultLLMConfig();
     }
   }, [searchParams, user]);
 
@@ -201,9 +221,20 @@ export default function Settings() {
           setCanvaConnectedAt(new Date(response.data.integrations.canva.connectedAt));
         }
 
-        // Fetch OpenAI status for System Admins
-        if (user?.role === UserRole.SYSTEM_ADMIN && response.data.integrations.openai) {
-          setOpenAIConfigured(response.data.integrations.openai.configured);
+        // Fetch LLM provider statuses for System Admins
+        if (user?.role === UserRole.SYSTEM_ADMIN) {
+          if (response.data.integrations.openai) {
+            setOpenAIConfigured(response.data.integrations.openai.configured);
+          }
+          if (response.data.integrations.anthropic) {
+            setAnthropicConfigured(response.data.integrations.anthropic.configured);
+          }
+          if (response.data.integrations.grok) {
+            setGrokConfigured(response.data.integrations.grok.configured);
+          }
+          if (response.data.integrations.gemini) {
+            setGeminiConfigured(response.data.integrations.gemini.configured);
+          }
         }
       }
     } catch (error) {
@@ -420,72 +451,119 @@ export default function Settings() {
     }
   };
 
-  // OpenAI configuration functions
-  const handleSaveApiKey = async () => {
-    if (!openAIApiKey.trim()) {
+  // Fetch default LLM configuration
+  const fetchDefaultLLMConfig = async () => {
+    try {
+      const response = await api.get('/integrations/llm/default');
+      if (response.data.success) {
+        setDefaultProvider(response.data.defaultProvider || 'openai');
+        setDefaultModel(response.data.defaultModel || 'gpt-4o-mini');
+      }
+    } catch (error) {
+      console.error('Error fetching default LLM config:', error);
+    }
+  };
+
+  // Generic LLM provider configuration functions
+  const handleSaveProviderKey = async (
+    provider: 'openai' | 'anthropic' | 'grok' | 'gemini',
+    apiKey: string,
+    setConfigured: (value: boolean) => void,
+    setApiKey: (value: string) => void
+  ) => {
+    if (!apiKey.trim()) {
       setMessage({ type: 'error', text: 'Please enter an API key.' });
       return;
     }
 
     try {
-      setSavingApiKey(true);
-      const response = await api.patch('/integrations/openai/key', { apiKey: openAIApiKey });
+      setSavingApiKey(prev => ({ ...prev, [provider]: true }));
+      const response = await api.patch(`/integrations/${provider}/key`, { apiKey });
       if (response.data.success) {
-        setMessage({ type: 'success', text: 'OpenAI API key saved successfully!' });
-        setOpenAIConfigured(true);
-        setOpenAIApiKey(''); // Clear input after saving
-        setShowApiKey(false);
+        setMessage({ type: 'success', text: `${provider.charAt(0).toUpperCase() + provider.slice(1)} API key saved successfully!` });
+        setConfigured(true);
+        setApiKey(''); // Clear input after saving
+        setShowApiKey(prev => ({ ...prev, [provider]: false }));
+        fetchIntegrationStatus(); // Refresh status
       }
     } catch (error: any) {
-      console.error('Error saving OpenAI key:', error);
+      console.error(`Error saving ${provider} key:`, error);
       setMessage({
         type: 'error',
         text: error.response?.data?.message || 'Failed to save API key. Please try again.'
       });
     } finally {
-      setSavingApiKey(false);
+      setSavingApiKey(prev => ({ ...prev, [provider]: false }));
     }
   };
 
-  const handleTestConnection = async () => {
+  const handleTestProviderConnection = async (provider: 'openai' | 'anthropic' | 'grok' | 'gemini') => {
     try {
-      setTestingConnection(true);
-      const response = await api.post('/integrations/openai/test');
+      setTestingConnection(prev => ({ ...prev, [provider]: true }));
+      const response = await api.post(`/integrations/${provider}/test`);
       if (response.data.success) {
-        setMessage({
-          type: 'success',
-          text: `OpenAI connection successful! ${response.data.modelCount} models available.`
-        });
+        const successMessage = response.data.modelCount
+          ? `${provider.charAt(0).toUpperCase() + provider.slice(1)} connection successful! ${response.data.modelCount} models available.`
+          : `${provider.charAt(0).toUpperCase() + provider.slice(1)} connection successful!`;
+        setMessage({ type: 'success', text: successMessage });
       }
     } catch (error: any) {
-      console.error('Error testing OpenAI connection:', error);
+      console.error(`Error testing ${provider} connection:`, error);
       setMessage({
         type: 'error',
         text: error.response?.data?.message || 'Connection test failed. Please check your API key.'
       });
     } finally {
-      setTestingConnection(false);
+      setTestingConnection(prev => ({ ...prev, [provider]: false }));
     }
   };
 
-  const handleRemoveApiKey = async () => {
-    if (!window.confirm('Are you sure you want to remove the OpenAI API key? AI features will be unavailable.')) {
+  const handleRemoveProviderKey = async (
+    provider: 'openai' | 'anthropic' | 'grok' | 'gemini',
+    setConfigured: (value: boolean) => void,
+    setApiKey: (value: string) => void
+  ) => {
+    const providerName = provider.charAt(0).toUpperCase() + provider.slice(1);
+    if (!window.confirm(`Are you sure you want to remove the ${providerName} API key? AI features using this provider will be unavailable.`)) {
       return;
     }
 
     try {
-      setSavingApiKey(true);
-      const response = await api.delete('/integrations/openai/key');
+      setSavingApiKey(prev => ({ ...prev, [provider]: true }));
+      const response = await api.delete(`/integrations/${provider}/key`);
       if (response.data.success) {
-        setMessage({ type: 'success', text: 'OpenAI API key removed successfully.' });
-        setOpenAIConfigured(false);
-        setOpenAIApiKey('');
+        setMessage({ type: 'success', text: `${providerName} API key removed successfully.` });
+        setConfigured(false);
+        setApiKey('');
+        fetchIntegrationStatus(); // Refresh status
       }
     } catch (error: any) {
-      console.error('Error removing OpenAI key:', error);
+      console.error(`Error removing ${provider} key:`, error);
       setMessage({ type: 'error', text: 'Failed to remove API key. Please try again.' });
     } finally {
-      setSavingApiKey(false);
+      setSavingApiKey(prev => ({ ...prev, [provider]: false }));
+    }
+  };
+
+  // Save default LLM configuration
+  const handleSaveDefaultLLMConfig = async () => {
+    try {
+      setSavingDefaultConfig(true);
+      const response = await api.patch('/integrations/llm/default', {
+        provider: defaultProvider,
+        model: defaultModel
+      });
+      if (response.data.success) {
+        setMessage({ type: 'success', text: 'Default LLM configuration saved successfully!' });
+      }
+    } catch (error: any) {
+      console.error('Error saving default LLM config:', error);
+      setMessage({
+        type: 'error',
+        text: error.response?.data?.message || 'Failed to save default LLM configuration. Please try again.'
+      });
+    } finally {
+      setSavingDefaultConfig(false);
     }
   };
 
@@ -510,6 +588,7 @@ export default function Settings() {
             <Tab label="Profile" />
             {user?.role === UserRole.HYBRID && <Tab label="Company Information" />}
             <Tab label="Integrations" />
+            {user?.role === UserRole.SYSTEM_ADMIN && <Tab label="LLM Settings" />}
             {user?.role === UserRole.SYSTEM_ADMIN && <Tab label="Prompts" />}
             <Tab label="Account" />
           </Tabs>
@@ -797,26 +876,26 @@ export default function Settings() {
                       <Button
                         size="small"
                         variant="contained"
-                        onClick={handleSaveApiKey}
-                        disabled={savingApiKey || !openAIApiKey.trim()}
+                        onClick={() => handleSaveProviderKey('openai', openAIApiKey, setOpenAIConfigured, setOpenAIApiKey)}
+                        disabled={savingApiKey.openai || !openAIApiKey.trim()}
                       >
-                        {savingApiKey ? 'Saving...' : 'Save Key'}
+                        {savingApiKey.openai ? 'Saving...' : 'Save Key'}
                       </Button>
                       {openAIConfigured && (
                         <>
                           <Button
                             size="small"
                             variant="outlined"
-                            onClick={handleTestConnection}
-                            disabled={testingConnection}
+                            onClick={() => handleTestProviderConnection('openai')}
+                            disabled={testingConnection.openai}
                           >
-                            {testingConnection ? 'Testing...' : 'Test Connection'}
+                            {testingConnection.openai ? 'Testing...' : 'Test Connection'}
                           </Button>
                           <Button
                             size="small"
                             color="error"
-                            onClick={handleRemoveApiKey}
-                            disabled={savingApiKey}
+                            onClick={() => handleRemoveProviderKey('openai', setOpenAIConfigured, setOpenAIApiKey)}
+                            disabled={savingApiKey.openai}
                           >
                             Remove Key
                           </Button>
@@ -826,27 +905,429 @@ export default function Settings() {
                   </Card>
                 )}
 
-                {/* Future Integrations Placeholder */}
-                <Card sx={{ opacity: 0.6 }}>
-                  <CardContent>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <Typography variant="h6">More Integrations</Typography>
-                        <Chip label="Coming Soon" size="small" />
+                {/* Anthropic Integration (System Admin only) */}
+                {user?.role === UserRole.SYSTEM_ADMIN && (
+                  <Card sx={{ mb: 2 }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <Typography variant="h6">Anthropic (Claude)</Typography>
+                          {anthropicConfigured ? (
+                            <Chip icon={<CheckCircleOutline />} label="Configured" color="success" size="small" />
+                          ) : (
+                            <Chip icon={<WarningAmber />} label="Not Configured" color="warning" size="small" />
+                          )}
+                        </Box>
                       </Box>
-                    </Box>
-                    <Typography variant="body2" color="text.secondary">
-                      Additional integrations with popular tools and services will be available soon.
-                      Stay tuned for updates!
-                    </Typography>
-                  </CardContent>
-                </Card>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Configure your Anthropic API key to use Claude models. Supports Claude 3.5 Sonnet, Opus, and Haiku.
+                      </Typography>
+                      <TextField
+                        fullWidth
+                        type={showApiKey.anthropic ? 'text' : 'password'}
+                        label="Anthropic API Key"
+                        value={anthropicApiKey}
+                        onChange={(e) => setAnthropicApiKey(e.target.value)}
+                        placeholder={anthropicConfigured ? '••••••••••••••••' : 'sk-ant-...'}
+                        helperText={anthropicConfigured ? 'Enter a new key to update' : 'Enter your Anthropic API key (starts with sk-ant-)'}
+                        InputProps={{
+                          endAdornment: (
+                            <IconButton
+                              onClick={() => setShowApiKey(prev => ({ ...prev, anthropic: !prev.anthropic }))}
+                              edge="end"
+                              size="small"
+                            >
+                              {showApiKey.anthropic ? <VisibilityOff /> : <Visibility />}
+                            </IconButton>
+                          )
+                        }}
+                      />
+                    </CardContent>
+                    <Divider />
+                    <CardActions>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        onClick={() => handleSaveProviderKey('anthropic', anthropicApiKey, setAnthropicConfigured, setAnthropicApiKey)}
+                        disabled={savingApiKey.anthropic || !anthropicApiKey.trim()}
+                      >
+                        {savingApiKey.anthropic ? 'Saving...' : 'Save Key'}
+                      </Button>
+                      {anthropicConfigured && (
+                        <>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => handleTestProviderConnection('anthropic')}
+                            disabled={testingConnection.anthropic}
+                          >
+                            {testingConnection.anthropic ? 'Testing...' : 'Test Connection'}
+                          </Button>
+                          <Button
+                            size="small"
+                            color="error"
+                            onClick={() => handleRemoveProviderKey('anthropic', setAnthropicConfigured, setAnthropicApiKey)}
+                            disabled={savingApiKey.anthropic}
+                          >
+                            Remove Key
+                          </Button>
+                        </>
+                      )}
+                    </CardActions>
+                  </Card>
+                )}
+
+                {/* Grok Integration (System Admin only) */}
+                {user?.role === UserRole.SYSTEM_ADMIN && (
+                  <Card sx={{ mb: 2 }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <Typography variant="h6">Grok (xAI)</Typography>
+                          {grokConfigured ? (
+                            <Chip icon={<CheckCircleOutline />} label="Configured" color="success" size="small" />
+                          ) : (
+                            <Chip icon={<WarningAmber />} label="Not Configured" color="warning" size="small" />
+                          )}
+                        </Box>
+                      </Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Configure your Grok API key to use xAI's models. Supports Grok-beta and Grok-2.
+                      </Typography>
+                      <TextField
+                        fullWidth
+                        type={showApiKey.grok ? 'text' : 'password'}
+                        label="Grok API Key"
+                        value={grokApiKey}
+                        onChange={(e) => setGrokApiKey(e.target.value)}
+                        placeholder={grokConfigured ? '••••••••••••••••' : 'xai-...'}
+                        helperText={grokConfigured ? 'Enter a new key to update' : 'Enter your Grok API key (starts with xai-)'}
+                        InputProps={{
+                          endAdornment: (
+                            <IconButton
+                              onClick={() => setShowApiKey(prev => ({ ...prev, grok: !prev.grok }))}
+                              edge="end"
+                              size="small"
+                            >
+                              {showApiKey.grok ? <VisibilityOff /> : <Visibility />}
+                            </IconButton>
+                          )
+                        }}
+                      />
+                    </CardContent>
+                    <Divider />
+                    <CardActions>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        onClick={() => handleSaveProviderKey('grok', grokApiKey, setGrokConfigured, setGrokApiKey)}
+                        disabled={savingApiKey.grok || !grokApiKey.trim()}
+                      >
+                        {savingApiKey.grok ? 'Saving...' : 'Save Key'}
+                      </Button>
+                      {grokConfigured && (
+                        <>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => handleTestProviderConnection('grok')}
+                            disabled={testingConnection.grok}
+                          >
+                            {testingConnection.grok ? 'Testing...' : 'Test Connection'}
+                          </Button>
+                          <Button
+                            size="small"
+                            color="error"
+                            onClick={() => handleRemoveProviderKey('grok', setGrokConfigured, setGrokApiKey)}
+                            disabled={savingApiKey.grok}
+                          >
+                            Remove Key
+                          </Button>
+                        </>
+                      )}
+                    </CardActions>
+                  </Card>
+                )}
+
+                {/* Gemini Integration (System Admin only) */}
+                {user?.role === UserRole.SYSTEM_ADMIN && (
+                  <Card sx={{ mb: 2 }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <Typography variant="h6">Google Gemini</Typography>
+                          {geminiConfigured ? (
+                            <Chip icon={<CheckCircleOutline />} label="Configured" color="success" size="small" />
+                          ) : (
+                            <Chip icon={<WarningAmber />} label="Not Configured" color="warning" size="small" />
+                          )}
+                        </Box>
+                      </Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Configure your Google Gemini API key. Supports Gemini 1.5 Pro and Flash models.
+                      </Typography>
+                      <TextField
+                        fullWidth
+                        type={showApiKey.gemini ? 'text' : 'password'}
+                        label="Gemini API Key"
+                        value={geminiApiKey}
+                        onChange={(e) => setGeminiApiKey(e.target.value)}
+                        placeholder={geminiConfigured ? '••••••••••••••••' : 'AIza...'}
+                        helperText={geminiConfigured ? 'Enter a new key to update' : 'Enter your Gemini API key (starts with AIza)'}
+                        InputProps={{
+                          endAdornment: (
+                            <IconButton
+                              onClick={() => setShowApiKey(prev => ({ ...prev, gemini: !prev.gemini }))}
+                              edge="end"
+                              size="small"
+                            >
+                              {showApiKey.gemini ? <VisibilityOff /> : <Visibility />}
+                            </IconButton>
+                          )
+                        }}
+                      />
+                    </CardContent>
+                    <Divider />
+                    <CardActions>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        onClick={() => handleSaveProviderKey('gemini', geminiApiKey, setGeminiConfigured, setGeminiApiKey)}
+                        disabled={savingApiKey.gemini || !geminiApiKey.trim()}
+                      >
+                        {savingApiKey.gemini ? 'Saving...' : 'Save Key'}
+                      </Button>
+                      {geminiConfigured && (
+                        <>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => handleTestProviderConnection('gemini')}
+                            disabled={testingConnection.gemini}
+                          >
+                            {testingConnection.gemini ? 'Testing...' : 'Test Connection'}
+                          </Button>
+                          <Button
+                            size="small"
+                            color="error"
+                            onClick={() => handleRemoveProviderKey('gemini', setGeminiConfigured, setGeminiApiKey)}
+                            disabled={savingApiKey.gemini}
+                          >
+                            Remove Key
+                          </Button>
+                        </>
+                      )}
+                    </CardActions>
+                  </Card>
+                )}
               </>
             )}
           </TabPanel>
 
+          {/* LLM Settings Tab (System Admin only) */}
           {user?.role === UserRole.SYSTEM_ADMIN && (
             <TabPanel value={activeTab} index={2}>
+              <Typography variant="h5" gutterBottom>
+                LLM Configuration
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
+                Configure default LLM provider and model, and manage per-prompt overrides
+              </Typography>
+
+              {/* Default LLM Configuration Section */}
+              <Card sx={{ mb: 4 }}>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Default LLM Configuration
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                    Set the default LLM provider and model to use when no prompt-specific override is configured
+                  </Typography>
+
+                  <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                    <TextField
+                      select
+                      label="Provider"
+                      value={defaultProvider}
+                      onChange={(e) => {
+                        setDefaultProvider(e.target.value);
+                        // Set default model for selected provider
+                        const models = LLM_MODELS[e.target.value];
+                        if (models && models.length > 0) {
+                          setDefaultModel(models[0]);
+                        }
+                      }}
+                      sx={{ minWidth: 200 }}
+                    >
+                      <MenuItem value="openai">OpenAI</MenuItem>
+                      <MenuItem value="anthropic">Anthropic</MenuItem>
+                      <MenuItem value="grok">Grok (xAI)</MenuItem>
+                      <MenuItem value="gemini">Google Gemini</MenuItem>
+                    </TextField>
+
+                    <TextField
+                      select
+                      label="Model"
+                      value={defaultModel}
+                      onChange={(e) => setDefaultModel(e.target.value)}
+                      sx={{ minWidth: 300 }}
+                    >
+                      {LLM_MODELS[defaultProvider]?.map((model) => (
+                        <MenuItem key={model} value={model}>
+                          {model}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Box>
+
+                  <Button
+                    variant="contained"
+                    onClick={handleSaveDefaultLLMConfig}
+                    disabled={savingDefaultConfig}
+                  >
+                    {savingDefaultConfig ? 'Saving...' : 'Save Default Configuration'}
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* Per-Prompt Overrides Section */}
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Per-Prompt LLM Overrides
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                    Configure specific LLM provider and model for individual prompts
+                  </Typography>
+
+                  {promptsLoading ? (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                      <CircularProgress />
+                    </Box>
+                  ) : prompts.length === 0 ? (
+                    <Box sx={{ textAlign: 'center', py: 4 }}>
+                      <Typography variant="body1" color="text.secondary">
+                        No prompts available. Create prompts in the Prompts tab to configure overrides.
+                      </Typography>
+                    </Box>
+                  ) : (
+                    <TableContainer>
+                      <Table>
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>Prompt Name</TableCell>
+                            <TableCell>Provider</TableCell>
+                            <TableCell>Model</TableCell>
+                            <TableCell align="right">Actions</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {prompts.map((prompt) => {
+                            const promptProvider = prompt.llmProvider || defaultProvider;
+                            const promptModel = prompt.llmModel || defaultModel;
+                            const isOverridden = !!prompt.llmProvider;
+
+                            return (
+                              <TableRow key={prompt._id}>
+                                <TableCell>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <Typography variant="body2" fontWeight="500">
+                                      {prompt.name}
+                                    </Typography>
+                                    {!isOverridden && (
+                                      <Chip label="Using Default" size="small" variant="outlined" />
+                                    )}
+                                  </Box>
+                                </TableCell>
+                                <TableCell>
+                                  <TextField
+                                    select
+                                    size="small"
+                                    value={promptProvider}
+                                    onChange={async (e) => {
+                                      const newProvider = e.target.value;
+                                      const newModel = LLM_MODELS[newProvider][0];
+                                      try {
+                                        await promptAPI.update(prompt._id, {
+                                          llmProvider: newProvider,
+                                          llmModel: newModel
+                                        });
+                                        fetchPrompts();
+                                        setMessage({ type: 'success', text: `Updated ${prompt.name} to use ${newProvider}` });
+                                      } catch (error) {
+                                        setMessage({ type: 'error', text: 'Failed to update prompt configuration' });
+                                      }
+                                    }}
+                                    sx={{ minWidth: 150 }}
+                                  >
+                                    <MenuItem value="openai">OpenAI</MenuItem>
+                                    <MenuItem value="anthropic">Anthropic</MenuItem>
+                                    <MenuItem value="grok">Grok</MenuItem>
+                                    <MenuItem value="gemini">Gemini</MenuItem>
+                                  </TextField>
+                                </TableCell>
+                                <TableCell>
+                                  <TextField
+                                    select
+                                    size="small"
+                                    value={promptModel}
+                                    onChange={async (e) => {
+                                      try {
+                                        await promptAPI.update(prompt._id, {
+                                          llmProvider: promptProvider,
+                                          llmModel: e.target.value
+                                        });
+                                        fetchPrompts();
+                                        setMessage({ type: 'success', text: `Updated ${prompt.name} model` });
+                                      } catch (error) {
+                                        setMessage({ type: 'error', text: 'Failed to update prompt model' });
+                                      }
+                                    }}
+                                    sx={{ minWidth: 250 }}
+                                  >
+                                    {LLM_MODELS[promptProvider]?.map((model) => (
+                                      <MenuItem key={model} value={model}>
+                                        {model}
+                                      </MenuItem>
+                                    ))}
+                                  </TextField>
+                                </TableCell>
+                                <TableCell align="right">
+                                  {isOverridden && (
+                                    <Button
+                                      size="small"
+                                      onClick={async () => {
+                                        try {
+                                          await promptAPI.update(prompt._id, {
+                                            llmProvider: null,
+                                            llmModel: null
+                                          });
+                                          fetchPrompts();
+                                          setMessage({ type: 'success', text: `${prompt.name} now uses default configuration` });
+                                        } catch (error) {
+                                          setMessage({ type: 'error', text: 'Failed to clear override' });
+                                        }
+                                      }}
+                                    >
+                                      Use Default
+                                    </Button>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  )}
+                </CardContent>
+              </Card>
+            </TabPanel>
+          )}
+
+          {/* Prompts Tab (System Admin only) */}
+          {user?.role === UserRole.SYSTEM_ADMIN && (
+            <TabPanel value={activeTab} index={3}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                 <Box>
                   <Typography variant="h6" gutterBottom>
@@ -1038,7 +1519,7 @@ export default function Settings() {
             </TabPanel>
           )}
 
-          <TabPanel value={activeTab} index={user?.role === UserRole.SYSTEM_ADMIN ? 3 : (user?.role === UserRole.HYBRID ? 3 : 2)}>
+          <TabPanel value={activeTab} index={user?.role === UserRole.SYSTEM_ADMIN ? 4 : (user?.role === UserRole.HYBRID ? 3 : 2)}>
             <Typography variant="h6" gutterBottom>
               Account Settings
             </Typography>

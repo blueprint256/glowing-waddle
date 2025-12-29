@@ -130,6 +130,28 @@ export const integrationsAPI = {
     saveKey: (apiKey: string) => api.patch('/integrations/openai/key', { apiKey }),
     testConnection: () => api.post('/integrations/openai/test'),
     removeKey: () => api.delete('/integrations/openai/key')
+  },
+  anthropic: {
+    getStatus: () => api.get('/integrations/anthropic/status'),
+    saveKey: (apiKey: string) => api.patch('/integrations/anthropic/key', { apiKey }),
+    testConnection: () => api.post('/integrations/anthropic/test'),
+    removeKey: () => api.delete('/integrations/anthropic/key')
+  },
+  grok: {
+    getStatus: () => api.get('/integrations/grok/status'),
+    saveKey: (apiKey: string) => api.patch('/integrations/grok/key', { apiKey }),
+    testConnection: () => api.post('/integrations/grok/test'),
+    removeKey: () => api.delete('/integrations/grok/key')
+  },
+  gemini: {
+    getStatus: () => api.get('/integrations/gemini/status'),
+    saveKey: (apiKey: string) => api.patch('/integrations/gemini/key', { apiKey }),
+    testConnection: () => api.post('/integrations/gemini/test'),
+    removeKey: () => api.delete('/integrations/gemini/key')
+  },
+  llm: {
+    getDefault: () => api.get('/integrations/llm/default'),
+    saveDefault: (provider: string, model: string) => api.patch('/integrations/llm/default', { provider, model })
   }
 };
 
