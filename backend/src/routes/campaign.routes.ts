@@ -3,6 +3,7 @@ import { Campaign, CampaignStatus } from '../models/Campaign';
 import { User, UserRole } from '../models/User';
 import { Project, ProjectStatus } from '../models/Project';
 import { Task, TaskStatus } from '../models/Task';
+import { CommandMapping } from '../models/CommandMapping';
 import { isAuthenticated } from '../middleware/auth';
 import { canCreateCampaign } from '../middleware/rbac';
 import { validateCampaignCreation, validateMongoId } from '../middleware/validation';
@@ -494,12 +495,12 @@ router.post('/:id/generate-tasks', isAuthenticated, async (req: Request, res: Re
  */
 router.post('/:id/generate', isAuthenticated, validateMongoId('id'), async (req: Request, res: Response) => {
   try {
-    const { promptName } = req.body;
+    const { command } = req.body;
 
-    if (!promptName || typeof promptName !== 'string' || promptName.trim().length === 0) {
+    if (!command || typeof command !== 'string' || command.trim().length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'Prompt name is required'
+        message: 'Command is required'
       });
     }
 
@@ -530,6 +531,25 @@ router.post('/:id/generate', isAuthenticated, validateMongoId('id'), async (req:
       });
     }
 
+    // Look up command mapping to get the prompt
+    const commandMapping = await CommandMapping.findOne({ command: command.trim() })
+      .populate('promptId', 'name details');
+
+    if (!commandMapping) {
+      return res.status(404).json({
+        success: false,
+        message: `Command '${command.trim()}' is not configured. Please contact your administrator to set up this command.`
+      });
+    }
+
+    const mappedPrompt = commandMapping.promptId as any;
+    if (!mappedPrompt) {
+      return res.status(500).json({
+        success: false,
+        message: 'Command mapping references an invalid prompt'
+      });
+    }
+
     // Prepare parameters for prompt compilation
     const promptParams = {
       companyInfo: user.companyInfo || {},
@@ -545,8 +565,8 @@ router.post('/:id/generate', isAuthenticated, validateMongoId('id'), async (req:
     };
 
     try {
-      // Generate content with OpenAI
-      const result = await generateWithPrompt(promptName.trim(), promptParams, {
+      // Generate content with OpenAI using the mapped prompt
+      const result = await generateWithPrompt(mappedPrompt.name, promptParams, {
         userId: req.user!._id
       });
 
@@ -639,7 +659,8 @@ router.post('/:id/generate', isAuthenticated, validateMongoId('id'), async (req:
         targetId: campaign._id,
         metadata: {
           action: 'generate_campaign_content',
-          promptName: promptName.trim(),
+          command: command.trim(),
+          promptName: mappedPrompt.name,
           projectsCreated: createdProjects.length,
           tasksCreated: createdTasksCount.reduce((a, b) => a + b, 0),
           tokens: result.usage.total_tokens
@@ -662,7 +683,7 @@ router.post('/:id/generate', isAuthenticated, validateMongoId('id'), async (req:
       if (error.message.includes('not found')) {
         return res.status(404).json({
           success: false,
-          message: `Prompt '${promptName}' not found. Please contact your administrator to create this prompt.`
+          message: `Prompt '${mappedPrompt.name}' not found. Please contact your administrator.`
         });
       } else if (error.message.includes('API key')) {
         return res.status(500).json({

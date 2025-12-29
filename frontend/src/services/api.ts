@@ -56,7 +56,7 @@ export const campaignAPI = {
   update: (id: string, data: any) => api.put(`/campaigns/${id}`, data),
   archive: (id: string) => api.put(`/campaigns/${id}/archive`),
   delete: (id: string) => api.delete(`/campaigns/${id}`),
-  generate: (id: string, data: { promptName: string }) => api.post(`/campaigns/${id}/generate`, data)
+  generate: (id: string, data: { command: string }) => api.post(`/campaigns/${id}/generate`, data)
 };
 
 // Project API
@@ -131,6 +131,15 @@ export const integrationsAPI = {
     testConnection: () => api.post('/integrations/openai/test'),
     removeKey: () => api.delete('/integrations/openai/key')
   }
+};
+
+// Command Mapping API (System Admin only)
+export const commandMappingAPI = {
+  getAll: () => api.get('/command-mappings'),
+  getByCommand: (commandName: string) => api.get(`/command-mappings/command/${commandName}`),
+  create: (data: { command: string; promptId: string }) => api.post('/command-mappings', data),
+  update: (id: string, data: { command?: string; promptId?: string }) => api.patch(`/command-mappings/${id}`, data),
+  delete: (id: string) => api.delete(`/command-mappings/${id}`)
 };
 
 export default api;

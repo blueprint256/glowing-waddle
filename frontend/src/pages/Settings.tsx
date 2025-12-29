@@ -45,7 +45,7 @@ import {
 } from '@mui/icons-material';
 import { useAuthStore } from '../store/authStore';
 import { UserRole } from '../types';
-import api, { promptAPI } from '../services/api';
+import api, { promptAPI, commandMappingAPI } from '../services/api';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -112,6 +112,17 @@ export default function Settings() {
   const [savingApiKey, setSavingApiKey] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
 
+  // Command Mappings state (System Admin only)
+  const [commandMappings, setCommandMappings] = useState<any[]>([]);
+  const [commandMappingsLoading, setCommandMappingsLoading] = useState(false);
+  const [commandMappingModalOpen, setCommandMappingModalOpen] = useState(false);
+  const [editingCommandMapping, setEditingCommandMapping] = useState<any>(null);
+  const [commandMappingForm, setCommandMappingForm] = useState({
+    command: '',
+    promptId: ''
+  });
+  const [commandMappingSaving, setCommandMappingSaving] = useState(false);
+
   useEffect(() => {
     // Check for integration callback status
     const integration = searchParams.get('integration');
@@ -135,9 +146,10 @@ export default function Settings() {
       fetchCompanyInfo();
     }
 
-    // Fetch prompts if user is System Admin
+    // Fetch prompts and command mappings if user is System Admin
     if (user?.role === UserRole.SYSTEM_ADMIN) {
       fetchPrompts();
+      fetchCommandMappings();
     }
   }, [searchParams, user]);
 
@@ -308,10 +320,103 @@ export default function Settings() {
       if (response.data.success) {
         setMessage({ type: 'success', text: 'Prompt deleted successfully!' });
         fetchPrompts();
+        // Also refresh command mappings in case deleted prompt was used in a mapping
+        fetchCommandMappings();
       }
     } catch (error) {
       console.error('Error deleting prompt:', error);
       setMessage({ type: 'error', text: 'Failed to delete prompt. Please try again.' });
+    }
+  };
+
+  // Command Mapping management functions
+  const fetchCommandMappings = async () => {
+    try {
+      setCommandMappingsLoading(true);
+      const response = await commandMappingAPI.getAll();
+      if (response.data.success) {
+        setCommandMappings(response.data.mappings);
+      }
+    } catch (error) {
+      console.error('Error fetching command mappings:', error);
+      setMessage({ type: 'error', text: 'Failed to load command mappings. Please try again.' });
+    } finally {
+      setCommandMappingsLoading(false);
+    }
+  };
+
+  const handleCreateCommandMapping = () => {
+    setEditingCommandMapping(null);
+    setCommandMappingForm({ command: '', promptId: '' });
+    setCommandMappingModalOpen(true);
+  };
+
+  const handleEditCommandMapping = (mapping: any) => {
+    setEditingCommandMapping(mapping);
+    setCommandMappingForm({
+      command: mapping.command,
+      promptId: mapping.promptId._id
+    });
+    setCommandMappingModalOpen(true);
+  };
+
+  const handleCloseCommandMappingModal = () => {
+    setCommandMappingModalOpen(false);
+    setEditingCommandMapping(null);
+    setCommandMappingForm({ command: '', promptId: '' });
+  };
+
+  const handleSaveCommandMapping = async () => {
+    try {
+      setCommandMappingSaving(true);
+
+      if (!commandMappingForm.command.trim() || !commandMappingForm.promptId) {
+        setMessage({ type: 'error', text: 'Command and prompt are required.' });
+        return;
+      }
+
+      if (editingCommandMapping) {
+        // Update existing mapping
+        const response = await commandMappingAPI.update(editingCommandMapping._id, commandMappingForm);
+        if (response.data.success) {
+          setMessage({ type: 'success', text: 'Command mapping updated successfully!' });
+          fetchCommandMappings();
+          handleCloseCommandMappingModal();
+        }
+      } else {
+        // Create new mapping
+        const response = await commandMappingAPI.create(commandMappingForm);
+        if (response.data.success) {
+          setMessage({ type: 'success', text: 'Command mapping created successfully!' });
+          fetchCommandMappings();
+          handleCloseCommandMappingModal();
+        }
+      }
+    } catch (error: any) {
+      console.error('Error saving command mapping:', error);
+      setMessage({
+        type: 'error',
+        text: error.response?.data?.message || 'Failed to save command mapping. Please try again.'
+      });
+    } finally {
+      setCommandMappingSaving(false);
+    }
+  };
+
+  const handleDeleteCommandMapping = async (mappingId: string) => {
+    if (!window.confirm('Are you sure you want to delete this command mapping? Users will no longer be able to use this command.')) {
+      return;
+    }
+
+    try {
+      const response = await commandMappingAPI.delete(mappingId);
+      if (response.data.success) {
+        setMessage({ type: 'success', text: 'Command mapping deleted successfully!' });
+        fetchCommandMappings();
+      }
+    } catch (error) {
+      console.error('Error deleting command mapping:', error);
+      setMessage({ type: 'error', text: 'Failed to delete command mapping. Please try again.' });
     }
   };
 
@@ -837,6 +942,99 @@ export default function Settings() {
                   </Typography>
                 </Alert>
               </Box>
+
+              {/* Command Mappings Section */}
+              <Divider sx={{ my: 4 }} />
+
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                <Box>
+                  <Typography variant="h6" gutterBottom>
+                    Command Mappings
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Map commands to prompts for dynamic LLM execution
+                  </Typography>
+                </Box>
+                <Button
+                  variant="contained"
+                  startIcon={<Add />}
+                  onClick={handleCreateCommandMapping}
+                >
+                  Add Mapping
+                </Button>
+              </Box>
+
+              {commandMappingsLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                  <CircularProgress />
+                </Box>
+              ) : commandMappings.length === 0 ? (
+                <Box sx={{ textAlign: 'center', py: 4 }}>
+                  <Typography variant="body1" color="text.secondary">
+                    No command mappings configured yet. Create your first mapping to get started.
+                  </Typography>
+                </Box>
+              ) : (
+                <TableContainer>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Command</TableCell>
+                        <TableCell>Mapped Prompt</TableCell>
+                        <TableCell align="right">Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {commandMappings.map((mapping) => (
+                        <TableRow key={mapping._id}>
+                          <TableCell>
+                            <Chip
+                              label={mapping.command}
+                              size="small"
+                              color="primary"
+                              variant="outlined"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2">
+                              {mapping.promptId?.name || 'N/A'}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="right">
+                            <Tooltip title="Edit mapping">
+                              <IconButton
+                                size="small"
+                                onClick={() => handleEditCommandMapping(mapping)}
+                                color="primary"
+                              >
+                                <Edit fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Delete mapping">
+                              <IconButton
+                                size="small"
+                                onClick={() => handleDeleteCommandMapping(mapping._id)}
+                                color="error"
+                              >
+                                <Delete fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+
+              <Box sx={{ mt: 2 }}>
+                <Alert severity="info" icon={<Info />}>
+                  <Typography variant="body2">
+                    <strong>How it works:</strong> Commands like "generate-campaign" can be configured to use specific prompts.
+                    When users trigger these commands, the system automatically uses the mapped prompt for LLM execution.
+                  </Typography>
+                </Alert>
+              </Box>
             </TabPanel>
           )}
 
@@ -901,6 +1099,65 @@ export default function Settings() {
               disabled={promptSaving}
             >
               {promptSaving ? 'Saving...' : (editingPrompt ? 'Update' : 'Create')}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Command Mapping Create/Edit Modal */}
+        <Dialog open={commandMappingModalOpen} onClose={handleCloseCommandMappingModal} maxWidth="sm" fullWidth>
+          <DialogTitle>
+            {editingCommandMapping ? 'Edit Command Mapping' : 'Create New Command Mapping'}
+          </DialogTitle>
+          <DialogContent>
+            <Box sx={{ mt: 2 }}>
+              <TextField
+                fullWidth
+                label="Command Name"
+                value={commandMappingForm.command}
+                onChange={(e) => setCommandMappingForm({ ...commandMappingForm, command: e.target.value })}
+                margin="normal"
+                placeholder="e.g., generate-campaign"
+                helperText="Unique command identifier (e.g., generate-campaign, summarize-campaign)"
+                required
+                disabled={!!editingCommandMapping}
+              />
+              <TextField
+                fullWidth
+                select
+                label="Select Prompt"
+                value={commandMappingForm.promptId}
+                onChange={(e) => setCommandMappingForm({ ...commandMappingForm, promptId: e.target.value })}
+                margin="normal"
+                helperText="Choose which prompt this command should use"
+                required
+              >
+                {prompts.length === 0 ? (
+                  <MenuItem value="" disabled>
+                    No prompts available. Create a prompt first.
+                  </MenuItem>
+                ) : (
+                  prompts.map((prompt) => (
+                    <MenuItem key={prompt._id} value={prompt._id}>
+                      {prompt.name}
+                    </MenuItem>
+                  ))
+                )}
+              </TextField>
+              <Alert severity="info" sx={{ mt: 2 }}>
+                <Typography variant="body2">
+                  This mapping allows the specified command to dynamically use the selected prompt for LLM execution.
+                </Typography>
+              </Alert>
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseCommandMappingModal}>Cancel</Button>
+            <Button
+              onClick={handleSaveCommandMapping}
+              variant="contained"
+              disabled={commandMappingSaving}
+            >
+              {commandMappingSaving ? 'Saving...' : (editingCommandMapping ? 'Update' : 'Create')}
             </Button>
           </DialogActions>
         </Dialog>
