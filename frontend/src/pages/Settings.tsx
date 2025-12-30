@@ -111,6 +111,7 @@ export default function Settings() {
     secondaryLogoUrl: '',
     tertiaryLogoUrl: ''
   });
+  const [uploadingLogo, setUploadingLogo] = useState<{[key: string]: boolean}>({});
 
   // Prompts state (System Admin only)
   const [prompts, setPrompts] = useState<any[]>([]);
@@ -231,6 +232,60 @@ export default function Settings() {
       setMessage({ type: 'error', text: 'Failed to save company information. Please try again.' });
     } finally {
       setCompanyInfoSaving(false);
+    }
+  };
+
+  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>, logoType: 'primary' | 'secondary' | 'tertiary') => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setMessage({ type: 'error', text: 'Please upload an image file' });
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setMessage({ type: 'error', text: 'Logo file size must be less than 5MB' });
+      return;
+    }
+
+    try {
+      setUploadingLogo({ ...uploadingLogo, [logoType]: true });
+      const formData = new FormData();
+      formData.append('logo', file);
+      formData.append('logoType', logoType);
+
+      const response = await api.post('/users/me/upload-logo', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      if (response.data.success) {
+        const logoUrlField = `${logoType}LogoUrl` as 'primaryLogoUrl' | 'secondaryLogoUrl' | 'tertiaryLogoUrl';
+        setCompanyInfo({ ...companyInfo, [logoUrlField]: response.data.logoUrl });
+        setMessage({ type: 'success', text: `${logoType.charAt(0).toUpperCase() + logoType.slice(1)} logo uploaded successfully!` });
+      }
+    } catch (error: any) {
+      console.error('Error uploading logo:', error);
+      setMessage({ type: 'error', text: error.response?.data?.message || 'Failed to upload logo. Please try again.' });
+    } finally {
+      setUploadingLogo({ ...uploadingLogo, [logoType]: false });
+      // Reset file input
+      event.target.value = '';
+    }
+  };
+
+  const handleRemoveLogo = async (logoType: 'primary' | 'secondary' | 'tertiary') => {
+    try {
+      const logoUrlField = `${logoType}LogoUrl` as 'primaryLogoUrl' | 'secondaryLogoUrl' | 'tertiaryLogoUrl';
+      const updatedCompanyInfo = { ...companyInfo, [logoUrlField]: '' };
+      setCompanyInfo(updatedCompanyInfo);
+
+      // Save to backend
+      await api.patch('/users/me/company-info', updatedCompanyInfo);
+      setMessage({ type: 'success', text: `${logoType.charAt(0).toUpperCase() + logoType.slice(1)} logo removed successfully!` });
+    } catch (error: any) {
+      console.error('Error removing logo:', error);
+      setMessage({ type: 'error', text: 'Failed to remove logo. Please try again.' });
     }
   };
 
@@ -780,35 +835,152 @@ export default function Settings() {
                     helperText="Available as {brandGuidelines} placeholder in prompts"
                   />
 
-                  <TextField
-                    fullWidth
-                    label="Primary Logo URL"
-                    value={companyInfo.primaryLogoUrl}
-                    onChange={(e) => setCompanyInfo({ ...companyInfo, primaryLogoUrl: e.target.value })}
-                    margin="normal"
-                    placeholder="https://example.com/logo-primary.png"
-                    helperText="Available as {primaryLogo} placeholder in prompts"
-                  />
+                  {/* Primary Logo Upload */}
+                  <Box sx={{ mt: 2 }}>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Primary Logo
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+                      Available as {'{primaryLogo}'} placeholder in prompts
+                    </Typography>
+                    {companyInfo.primaryLogoUrl ? (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <Box
+                          component="img"
+                          src={companyInfo.primaryLogoUrl}
+                          alt="Primary Logo"
+                          sx={{
+                            maxWidth: 200,
+                            maxHeight: 100,
+                            objectFit: 'contain',
+                            border: '1px solid #e0e0e0',
+                            borderRadius: 1,
+                            p: 1
+                          }}
+                        />
+                        <Button
+                          variant="outlined"
+                          color="error"
+                          size="small"
+                          onClick={() => handleRemoveLogo('primary')}
+                        >
+                          Remove
+                        </Button>
+                      </Box>
+                    ) : (
+                      <Button
+                        variant="outlined"
+                        component="label"
+                        disabled={uploadingLogo.primary}
+                      >
+                        {uploadingLogo.primary ? 'Uploading...' : 'Upload Primary Logo'}
+                        <input
+                          type="file"
+                          hidden
+                          accept="image/*"
+                          onChange={(e) => handleLogoUpload(e, 'primary')}
+                        />
+                      </Button>
+                    )}
+                  </Box>
 
-                  <TextField
-                    fullWidth
-                    label="Secondary Logo URL"
-                    value={companyInfo.secondaryLogoUrl}
-                    onChange={(e) => setCompanyInfo({ ...companyInfo, secondaryLogoUrl: e.target.value })}
-                    margin="normal"
-                    placeholder="https://example.com/logo-secondary.png"
-                    helperText="Alternate or monochrome version - available as {secondaryLogo}"
-                  />
+                  {/* Secondary Logo Upload */}
+                  <Box sx={{ mt: 3 }}>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Secondary Logo
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+                      Alternate or monochrome version - available as {'{secondaryLogo}'}
+                    </Typography>
+                    {companyInfo.secondaryLogoUrl ? (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <Box
+                          component="img"
+                          src={companyInfo.secondaryLogoUrl}
+                          alt="Secondary Logo"
+                          sx={{
+                            maxWidth: 200,
+                            maxHeight: 100,
+                            objectFit: 'contain',
+                            border: '1px solid #e0e0e0',
+                            borderRadius: 1,
+                            p: 1
+                          }}
+                        />
+                        <Button
+                          variant="outlined"
+                          color="error"
+                          size="small"
+                          onClick={() => handleRemoveLogo('secondary')}
+                        >
+                          Remove
+                        </Button>
+                      </Box>
+                    ) : (
+                      <Button
+                        variant="outlined"
+                        component="label"
+                        disabled={uploadingLogo.secondary}
+                      >
+                        {uploadingLogo.secondary ? 'Uploading...' : 'Upload Secondary Logo'}
+                        <input
+                          type="file"
+                          hidden
+                          accept="image/*"
+                          onChange={(e) => handleLogoUpload(e, 'secondary')}
+                        />
+                      </Button>
+                    )}
+                  </Box>
 
-                  <TextField
-                    fullWidth
-                    label="Tertiary Logo URL"
-                    value={companyInfo.tertiaryLogoUrl}
-                    onChange={(e) => setCompanyInfo({ ...companyInfo, tertiaryLogoUrl: e.target.value })}
-                    margin="normal"
-                    placeholder="https://example.com/logo-icon.png"
-                    helperText="Icon or favicon version - available as {tertiaryLogo}"
-                  />
+                  {/* Tertiary Logo Upload */}
+                  <Box sx={{ mt: 3 }}>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Tertiary Logo
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+                      Icon or favicon version - available as {'{tertiaryLogo}'}
+                    </Typography>
+                    {companyInfo.tertiaryLogoUrl ? (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <Box
+                          component="img"
+                          src={companyInfo.tertiaryLogoUrl}
+                          alt="Tertiary Logo"
+                          sx={{
+                            maxWidth: 200,
+                            maxHeight: 100,
+                            objectFit: 'contain',
+                            border: '1px solid #e0e0e0',
+                            borderRadius: 1,
+                            p: 1
+                          }}
+                        />
+                        <Button
+                          variant="outlined"
+                          color="error"
+                          size="small"
+                          onClick={() => handleRemoveLogo('tertiary')}
+                        >
+                          Remove
+                        </Button>
+                      </Box>
+                    ) : (
+                      <Button
+                        variant="outlined"
+                        component="label"
+                        disabled={uploadingLogo.tertiary}
+                      >
+                        {uploadingLogo.tertiary ? 'Uploading...' : 'Upload Tertiary Logo'}
+                        <input
+                          type="file"
+                          hidden
+                          accept="image/*"
+                          onChange={(e) => handleLogoUpload(e, 'tertiary')}
+                        />
+                      </Button>
+                    )}
+                  </Box>
 
                   <Button
                     variant="contained"
@@ -1493,7 +1665,7 @@ export default function Settings() {
               <Box sx={{ mt: 2 }}>
                 <Alert severity="info" icon={<Info />}>
                   <Typography variant="body2">
-                    <strong>Tip:</strong> Use placeholders like {'{companyInfo}'}, {'{campaignDetails}'}, {'{companyName}'}, etc. in your prompts.
+                    <strong>Tip:</strong> Use placeholders like {'{companyInfo}'}, {'{campaignDetails}'}, {'{taskDescription}'}, {'{brandGuidelines}'}, {'{primaryLogo}'}, etc. in your prompts.
                     These will be automatically replaced with actual data when generating content.
                   </Typography>
                 </Alert>
@@ -1638,11 +1810,11 @@ export default function Settings() {
               />
               <Alert severity="info" sx={{ mt: 2 }}>
                 <Typography variant="body2">
-                  <strong>Available placeholders:</strong><br />
-                  {'{companyInfo}'} - Full company information<br />
-                  {'{companyName}'}, {'{sector}'}, {'{brandTone}'} - Individual company fields<br />
-                  {'{campaignDetails}'} - Full campaign information<br />
-                  {'{campaignName}'}, {'{coreMessages}'}, {'{hashtags}'} - Individual campaign fields
+                  <strong>Available Placeholders:</strong><br />
+                  <strong>Company:</strong> {'{companyInfo}'} (full object), {'{companyName}'}, {'{sector}'}, {'{brandTone}'}, {'{brandGuidelines}'}<br />
+                  <strong>Campaign:</strong> {'{campaignDetails}'} (full object), {'{campaignName}'}, {'{coreMessages}'}, {'{hashtags}'}<br />
+                  <strong>Task:</strong> {'{taskDescription}'}<br />
+                  <strong>Brand Assets:</strong> {'{primaryLogo}'}, {'{secondaryLogo}'}, {'{tertiaryLogo}'} (logo URLs)
                 </Typography>
               </Alert>
             </Box>
