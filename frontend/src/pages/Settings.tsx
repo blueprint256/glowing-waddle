@@ -82,7 +82,7 @@ const LLM_MODELS: Record<string, string[]> = {
 
 // Image LLM Provider models (for image generation)
 const IMAGE_LLM_MODELS: Record<string, string[]> = {
-  openai: ['dall-e-3', 'dall-e-2'],
+  openai: ['gpt-image-1.5', 'dall-e-3', 'dall-e-2'],
   stability: ['stable-diffusion-xl-1024-v1-0', 'sd3-medium']
 };
 
