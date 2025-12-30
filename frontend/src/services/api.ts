@@ -150,9 +150,19 @@ export const integrationsAPI = {
     testConnection: () => api.post('/integrations/gemini/test'),
     removeKey: () => api.delete('/integrations/gemini/key')
   },
+  stability: {
+    getStatus: () => api.get('/integrations/stability/status'),
+    saveKey: (apiKey: string) => api.patch('/integrations/stability/key', { apiKey }),
+    testConnection: () => api.post('/integrations/stability/test'),
+    removeKey: () => api.delete('/integrations/stability/key')
+  },
   llm: {
     getDefault: () => api.get('/integrations/llm/default'),
     saveDefault: (provider: string, model: string) => api.patch('/integrations/llm/default', { provider, model })
+  },
+  imageLlm: {
+    getDefault: () => api.get('/integrations/image-llm/default'),
+    saveDefault: (provider: string, model: string) => api.patch('/integrations/image-llm/default', { provider, model })
   }
 };
 

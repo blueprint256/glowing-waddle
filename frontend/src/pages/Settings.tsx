@@ -72,12 +72,18 @@ function TabPanel(props: TabPanelProps) {
 const SECTORS = ['Tech', 'Retail', 'Healthcare', 'Finance', 'Education', 'Manufacturing', 'Other'];
 const BRAND_TONES = ['Professional', 'Fun', 'Serious', 'Casual', 'Formal', 'Friendly'];
 
-// LLM Provider models
+// LLM Provider models (for text generation)
 const LLM_MODELS: Record<string, string[]> = {
   openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo'],
   anthropic: ['claude-3-5-sonnet-20241022', 'claude-3-opus-20240229', 'claude-3-haiku-20240307'],
   grok: ['grok-beta', 'grok-2'],
   gemini: ['gemini-1.5-pro', 'gemini-1.5-flash']
+};
+
+// Image LLM Provider models (for image generation)
+const IMAGE_LLM_MODELS: Record<string, string[]> = {
+  openai: ['dall-e-3', 'dall-e-2'],
+  stability: ['stable-diffusion-xl-1024-v1-0', 'sd3-medium']
 };
 
 export default function Settings() {
@@ -99,7 +105,11 @@ export default function Settings() {
     usp: '',
     brandTone: '',
     audienceProfile: '',
-    globalRules: ''
+    globalRules: '',
+    brandGuidelines: '',
+    primaryLogoUrl: '',
+    secondaryLogoUrl: '',
+    tertiaryLogoUrl: ''
   });
 
   // Prompts state (System Admin only)
@@ -130,6 +140,15 @@ export default function Settings() {
   const [defaultProvider, setDefaultProvider] = useState('openai');
   const [defaultModel, setDefaultModel] = useState('gpt-4o-mini');
   const [savingDefaultConfig, setSavingDefaultConfig] = useState(false);
+
+  // Default Image LLM configuration state (System Admin only)
+  const [defaultImageProvider, setDefaultImageProvider] = useState('openai');
+  const [defaultImageModel, setDefaultImageModel] = useState('dall-e-3');
+  const [savingDefaultImageConfig, setSavingDefaultImageConfig] = useState(false);
+
+  // Stability AI state (System Admin only)
+  const [stabilityConfigured, setStabilityConfigured] = useState(false);
+  const [stabilityApiKey, setStabilityApiKey] = useState('');
 
   // Command Mappings state (System Admin only)
   const [commandMappings, setCommandMappings] = useState<any[]>([]);
@@ -186,7 +205,11 @@ export default function Settings() {
           usp: response.data.companyInfo.usp || '',
           brandTone: response.data.companyInfo.brandTone || '',
           audienceProfile: response.data.companyInfo.audienceProfile || '',
-          globalRules: response.data.companyInfo.globalRules || ''
+          globalRules: response.data.companyInfo.globalRules || '',
+          brandGuidelines: response.data.companyInfo.brandGuidelines || '',
+          primaryLogoUrl: response.data.companyInfo.primaryLogoUrl || '',
+          secondaryLogoUrl: response.data.companyInfo.secondaryLogoUrl || '',
+          tertiaryLogoUrl: response.data.companyInfo.tertiaryLogoUrl || ''
         });
       }
     } catch (error) {
@@ -735,11 +758,63 @@ export default function Settings() {
                     rows={3}
                     placeholder="Content guidelines, dos and don'ts"
                   />
+
+                  <Divider sx={{ my: 3 }} />
+
+                  <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
+                    Brand Assets
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Add brand guidelines and logo URLs for AI-powered content generation
+                  </Typography>
+
+                  <TextField
+                    fullWidth
+                    label="Brand Guidelines"
+                    value={companyInfo.brandGuidelines}
+                    onChange={(e) => setCompanyInfo({ ...companyInfo, brandGuidelines: e.target.value })}
+                    margin="normal"
+                    multiline
+                    rows={6}
+                    placeholder="Detailed visual and writing style guidelines for your brand..."
+                    helperText="Available as {brandGuidelines} placeholder in prompts"
+                  />
+
+                  <TextField
+                    fullWidth
+                    label="Primary Logo URL"
+                    value={companyInfo.primaryLogoUrl}
+                    onChange={(e) => setCompanyInfo({ ...companyInfo, primaryLogoUrl: e.target.value })}
+                    margin="normal"
+                    placeholder="https://example.com/logo-primary.png"
+                    helperText="Available as {primaryLogo} placeholder in prompts"
+                  />
+
+                  <TextField
+                    fullWidth
+                    label="Secondary Logo URL"
+                    value={companyInfo.secondaryLogoUrl}
+                    onChange={(e) => setCompanyInfo({ ...companyInfo, secondaryLogoUrl: e.target.value })}
+                    margin="normal"
+                    placeholder="https://example.com/logo-secondary.png"
+                    helperText="Alternate or monochrome version - available as {secondaryLogo}"
+                  />
+
+                  <TextField
+                    fullWidth
+                    label="Tertiary Logo URL"
+                    value={companyInfo.tertiaryLogoUrl}
+                    onChange={(e) => setCompanyInfo({ ...companyInfo, tertiaryLogoUrl: e.target.value })}
+                    margin="normal"
+                    placeholder="https://example.com/logo-icon.png"
+                    helperText="Icon or favicon version - available as {tertiaryLogo}"
+                  />
+
                   <Button
                     variant="contained"
                     onClick={saveCompanyInfo}
                     disabled={companyInfoSaving}
-                    sx={{ mt: 2 }}
+                    sx={{ mt: 3 }}
                   >
                     {companyInfoSaving ? 'Saving...' : 'Save Changes'}
                   </Button>
