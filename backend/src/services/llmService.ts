@@ -171,6 +171,10 @@ export async function getPromptByName(name: string): Promise<string | null> {
  * - {campaignDetails} - full campaign details as JSON
  * - {campaignName} - just the campaign name
  * - {taskDescription} - current task description
+ * - {brandGuidelines} - brand visual/writing style guidelines
+ * - {primaryLogo} - primary logo URL
+ * - {secondaryLogo} - secondary logo URL
+ * - {tertiaryLogo} - tertiary logo URL
  * - Any custom placeholder that matches a key in the params
  */
 export function compileSuperPrompt(promptTemplate: string, params: SuperPromptParams): string {
@@ -191,6 +195,20 @@ export function compileSuperPrompt(promptTemplate: string, params: SuperPromptPa
   }
   if (params.companyInfo?.brandTone) {
     compiledPrompt = compiledPrompt.replace(/\{brandTone\}/g, params.companyInfo.brandTone);
+  }
+
+  // Replace brand asset placeholders
+  if (params.companyInfo?.brandGuidelines) {
+    compiledPrompt = compiledPrompt.replace(/\{brandGuidelines\}/g, params.companyInfo.brandGuidelines);
+  }
+  if (params.companyInfo?.primaryLogoUrl) {
+    compiledPrompt = compiledPrompt.replace(/\{primaryLogo\}/g, params.companyInfo.primaryLogoUrl);
+  }
+  if (params.companyInfo?.secondaryLogoUrl) {
+    compiledPrompt = compiledPrompt.replace(/\{secondaryLogo\}/g, params.companyInfo.secondaryLogoUrl);
+  }
+  if (params.companyInfo?.tertiaryLogoUrl) {
+    compiledPrompt = compiledPrompt.replace(/\{tertiaryLogo\}/g, params.companyInfo.tertiaryLogoUrl);
   }
 
   // Replace {campaignDetails} with formatted campaign information

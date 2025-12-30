@@ -846,6 +846,171 @@ router.delete('/gemini/key', isAuthenticated, isSystemAdmin, async (req: Request
   }
 });
 
+// ====================================
+// STABILITY AI INTEGRATION (IMAGE GEN)
+// ====================================
+
+/**
+ * @route   GET /api/integrations/stability/status
+ * @desc    Check Stability AI API key status (Admin only)
+ * @access  Private (System Admin)
+ */
+router.get('/stability/status', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
+  try {
+    const config = await AppConfig.getConfig();
+
+    res.json({
+      success: true,
+      configured: !!config.stabilityApiKey,
+      updatedAt: config.stabilityKeyUpdatedAt
+    });
+  } catch (error: any) {
+    console.error('Stability status check error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check Stability AI status'
+    });
+  }
+});
+
+/**
+ * @route   PATCH /api/integrations/stability/key
+ * @desc    Save or update Stability AI API key (Admin only)
+ * @access  Private (System Admin)
+ */
+router.patch('/stability/key', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
+  try {
+    const { apiKey } = req.body;
+
+    if (!apiKey || typeof apiKey !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'API key is required'
+      });
+    }
+
+    if (!apiKey.startsWith('sk-')) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid Stability AI API key format. Key should start with "sk-"'
+      });
+    }
+
+    const config = await AppConfig.getConfig();
+
+    config.stabilityApiKey = config.encryptApiKey(apiKey.trim());
+    config.stabilityKeyUpdatedAt = new Date();
+    config.stabilityKeyUpdatedBy = req.user!._id;
+
+    await config.save();
+
+    console.log(`Stability AI API key saved/updated by: ${req.user!.email}`);
+
+    res.json({
+      success: true,
+      message: 'Stability AI API key saved successfully',
+      configured: true,
+      updatedAt: config.stabilityKeyUpdatedAt
+    });
+  } catch (error: any) {
+    console.error('Stability key save error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to save Stability AI API key'
+    });
+  }
+});
+
+/**
+ * @route   POST /api/integrations/stability/test
+ * @desc    Test Stability AI API key connection (Admin only)
+ * @access  Private (System Admin)
+ */
+router.post('/stability/test', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
+  try {
+    const config = await AppConfig.getConfig();
+
+    if (!config.stabilityApiKey) {
+      return res.status(400).json({
+        success: false,
+        message: 'No Stability AI API key configured. Please save a key first.'
+      });
+    }
+
+    const apiKey = config.decryptApiKey(config.stabilityApiKey);
+
+    // Test the API with a simple request to get account info
+    const response = await fetch('https://api.stability.ai/v1/user/account', {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Accept': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return res.status(response.status).json({
+        success: false,
+        message: `Stability AI API test failed: ${errorText}`
+      });
+    }
+
+    const data = await response.json();
+
+    res.json({
+      success: true,
+      message: 'Stability AI connection successful!',
+      email: data.email || 'N/A'
+    });
+  } catch (error: any) {
+    console.error('Stability test error:', error);
+
+    if (error.message?.includes('401') || error.message?.includes('403')) {
+      return res.status(401).json({
+        success: false,
+        message: 'Stability AI API authentication failed. Please check your API key.'
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to test Stability AI connection',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * @route   DELETE /api/integrations/stability/key
+ * @desc    Remove Stability AI API key (Admin only)
+ * @access  Private (System Admin)
+ */
+router.delete('/stability/key', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
+  try {
+    const config = await AppConfig.getConfig();
+
+    config.stabilityApiKey = undefined;
+    config.stabilityKeyUpdatedAt = new Date();
+    config.stabilityKeyUpdatedBy = req.user!._id;
+
+    await config.save();
+
+    console.log(`Stability AI API key removed by: ${req.user!.email}`);
+
+    res.json({
+      success: true,
+      message: 'Stability AI API key removed successfully',
+      configured: false
+    });
+  } catch (error: any) {
+    console.error('Stability key removal error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to remove Stability AI API key'
+    });
+  }
+});
+
 // ===========================
 // DEFAULT LLM CONFIGURATION
 // ===========================
@@ -933,6 +1098,95 @@ router.patch('/llm/default', isAuthenticated, isSystemAdmin, async (req: Request
     res.status(500).json({
       success: false,
       message: 'Failed to save default LLM configuration'
+    });
+  }
+});
+
+// =====================================
+// DEFAULT IMAGE LLM CONFIGURATION
+// =====================================
+
+/**
+ * @route   GET /api/integrations/image-llm/default
+ * @desc    Get default Image LLM configuration (Admin only)
+ * @access  Private (System Admin)
+ */
+router.get('/image-llm/default', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
+  try {
+    const config = await AppConfig.getConfig();
+
+    res.json({
+      success: true,
+      defaultProvider: config.defaultImageLLMProvider || 'openai',
+      defaultModel: config.defaultImageLLMModel || 'dall-e-3'
+    });
+  } catch (error: any) {
+    console.error('Get default Image LLM config error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get default Image LLM configuration'
+    });
+  }
+});
+
+/**
+ * @route   PATCH /api/integrations/image-llm/default
+ * @desc    Set default Image LLM configuration (Admin only)
+ * @access  Private (System Admin)
+ */
+router.patch('/image-llm/default', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
+  try {
+    const { provider, model } = req.body;
+
+    if (!provider || !model) {
+      return res.status(400).json({
+        success: false,
+        message: 'Provider and model are required'
+      });
+    }
+
+    // Validate provider
+    const validProviders = ['openai', 'stability'];
+    if (!validProviders.includes(provider)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid provider. Must be one of: ${validProviders.join(', ')}`
+      });
+    }
+
+    const config = await AppConfig.getConfig();
+
+    // Check if the selected provider has an API key configured
+    const providerKeyMap: Record<string, string | undefined> = {
+      openai: config.openAIApiKey,
+      stability: config.stabilityApiKey
+    };
+
+    if (!providerKeyMap[provider]) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot set ${provider} as default image provider. No API key configured for this provider.`
+      });
+    }
+
+    config.defaultImageLLMProvider = provider;
+    config.defaultImageLLMModel = model;
+
+    await config.save();
+
+    console.log(`Default Image LLM config updated by ${req.user!.email}: ${provider}/${model}`);
+
+    res.json({
+      success: true,
+      message: 'Default Image LLM configuration saved successfully',
+      defaultProvider: config.defaultImageLLMProvider,
+      defaultModel: config.defaultImageLLMModel
+    });
+  } catch (error: any) {
+    console.error('Set default Image LLM config error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to save default Image LLM configuration'
     });
   }
 });

@@ -24,6 +24,10 @@ export interface IUser extends Document {
     brandTone?: string;
     audienceProfile?: string;
     globalRules?: string;
+    brandGuidelines?: string;
+    primaryLogoUrl?: string;
+    secondaryLogoUrl?: string;
+    tertiaryLogoUrl?: string;
   };
   integrations?: {
     canva?: {
@@ -93,7 +97,11 @@ const userSchema = new Schema<IUser>(
       usp: { type: String, trim: true },
       brandTone: { type: String, trim: true },
       audienceProfile: { type: String, trim: true },
-      globalRules: { type: String, trim: true }
+      globalRules: { type: String, trim: true },
+      brandGuidelines: { type: String, trim: true },
+      primaryLogoUrl: { type: String, trim: true },
+      secondaryLogoUrl: { type: String, trim: true },
+      tertiaryLogoUrl: { type: String, trim: true }
     },
     integrations: {
       canva: {
