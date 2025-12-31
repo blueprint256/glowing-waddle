@@ -1517,8 +1517,10 @@ export default function Settings() {
                         <TableHead>
                           <TableRow>
                             <TableCell>Prompt Name</TableCell>
-                            <TableCell>Provider</TableCell>
-                            <TableCell>Model</TableCell>
+                            <TableCell>Text Provider</TableCell>
+                            <TableCell>Text Model</TableCell>
+                            <TableCell>Image Provider</TableCell>
+                            <TableCell>Image Model</TableCell>
                             <TableCell align="right">Actions</TableCell>
                           </TableRow>
                         </TableHead>
@@ -1526,7 +1528,10 @@ export default function Settings() {
                           {prompts.map((prompt) => {
                             const promptProvider = prompt.llmProvider || defaultProvider;
                             const promptModel = prompt.llmModel || defaultModel;
-                            const isOverridden = !!prompt.llmProvider;
+                            const promptImageProvider = prompt.imageLLMProvider || defaultImageProvider;
+                            const promptImageModel = prompt.imageLLMModel || defaultImageModel;
+                            const isTextOverridden = !!prompt.llmProvider;
+                            const isImageOverridden = !!prompt.imageLLMProvider;
 
                             return (
                               <TableRow key={prompt._id}>
@@ -1535,8 +1540,8 @@ export default function Settings() {
                                     <Typography variant="body2" fontWeight="500">
                                       {prompt.name}
                                     </Typography>
-                                    {!isOverridden && (
-                                      <Chip label="Using Default" size="small" variant="outlined" />
+                                    {!isTextOverridden && !isImageOverridden && (
+                                      <Chip label="Using Defaults" size="small" variant="outlined" />
                                     )}
                                   </Box>
                                 </TableCell>
@@ -1554,12 +1559,12 @@ export default function Settings() {
                                           llmModel: newModel
                                         });
                                         fetchPrompts();
-                                        setMessage({ type: 'success', text: `Updated ${prompt.name} to use ${newProvider}` });
+                                        setMessage({ type: 'success', text: `Updated ${prompt.name} text provider to ${newProvider}` });
                                       } catch (error) {
                                         setMessage({ type: 'error', text: 'Failed to update prompt configuration' });
                                       }
                                     }}
-                                    sx={{ minWidth: 150 }}
+                                    sx={{ minWidth: 130 }}
                                   >
                                     <MenuItem value="openai">OpenAI</MenuItem>
                                     <MenuItem value="anthropic">Anthropic</MenuItem>
@@ -1579,12 +1584,12 @@ export default function Settings() {
                                           llmModel: e.target.value
                                         });
                                         fetchPrompts();
-                                        setMessage({ type: 'success', text: `Updated ${prompt.name} model` });
+                                        setMessage({ type: 'success', text: `Updated ${prompt.name} text model` });
                                       } catch (error) {
                                         setMessage({ type: 'error', text: 'Failed to update prompt model' });
                                       }
                                     }}
-                                    sx={{ minWidth: 250 }}
+                                    sx={{ minWidth: 180 }}
                                   >
                                     {LLM_MODELS[promptProvider]?.map((model) => (
                                       <MenuItem key={model} value={model}>
@@ -1593,15 +1598,68 @@ export default function Settings() {
                                     ))}
                                   </TextField>
                                 </TableCell>
+                                <TableCell>
+                                  <TextField
+                                    select
+                                    size="small"
+                                    value={promptImageProvider}
+                                    onChange={async (e) => {
+                                      const newProvider = e.target.value;
+                                      const newModel = IMAGE_LLM_MODELS[newProvider][0];
+                                      try {
+                                        await promptAPI.update(prompt._id, {
+                                          imageLLMProvider: newProvider,
+                                          imageLLMModel: newModel
+                                        });
+                                        fetchPrompts();
+                                        setMessage({ type: 'success', text: `Updated ${prompt.name} image provider to ${newProvider}` });
+                                      } catch (error) {
+                                        setMessage({ type: 'error', text: 'Failed to update image LLM configuration' });
+                                      }
+                                    }}
+                                    sx={{ minWidth: 130 }}
+                                  >
+                                    <MenuItem value="openai">OpenAI</MenuItem>
+                                    <MenuItem value="stability">Stability</MenuItem>
+                                  </TextField>
+                                </TableCell>
+                                <TableCell>
+                                  <TextField
+                                    select
+                                    size="small"
+                                    value={promptImageModel}
+                                    onChange={async (e) => {
+                                      try {
+                                        await promptAPI.update(prompt._id, {
+                                          imageLLMProvider: promptImageProvider,
+                                          imageLLMModel: e.target.value
+                                        });
+                                        fetchPrompts();
+                                        setMessage({ type: 'success', text: `Updated ${prompt.name} image model` });
+                                      } catch (error) {
+                                        setMessage({ type: 'error', text: 'Failed to update image model' });
+                                      }
+                                    }}
+                                    sx={{ minWidth: 180 }}
+                                  >
+                                    {IMAGE_LLM_MODELS[promptImageProvider]?.map((model) => (
+                                      <MenuItem key={model} value={model}>
+                                        {model === 'gpt-image-1.5' ? 'GPT-Image-1.5 (Latest)' : model}
+                                      </MenuItem>
+                                    ))}
+                                  </TextField>
+                                </TableCell>
                                 <TableCell align="right">
-                                  {isOverridden && (
+                                  {(isTextOverridden || isImageOverridden) && (
                                     <Button
                                       size="small"
                                       onClick={async () => {
                                         try {
                                           await promptAPI.update(prompt._id, {
                                             llmProvider: null,
-                                            llmModel: null
+                                            llmModel: null,
+                                            imageLLMProvider: null,
+                                            imageLLMModel: null
                                           });
                                           fetchPrompts();
                                           setMessage({ type: 'success', text: `${prompt.name} now uses default configuration` });
