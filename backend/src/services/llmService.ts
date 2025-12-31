@@ -233,9 +233,14 @@ export function compileSuperPrompt(promptTemplate: string, params: SuperPromptPa
     compiledPrompt = compiledPrompt.replace(/\{taskDescription\}/g, params.taskDescription);
   }
 
+  // Replace {baseImage} if provided (URL of the task's base/original image)
+  if (params.baseImage) {
+    compiledPrompt = compiledPrompt.replace(/\{baseImage\}/g, params.baseImage);
+  }
+
   // Replace any custom placeholders
   Object.keys(params).forEach(key => {
-    if (key !== 'companyInfo' && key !== 'campaignDetails' && key !== 'taskDescription') {
+    if (key !== 'companyInfo' && key !== 'campaignDetails' && key !== 'taskDescription' && key !== 'baseImage') {
       const value = typeof params[key] === 'object'
         ? JSON.stringify(params[key], null, 2)
         : String(params[key]);
@@ -611,4 +616,82 @@ export async function generateWithPrompt(
     ...result,
     compiledPrompt
   };
+}
+
+/**
+ * Generate an image using an image generation LLM with a compiled prompt
+ */
+export async function generateImageWithPrompt(
+  promptName: string,
+  params: SuperPromptParams,
+  options?: {
+    model?: string;
+    size?: '1024x1024' | '1792x1024' | '1024x1792';
+    quality?: 'standard' | 'hd';
+    userId?: mongoose.Types.ObjectId;
+  }
+): Promise<{ imageUrl: string; compiledPrompt: string }> {
+  try {
+    // Fetch and compile the prompt
+    const compiledPrompt = await fetchAndCompilePrompt(promptName, params);
+
+    // Get the prompt configuration to check for image LLM overrides
+    const prompt = await Prompt.findOne({ name: promptName });
+
+    // Determine which image model to use (priority: options > prompt override > default)
+    const config = await AppConfig.getConfig();
+    const imageModel = options?.model
+      || prompt?.imageLLMModel
+      || config.defaultImageModel
+      || 'dall-e-3';
+
+    const imageProvider = prompt?.imageLLMProvider || config.defaultImageProvider || 'openai';
+
+    // For now, we only support OpenAI image generation
+    if (imageProvider !== 'openai') {
+      throw new Error(`Image provider "${imageProvider}" is not yet supported. Please use OpenAI.`);
+    }
+
+    // Get OpenAI client
+    const openai = await getOpenAIClient();
+
+    // Generate image using DALL-E
+    const response = await openai.images.generate({
+      model: imageModel,
+      prompt: compiledPrompt,
+      n: 1,
+      size: options?.size || '1024x1024',
+      quality: options?.quality || 'standard',
+      response_format: 'url'
+    });
+
+    const imageUrl = response.data[0]?.url;
+
+    if (!imageUrl) {
+      throw new Error('No image URL returned from image generation API');
+    }
+
+    // Log usage if userId provided
+    if (options?.userId) {
+      await LLMUsage.create({
+        userId: options.userId,
+        provider: imageProvider,
+        model: imageModel,
+        promptTokens: 0, // Image generation doesn't use token-based pricing
+        completionTokens: 0,
+        totalTokens: 0,
+        estimatedCost: 0, // Could calculate based on model and size
+        promptName,
+        createdAt: new Date()
+      });
+    }
+
+    return {
+      imageUrl,
+      compiledPrompt
+    };
+  } catch (error: any) {
+    console.error('Error generating image with prompt:', error);
+    throw new Error(`Image generation failed: ${error.message}`);
+  }
 }

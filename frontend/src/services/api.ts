@@ -85,6 +85,8 @@ export const taskAPI = {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
   refineDescription: (id: string) => api.post(`/tasks/${id}/refine-description`),
+  generatePoster: (id: string) => api.post(`/tasks/${id}/generate-poster`),
+  adoptPoster: (id: string, data: { generatedImageUrl: string }) => api.patch(`/tasks/${id}/adopt-poster`, data),
   delete: (id: string) => api.delete(`/tasks/${id}`)
 };
 

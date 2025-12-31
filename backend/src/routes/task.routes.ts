@@ -11,8 +11,8 @@ import { checkTaskOwnership } from '../middleware/ownership';
 import { validateMongoId } from '../middleware/validation';
 import { logAudit } from '../utils/auditLogger';
 import { AuditAction } from '../models/AuditLog';
-import { uploadTaskImage } from '../utils/s3Service';
-import { generateWithPrompt } from '../services/llmService';
+import { uploadTaskImage, uploadImageFromUrl } from '../utils/s3Service';
+import { generateWithPrompt, generateImageWithPrompt } from '../services/llmService';
 import mongoose from 'mongoose';
 
 const router = express.Router();
@@ -444,6 +444,147 @@ router.post('/:id/refine-description', isAuthenticated, canManageTasks, validate
     res.status(500).json({
       success: false,
       message: error.message || 'Error refining task description'
+    });
+  }
+});
+
+/**
+ * @route   POST /api/tasks/:id/generate-poster
+ * @desc    Generate a campaign poster image using AI with command-to-prompt mapping
+ * @access  Private (System Admin, Hybrid)
+ */
+router.post('/:id/generate-poster', isAuthenticated, canManageTasks, validateMongoId('id'), checkTaskOwnership, async (req: Request, res: Response) => {
+  try {
+    const task = await Task.findById(req.params.id);
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found'
+      });
+    }
+
+    // Resolve command-to-prompt mapping for "generate-poster"
+    const commandName = 'generate-poster';
+    const mapping = await CommandMapping.findOne({ command: commandName }).populate('promptId');
+
+    if (!mapping || !mapping.promptId) {
+      return res.status(400).json({
+        success: false,
+        message: `No prompt configured for "${commandName}" command. Please configure it in Settings → Command Mappings.`
+      });
+    }
+
+    // Get user's company info for placeholders
+    const user = await User.findById(req.user!._id);
+    const companyInfo = user?.companyInfo;
+
+    // Get campaign details for placeholders
+    const campaign = await Campaign.findById(task.campaignId);
+
+    // Build dynamic data for prompt compilation
+    const dynamicData: any = {
+      taskDescription: task.description || task.name
+    };
+
+    // Add baseImage if task has a designed image
+    if (task.designedImage) {
+      dynamicData.baseImage = task.designedImage;
+    }
+
+    // Add company info if available
+    if (companyInfo) {
+      dynamicData.companyInfo = companyInfo;
+    }
+
+    // Add campaign details if available
+    if (campaign) {
+      dynamicData.campaignDetails = campaign;
+    }
+
+    // Call image generation LLM service with the mapped prompt
+    const result = await generateImageWithPrompt(
+      (mapping.promptId as any).name, // Prompt name from mapping
+      dynamicData,
+      {
+        userId: req.user!._id
+      }
+    );
+
+    // Download the generated image from OpenAI's temporary URL and upload to S3
+    const permanentImageUrl = await uploadImageFromUrl(result.imageUrl, 'generated-posters');
+
+    res.json({
+      success: true,
+      message: 'Poster generated successfully',
+      generatedImageUrl: permanentImageUrl,
+      compiledPrompt: result.compiledPrompt
+    });
+
+  } catch (error: any) {
+    console.error('Error generating poster:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Error generating poster'
+    });
+  }
+});
+
+/**
+ * @route   PATCH /api/tasks/:id/adopt-poster
+ * @desc    Adopt the generated poster as the main task image
+ * @access  Private (System Admin, Hybrid)
+ */
+router.patch('/:id/adopt-poster', isAuthenticated, canManageTasks, validateMongoId('id'), checkTaskOwnership, async (req: Request, res: Response) => {
+  try {
+    const task = await Task.findById(req.params.id);
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found'
+      });
+    }
+
+    const { generatedImageUrl } = req.body;
+
+    if (!generatedImageUrl) {
+      return res.status(400).json({
+        success: false,
+        message: 'Generated image URL is required'
+      });
+    }
+
+    // Update task's designedImage with the generated poster
+    task.designedImage = generatedImageUrl;
+    task.lastModifiedBy = req.user!._id;
+    await task.save();
+
+    // Log the update
+    await logAudit({
+      action: AuditAction.EVENT_UPDATED,
+      userId: req.user!._id,
+      targetType: 'Task',
+      targetId: task._id,
+      metadata: { action: 'adopted-poster', imageUrl: generatedImageUrl },
+      req
+    });
+
+    const updatedTask = await Task.findById(task._id)
+      .populate('projectId', 'name')
+      .populate('campaignId', 'name')
+      .populate('createdBy', 'firstName lastName')
+      .populate('lastModifiedBy', 'firstName lastName');
+
+    res.json({
+      success: true,
+      message: 'Poster adopted successfully',
+      task: updatedTask
+    });
+
+  } catch (error: any) {
+    console.error('Error adopting poster:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Error adopting poster'
     });
   }
 });

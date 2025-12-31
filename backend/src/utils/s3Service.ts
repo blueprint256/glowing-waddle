@@ -72,3 +72,48 @@ export async function uploadTaskImage(file: Express.Multer.File): Promise<string
   const { location } = await uploadToS3(file, 'task-images');
   return location;
 }
+
+/**
+ * Download image from URL and upload to S3
+ * Used for AI-generated images that need to be stored permanently
+ */
+export async function uploadImageFromUrl(imageUrl: string, folder: string = 'generated-images'): Promise<string> {
+  try {
+    // Fetch the image from the URL
+    const response = await fetch(imageUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch image from URL: ${response.statusText}`);
+    }
+
+    // Get the image buffer
+    const buffer = Buffer.from(await response.arrayBuffer());
+
+    // Determine content type from response headers or default to image/png
+    const contentType = response.headers.get('content-type') || 'image/png';
+
+    // Determine file extension
+    const extension = contentType.split('/')[1] || 'png';
+
+    // Generate random filename
+    const randomName = crypto.randomBytes(16).toString('hex');
+    const key = `${folder}/${randomName}.${extension}`;
+
+    // Upload to S3
+    const command = new PutObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType,
+      ACL: 'public-read'
+    });
+
+    await s3Client.send(command);
+
+    // Return the S3 URL
+    const location = `https://${BUCKET_NAME}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${key}`;
+    return location;
+  } catch (error: any) {
+    console.error('Error uploading image from URL to S3:', error);
+    throw new Error(`Failed to upload image from URL: ${error.message}`);
+  }
+}

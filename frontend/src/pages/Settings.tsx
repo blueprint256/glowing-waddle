@@ -1437,6 +1437,60 @@ export default function Settings() {
                 </CardContent>
               </Card>
 
+              {/* Default Image LLM Configuration Section */}
+              <Card sx={{ mb: 4 }}>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Default Image Generation LLM Configuration
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                    Set the default image generation provider and model for AI-powered image creation
+                  </Typography>
+
+                  <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                    <TextField
+                      select
+                      label="Provider"
+                      value={defaultImageProvider}
+                      onChange={(e) => {
+                        setDefaultImageProvider(e.target.value);
+                        // Set default model for selected provider
+                        const models = IMAGE_LLM_MODELS[e.target.value];
+                        if (models && models.length > 0) {
+                          setDefaultImageModel(models[0]);
+                        }
+                      }}
+                      sx={{ minWidth: 200 }}
+                    >
+                      <MenuItem value="openai">OpenAI</MenuItem>
+                      <MenuItem value="stability">Stability AI</MenuItem>
+                    </TextField>
+
+                    <TextField
+                      select
+                      label="Model"
+                      value={defaultImageModel}
+                      onChange={(e) => setDefaultImageModel(e.target.value)}
+                      sx={{ minWidth: 300 }}
+                    >
+                      {IMAGE_LLM_MODELS[defaultImageProvider]?.map((model) => (
+                        <MenuItem key={model} value={model}>
+                          {model === 'gpt-image-1.5' ? 'GPT-Image-1.5 (Latest Image Gen)' : model}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Box>
+
+                  <Button
+                    variant="contained"
+                    onClick={handleSaveDefaultLLMConfig}
+                    disabled={savingDefaultImageConfig}
+                  >
+                    {savingDefaultImageConfig ? 'Saving...' : 'Save Image Generation Configuration'}
+                  </Button>
+                </CardContent>
+              </Card>
+
               {/* Per-Prompt Overrides Section */}
               <Card>
                 <CardContent>
@@ -1813,7 +1867,7 @@ export default function Settings() {
                   <strong>Available Placeholders:</strong><br />
                   <strong>Company:</strong> {'{companyInfo}'} (full object), {'{companyName}'}, {'{sector}'}, {'{brandTone}'}, {'{brandGuidelines}'}<br />
                   <strong>Campaign:</strong> {'{campaignDetails}'} (full object), {'{campaignName}'}, {'{coreMessages}'}, {'{hashtags}'}<br />
-                  <strong>Task:</strong> {'{taskDescription}'}<br />
+                  <strong>Task:</strong> {'{taskDescription}'}, {'{baseImage}'} (URL of task's original image)<br />
                   <strong>Brand Assets:</strong> {'{primaryLogo}'}, {'{secondaryLogo}'}, {'{tertiaryLogo}'} (logo URLs)
                 </Typography>
               </Alert>
