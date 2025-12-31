@@ -78,7 +78,20 @@ export async function uploadTaskImage(file: Express.Multer.File): Promise<string
  * Used for AI-generated images that need to be stored permanently
  */
 export async function uploadImageFromUrl(imageUrl: string, folder: string = 'generated-images'): Promise<string> {
+  const startTime = Date.now();
+
+  console.log('\n========================================');
+  console.log('📦 S3 UPLOAD FROM URL');
+  console.log('========================================');
+  console.log('Source URL:', imageUrl);
+  console.log('Target Folder:', folder);
+  console.log('Target Bucket:', BUCKET_NAME);
+  console.log('Timestamp:', new Date().toISOString());
+  console.log('========================================\n');
+
   try {
+    console.log('⬇️  Downloading image from URL...');
+
     // Fetch the image from the URL
     const response = await fetch(imageUrl);
     if (!response.ok) {
@@ -87,6 +100,8 @@ export async function uploadImageFromUrl(imageUrl: string, folder: string = 'gen
 
     // Get the image buffer
     const buffer = Buffer.from(await response.arrayBuffer());
+
+    console.log('✅ Image downloaded:', buffer.length, 'bytes');
 
     // Determine content type from response headers or default to image/png
     const contentType = response.headers.get('content-type') || 'image/png';
@@ -97,6 +112,11 @@ export async function uploadImageFromUrl(imageUrl: string, folder: string = 'gen
     // Generate random filename
     const randomName = crypto.randomBytes(16).toString('hex');
     const key = `${folder}/${randomName}.${extension}`;
+
+    console.log('📤 Uploading to S3...');
+    console.log('   Key:', key);
+    console.log('   Content-Type:', contentType);
+    console.log('   Size:', buffer.length, 'bytes');
 
     // Upload to S3
     const command = new PutObjectCommand({
@@ -111,9 +131,32 @@ export async function uploadImageFromUrl(imageUrl: string, folder: string = 'gen
 
     // Return the S3 URL
     const location = `https://${BUCKET_NAME}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${key}`;
+
+    const duration = Date.now() - startTime;
+
+    console.log('\n========================================');
+    console.log('✅ S3 UPLOAD SUCCESS');
+    console.log('========================================');
+    console.log('S3 URL:', location);
+    console.log('Key:', key);
+    console.log('Size:', buffer.length, 'bytes');
+    console.log('Duration:', duration, 'ms');
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('========================================\n');
+
     return location;
   } catch (error: any) {
-    console.error('Error uploading image from URL to S3:', error);
+    const duration = Date.now() - startTime;
+
+    console.log('\n========================================');
+    console.log('❌ S3 UPLOAD ERROR');
+    console.log('========================================');
+    console.log('Source URL:', imageUrl);
+    console.log('Error:', error.message);
+    console.log('Duration:', duration, 'ms');
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('========================================\n');
+
     throw new Error(`Failed to upload image from URL: ${error.message}`);
   }
 }

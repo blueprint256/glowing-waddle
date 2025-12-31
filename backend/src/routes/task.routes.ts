@@ -454,6 +454,15 @@ router.post('/:id/refine-description', isAuthenticated, canManageTasks, validate
  * @access  Private (System Admin, Hybrid)
  */
 router.post('/:id/generate-poster', isAuthenticated, canManageTasks, validateMongoId('id'), checkTaskOwnership, async (req: Request, res: Response) => {
+  console.log('\n========================================');
+  console.log('🎨 POSTER GENERATION REQUEST');
+  console.log('========================================');
+  console.log('Task ID:', req.params.id);
+  console.log('User ID:', req.user!._id);
+  console.log('User Email:', req.user!.email);
+  console.log('Timestamp:', new Date().toISOString());
+  console.log('========================================\n');
+
   try {
     const task = await Task.findById(req.params.id);
     if (!task) {
@@ -463,16 +472,21 @@ router.post('/:id/generate-poster', isAuthenticated, canManageTasks, validateMon
       });
     }
 
+    console.log('📋 Task Found:', task.name);
+
     // Resolve command-to-prompt mapping for "generate-poster"
     const commandName = 'generate-poster';
     const mapping = await CommandMapping.findOne({ command: commandName }).populate('promptId');
 
     if (!mapping || !mapping.promptId) {
+      console.log('❌ No command mapping found for:', commandName);
       return res.status(400).json({
         success: false,
         message: `No prompt configured for "${commandName}" command. Please configure it in Settings → Command Mappings.`
       });
     }
+
+    console.log('✅ Command Mapping Found:', (mapping.promptId as any).name);
 
     // Get user's company info for placeholders
     const user = await User.findById(req.user!._id);
@@ -489,17 +503,24 @@ router.post('/:id/generate-poster', isAuthenticated, canManageTasks, validateMon
     // Add baseImage if task has a designed image
     if (task.designedImage) {
       dynamicData.baseImage = task.designedImage;
+      console.log('🖼️  Task has base image:', task.designedImage);
+    } else {
+      console.log('⚠️  Task has no base image');
     }
 
     // Add company info if available
     if (companyInfo) {
       dynamicData.companyInfo = companyInfo;
+      console.log('🏢 Company info included:', companyInfo.companyName || 'N/A');
     }
 
     // Add campaign details if available
     if (campaign) {
       dynamicData.campaignDetails = campaign;
+      console.log('📢 Campaign details included:', campaign.name);
     }
+
+    console.log('\n🚀 Starting image generation workflow...\n');
 
     // Call image generation LLM service with the mapped prompt
     const result = await generateImageWithPrompt(
@@ -510,8 +531,18 @@ router.post('/:id/generate-poster', isAuthenticated, canManageTasks, validateMon
       }
     );
 
+    console.log('🎉 Image generated successfully, uploading to S3...\n');
+
     // Download the generated image from OpenAI's temporary URL and upload to S3
     const permanentImageUrl = await uploadImageFromUrl(result.imageUrl, 'generated-posters');
+
+    console.log('\n========================================');
+    console.log('✅ POSTER GENERATION SUCCESS');
+    console.log('========================================');
+    console.log('Task ID:', req.params.id);
+    console.log('Permanent Image URL:', permanentImageUrl);
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('========================================\n');
 
     res.json({
       success: true,
@@ -521,7 +552,15 @@ router.post('/:id/generate-poster', isAuthenticated, canManageTasks, validateMon
     });
 
   } catch (error: any) {
-    console.error('Error generating poster:', error);
+    console.log('\n========================================');
+    console.log('❌ POSTER GENERATION FAILED');
+    console.log('========================================');
+    console.log('Task ID:', req.params.id);
+    console.log('Error:', error.message);
+    console.log('Stack:', error.stack);
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('========================================\n');
+
     res.status(500).json({
       success: false,
       message: error.message || 'Error generating poster'

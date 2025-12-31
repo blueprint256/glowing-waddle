@@ -462,6 +462,20 @@ export async function sendToLLM(
   const temperature = options?.temperature || 0.7;
   const maxTokens = options?.maxTokens || 2000;
 
+  console.log('\n========================================');
+  console.log('📤 TEXT LLM REQUEST');
+  console.log('========================================');
+  console.log('Provider:', provider);
+  console.log('Model:', model);
+  console.log('Prompt Name:', options?.promptName || 'N/A');
+  console.log('Temperature:', temperature);
+  console.log('Max Tokens:', maxTokens);
+  console.log('Prompt Length:', prompt.length, 'characters');
+  console.log('Prompt Preview:', prompt.substring(0, 200) + (prompt.length > 200 ? '...' : ''));
+  console.log('User ID:', options?.userId || 'N/A');
+  console.log('Timestamp:', new Date().toISOString());
+  console.log('========================================\n');
+
   try {
     let content: string;
     let usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
@@ -562,9 +576,31 @@ export async function sendToLLM(
       );
     }
 
+    console.log('\n========================================');
+    console.log('✅ TEXT LLM RESPONSE');
+    console.log('========================================');
+    console.log('Provider:', provider);
+    console.log('Model:', model);
+    console.log('Response Length:', content.length, 'characters');
+    console.log('Response Preview:', content.substring(0, 200) + (content.length > 200 ? '...' : ''));
+    console.log('Tokens Used:', usage.total_tokens);
+    console.log('Duration:', duration, 'ms');
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('========================================\n');
+
     return { content, usage };
   } catch (error: any) {
     const duration = Date.now() - startTime;
+
+    console.log('\n========================================');
+    console.log('❌ TEXT LLM ERROR');
+    console.log('========================================');
+    console.log('Provider:', provider);
+    console.log('Model:', model);
+    console.log('Error:', error.message);
+    console.log('Duration:', duration, 'ms');
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('========================================\n');
 
     // Log failed attempt if userId and promptName are provided
     if (options?.userId && options?.promptName) {
@@ -631,6 +667,8 @@ export async function generateImageWithPrompt(
     userId?: mongoose.Types.ObjectId;
   }
 ): Promise<{ imageUrl: string; compiledPrompt: string }> {
+  const startTime = Date.now();
+
   try {
     // Fetch and compile the prompt
     const compiledPrompt = await fetchAndCompilePrompt(promptName, params);
@@ -646,6 +684,26 @@ export async function generateImageWithPrompt(
       || 'dall-e-3';
 
     const imageProvider = prompt?.imageLLMProvider || config.defaultImageProvider || 'openai';
+    const size = options?.size || '1024x1024';
+    const quality = options?.quality || 'standard';
+
+    console.log('\n========================================');
+    console.log('🖼️  IMAGE LLM REQUEST');
+    console.log('========================================');
+    console.log('Provider:', imageProvider);
+    console.log('Model:', imageModel);
+    console.log('Prompt Name:', promptName);
+    console.log('Image Size:', size);
+    console.log('Quality:', quality);
+    console.log('Prompt Length:', compiledPrompt.length, 'characters');
+    console.log('Prompt:', compiledPrompt);
+    if (params.baseImage) {
+      console.log('🔗 Base Image URL:', params.baseImage);
+      console.log('⚠️  NOTE: Base image URL included in prompt for reference');
+    }
+    console.log('User ID:', options?.userId || 'N/A');
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('========================================\n');
 
     // For now, we only support OpenAI image generation
     if (imageProvider !== 'openai') {
@@ -655,13 +713,15 @@ export async function generateImageWithPrompt(
     // Get OpenAI client
     const openai = await getOpenAIClient();
 
+    console.log('📡 Sending request to OpenAI Images API...');
+
     // Generate image using DALL-E
     const response = await openai.images.generate({
       model: imageModel,
       prompt: compiledPrompt,
       n: 1,
-      size: options?.size || '1024x1024',
-      quality: options?.quality || 'standard',
+      size: size,
+      quality: quality,
       response_format: 'url'
     });
 
@@ -670,6 +730,20 @@ export async function generateImageWithPrompt(
     if (!imageUrl) {
       throw new Error('No image URL returned from image generation API');
     }
+
+    const duration = Date.now() - startTime;
+
+    console.log('\n========================================');
+    console.log('✅ IMAGE LLM RESPONSE');
+    console.log('========================================');
+    console.log('Provider:', imageProvider);
+    console.log('Model:', imageModel);
+    console.log('Generated Image URL:', imageUrl);
+    console.log('Image Size:', size);
+    console.log('Quality:', quality);
+    console.log('Duration:', duration, 'ms');
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('========================================\n');
 
     // Log usage if userId provided
     if (options?.userId) {
@@ -691,7 +765,18 @@ export async function generateImageWithPrompt(
       compiledPrompt
     };
   } catch (error: any) {
-    console.error('Error generating image with prompt:', error);
+    const duration = Date.now() - startTime;
+
+    console.log('\n========================================');
+    console.log('❌ IMAGE LLM ERROR');
+    console.log('========================================');
+    console.log('Prompt Name:', promptName);
+    console.log('Error:', error.message);
+    console.log('Error Stack:', error.stack);
+    console.log('Duration:', duration, 'ms');
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('========================================\n');
+
     throw new Error(`Image generation failed: ${error.message}`);
   }
 }
