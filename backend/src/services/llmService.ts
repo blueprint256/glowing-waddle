@@ -5,6 +5,8 @@ import { Prompt } from '../models/Prompt';
 import { LLMUsage } from '../models/LLMUsage';
 import { AppConfig } from '../models/AppConfig';
 import mongoose from 'mongoose';
+import { downloadImageFromUrl } from '../utils/s3Service';
+import { toFile } from 'openai/uploads';
 
 // Cache for LLM clients and keys
 let cachedOpenAI: { client: OpenAI; key: string; timestamp: number } | null = null;
@@ -691,6 +693,27 @@ export async function generateImageWithPrompt(
       console.log(`⚠️  Prompt "${promptName}" configured for provider "${prompt.imageLLMProvider}" but enforcing openai`);
     }
 
+    // Download base image if provided (to upload as binary data to the model)
+    let baseImageFile: any = null;
+    if (params.baseImage) {
+      console.log('\n🖼️  Downloading base image for binary upload...');
+      console.log('Base Image URL:', params.baseImage);
+
+      try {
+        const { buffer, contentType, extension } = await downloadImageFromUrl(params.baseImage);
+
+        // Convert buffer to File object for OpenAI API
+        baseImageFile = await toFile(buffer, `base-image.${extension}`, { type: contentType });
+
+        console.log('✅ Base image downloaded and prepared for upload');
+        console.log('   Size:', buffer.length, 'bytes');
+        console.log('   Type:', contentType);
+      } catch (error: any) {
+        console.log('❌ Failed to download base image:', error.message);
+        throw new Error(`Failed to download base image: ${error.message}`);
+      }
+    }
+
     console.log('\n========================================');
     console.log('🖼️  IMAGE LLM REQUEST');
     console.log('========================================');
@@ -701,9 +724,10 @@ export async function generateImageWithPrompt(
     console.log('Quality:', quality);
     console.log('Prompt Length:', compiledPrompt.length, 'characters');
     console.log('Prompt:', compiledPrompt);
-    if (params.baseImage) {
-      console.log('🔗 Base Image URL:', params.baseImage);
-      console.log('⚠️  NOTE: Base image URL included in prompt for reference');
+    if (baseImageFile) {
+      console.log('📤 Base Image:', 'Uploaded as binary data (not URL)');
+    } else {
+      console.log('🆕 New Image:', 'No base image provided');
     }
     console.log('User ID:', options?.userId || 'N/A');
     console.log('Timestamp:', new Date().toISOString());
@@ -714,15 +738,33 @@ export async function generateImageWithPrompt(
 
     console.log('📡 Sending request to OpenAI Images API...');
 
-    // Generate image using DALL-E
-    const response = await openai.images.generate({
-      model: imageModel,
-      prompt: compiledPrompt,
-      n: 1,
-      size: size,
-      quality: quality,
-      response_format: 'url'
-    });
+    // Generate or edit image based on whether base image is provided
+    let response;
+    if (baseImageFile) {
+      console.log('🎨 Using images.edit endpoint (base image provided)');
+
+      // Use edit endpoint when base image is provided
+      response = await openai.images.edit({
+        model: imageModel,
+        image: baseImageFile,
+        prompt: compiledPrompt,
+        n: 1,
+        size: size,
+        response_format: 'url'
+      });
+    } else {
+      console.log('✨ Using images.generate endpoint (no base image)');
+
+      // Use generate endpoint when no base image
+      response = await openai.images.generate({
+        model: imageModel,
+        prompt: compiledPrompt,
+        n: 1,
+        size: size,
+        quality: quality,
+        response_format: 'url'
+      });
+    }
 
     const imageUrl = response.data[0]?.url;
 

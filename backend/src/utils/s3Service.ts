@@ -74,6 +74,67 @@ export async function uploadTaskImage(file: Express.Multer.File): Promise<string
 }
 
 /**
+ * Download image from URL and return buffer
+ * Used to download base images for LLM API calls
+ */
+export async function downloadImageFromUrl(imageUrl: string): Promise<{ buffer: Buffer; contentType: string; extension: string }> {
+  const startTime = Date.now();
+
+  console.log('\n========================================');
+  console.log('⬇️  IMAGE DOWNLOAD FROM URL');
+  console.log('========================================');
+  console.log('Source URL:', imageUrl);
+  console.log('Timestamp:', new Date().toISOString());
+  console.log('========================================\n');
+
+  try {
+    console.log('📥 Fetching image...');
+
+    // Fetch the image from the URL
+    const response = await fetch(imageUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch image from URL: ${response.statusText}`);
+    }
+
+    // Get the image buffer
+    const buffer = Buffer.from(await response.arrayBuffer());
+
+    // Determine content type from response headers or default to image/png
+    const contentType = response.headers.get('content-type') || 'image/png';
+
+    // Determine file extension
+    const extension = contentType.split('/')[1] || 'png';
+
+    const duration = Date.now() - startTime;
+
+    console.log('\n========================================');
+    console.log('✅ IMAGE DOWNLOAD SUCCESS');
+    console.log('========================================');
+    console.log('Size:', buffer.length, 'bytes');
+    console.log('Content-Type:', contentType);
+    console.log('Extension:', extension);
+    console.log('Duration:', duration, 'ms');
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('========================================\n');
+
+    return { buffer, contentType, extension };
+  } catch (error: any) {
+    const duration = Date.now() - startTime;
+
+    console.log('\n========================================');
+    console.log('❌ IMAGE DOWNLOAD ERROR');
+    console.log('========================================');
+    console.log('Source URL:', imageUrl);
+    console.log('Error:', error.message);
+    console.log('Duration:', duration, 'ms');
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('========================================\n');
+
+    throw new Error(`Failed to download image from URL: ${error.message}`);
+  }
+}
+
+/**
  * Download image from URL and upload to S3
  * Used for AI-generated images that need to be stored permanently
  */
