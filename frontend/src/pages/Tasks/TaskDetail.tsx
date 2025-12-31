@@ -217,16 +217,16 @@ export default function TaskDetail() {
       setSnackbarOpen(true);
     } catch (error: any) {
       console.error('Error generating poster:', error);
-      const errorMessage = error.response?.data?.message || 'Image generation failed. Please try again or check your settings.';
+      const errorMessage = error.response?.data?.message || 'Image generation failed – please try again.';
 
       // Show error toast
       setSnackbarMessage(errorMessage);
       setSnackbarSeverity('error');
       setSnackbarOpen(true);
 
-      // Wait for toast to be visible, then reload the page to ensure clean state
+      // Wait for toast to be visible (2 seconds), then navigate back to task page
       setTimeout(() => {
-        window.location.reload();
+        navigate(`/tasks/${id}`);
       }, 2000);
     } finally {
       setGeneratingPoster(false);

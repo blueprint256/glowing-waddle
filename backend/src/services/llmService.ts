@@ -5,7 +5,7 @@ import { Prompt } from '../models/Prompt';
 import { LLMUsage } from '../models/LLMUsage';
 import { AppConfig } from '../models/AppConfig';
 import mongoose from 'mongoose';
-import { downloadImageFromUrl } from '../utils/s3Service';
+import { downloadImageFromUrl, uploadBufferToS3 } from '../utils/s3Service';
 import { toFile } from 'openai/uploads';
 
 // Cache for LLM clients and keys
@@ -739,6 +739,8 @@ export async function generateImageWithPrompt(
     console.log('📡 Sending request to OpenAI Images API...');
 
     // Generate or edit image based on whether base image is provided
+    // NOTE: gpt-image-1.5 does NOT support 'response_format' parameter
+    // It always returns base64-encoded images (b64_json format)
     let response;
     if (baseImageFile) {
       console.log('🎨 Using images.edit endpoint (base image provided)');
@@ -749,8 +751,8 @@ export async function generateImageWithPrompt(
         image: baseImageFile,
         prompt: compiledPrompt,
         n: 1,
-        size: size,
-        response_format: 'url'
+        size: size
+        // NOTE: response_format is NOT supported by gpt-image-1.5
       });
     } else {
       console.log('✨ Using images.generate endpoint (no base image)');
@@ -761,16 +763,27 @@ export async function generateImageWithPrompt(
         prompt: compiledPrompt,
         n: 1,
         size: size,
-        quality: quality,
-        response_format: 'url'
+        quality: quality
+        // NOTE: response_format is NOT supported by gpt-image-1.5
       });
     }
 
-    const imageUrl = response.data[0]?.url;
+    // gpt-image-1.5 returns base64-encoded images, not URLs
+    const base64Image = response.data[0]?.b64_json;
 
-    if (!imageUrl) {
-      throw new Error('No image URL returned from image generation API');
+    if (!base64Image) {
+      throw new Error('No base64 image data returned from image generation API');
     }
+
+    console.log('📥 Received base64 image from API');
+    console.log('   Base64 length:', base64Image.length, 'characters');
+
+    // Decode base64 to buffer
+    const imageBuffer = Buffer.from(base64Image, 'base64');
+    console.log('   Decoded buffer size:', imageBuffer.length, 'bytes');
+
+    // Upload buffer to S3 and get permanent URL
+    const imageUrl = await uploadBufferToS3(imageBuffer, 'image/png', 'generated-images');
 
     const duration = Date.now() - startTime;
 
