@@ -45,7 +45,13 @@ export const userAPI = {
   getById: (id: string) => api.get(`/users/${id}`),
   create: (data: any) => api.post('/users', data),
   update: (id: string, data: any) => api.put(`/users/${id}`, data),
-  delete: (id: string) => api.delete(`/users/${id}`)
+  delete: (id: string) => api.delete(`/users/${id}`),
+  getCompanyInfo: () => api.get('/users/me/company-info'),
+  updateCompanyInfo: (data: any) => api.patch('/users/me/company-info', data),
+  uploadLogo: (logoType: 'primary' | 'secondary' | 'tertiary', formData: FormData) =>
+    api.post('/users/me/upload-logo', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
 };
 
 // Campaign API
@@ -78,6 +84,7 @@ export const taskAPI = {
   uploadImage: (id: string, formData: FormData) => api.post(`/tasks/${id}/upload-image`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
+  refineDescription: (id: string) => api.post(`/tasks/${id}/refine-description`),
   delete: (id: string) => api.delete(`/tasks/${id}`)
 };
 
@@ -130,6 +137,38 @@ export const integrationsAPI = {
     saveKey: (apiKey: string) => api.patch('/integrations/openai/key', { apiKey }),
     testConnection: () => api.post('/integrations/openai/test'),
     removeKey: () => api.delete('/integrations/openai/key')
+  },
+  anthropic: {
+    getStatus: () => api.get('/integrations/anthropic/status'),
+    saveKey: (apiKey: string) => api.patch('/integrations/anthropic/key', { apiKey }),
+    testConnection: () => api.post('/integrations/anthropic/test'),
+    removeKey: () => api.delete('/integrations/anthropic/key')
+  },
+  grok: {
+    getStatus: () => api.get('/integrations/grok/status'),
+    saveKey: (apiKey: string) => api.patch('/integrations/grok/key', { apiKey }),
+    testConnection: () => api.post('/integrations/grok/test'),
+    removeKey: () => api.delete('/integrations/grok/key')
+  },
+  gemini: {
+    getStatus: () => api.get('/integrations/gemini/status'),
+    saveKey: (apiKey: string) => api.patch('/integrations/gemini/key', { apiKey }),
+    testConnection: () => api.post('/integrations/gemini/test'),
+    removeKey: () => api.delete('/integrations/gemini/key')
+  },
+  stability: {
+    getStatus: () => api.get('/integrations/stability/status'),
+    saveKey: (apiKey: string) => api.patch('/integrations/stability/key', { apiKey }),
+    testConnection: () => api.post('/integrations/stability/test'),
+    removeKey: () => api.delete('/integrations/stability/key')
+  },
+  llm: {
+    getDefault: () => api.get('/integrations/llm/default'),
+    saveDefault: (provider: string, model: string) => api.patch('/integrations/llm/default', { provider, model })
+  },
+  imageLlm: {
+    getDefault: () => api.get('/integrations/image-llm/default'),
+    saveDefault: (provider: string, model: string) => api.patch('/integrations/image-llm/default', { provider, model })
   }
 };
 

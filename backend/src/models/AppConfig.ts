@@ -2,9 +2,39 @@ import mongoose, { Document, Schema } from 'mongoose';
 import crypto from 'crypto';
 
 export interface IAppConfig extends Document {
+  // OpenAI configuration
   openAIApiKey?: string;
   openAIKeyUpdatedAt?: Date;
   openAIKeyUpdatedBy?: mongoose.Types.ObjectId;
+
+  // Anthropic configuration
+  anthropicApiKey?: string;
+  anthropicKeyUpdatedAt?: Date;
+  anthropicKeyUpdatedBy?: mongoose.Types.ObjectId;
+
+  // Grok (xAI) configuration
+  grokApiKey?: string;
+  grokKeyUpdatedAt?: Date;
+  grokKeyUpdatedBy?: mongoose.Types.ObjectId;
+
+  // Google Gemini configuration
+  geminiApiKey?: string;
+  geminiKeyUpdatedAt?: Date;
+  geminiKeyUpdatedBy?: mongoose.Types.ObjectId;
+
+  // Stability AI configuration (for image generation)
+  stabilityApiKey?: string;
+  stabilityKeyUpdatedAt?: Date;
+  stabilityKeyUpdatedBy?: mongoose.Types.ObjectId;
+
+  // Default LLM configuration (for text generation)
+  defaultLLMProvider?: string; // 'openai' | 'anthropic' | 'grok' | 'gemini'
+  defaultLLMModel?: string;
+
+  // Default Image LLM configuration (for image generation)
+  defaultImageLLMProvider?: string; // 'openai' | 'stability'
+  defaultImageLLMModel?: string;
+
   createdAt: Date;
   updatedAt: Date;
   encryptApiKey(key: string): string;
@@ -18,6 +48,7 @@ const ALGORITHM = 'aes-256-cbc';
 
 const appConfigSchema = new Schema<IAppConfig>(
   {
+    // OpenAI configuration
     openAIApiKey: {
       type: String,
       select: false // Never include in queries by default
@@ -28,6 +59,80 @@ const appConfigSchema = new Schema<IAppConfig>(
     openAIKeyUpdatedBy: {
       type: Schema.Types.ObjectId,
       ref: 'User'
+    },
+
+    // Anthropic configuration
+    anthropicApiKey: {
+      type: String,
+      select: false
+    },
+    anthropicKeyUpdatedAt: {
+      type: Date
+    },
+    anthropicKeyUpdatedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User'
+    },
+
+    // Grok (xAI) configuration
+    grokApiKey: {
+      type: String,
+      select: false
+    },
+    grokKeyUpdatedAt: {
+      type: Date
+    },
+    grokKeyUpdatedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User'
+    },
+
+    // Google Gemini configuration
+    geminiApiKey: {
+      type: String,
+      select: false
+    },
+    geminiKeyUpdatedAt: {
+      type: Date
+    },
+    geminiKeyUpdatedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User'
+    },
+
+    // Stability AI configuration (for image generation)
+    stabilityApiKey: {
+      type: String,
+      select: false
+    },
+    stabilityKeyUpdatedAt: {
+      type: Date
+    },
+    stabilityKeyUpdatedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User'
+    },
+
+    // Default LLM configuration (for text generation)
+    defaultLLMProvider: {
+      type: String,
+      enum: ['openai', 'anthropic', 'grok', 'gemini'],
+      default: 'openai'
+    },
+    defaultLLMModel: {
+      type: String,
+      default: 'gpt-4o-mini'
+    },
+
+    // Default Image LLM configuration (for image generation)
+    defaultImageLLMProvider: {
+      type: String,
+      enum: ['openai', 'stability'],
+      default: 'openai'
+    },
+    defaultImageLLMModel: {
+      type: String,
+      default: 'dall-e-3'
     }
   },
   {
@@ -57,13 +162,18 @@ appConfigSchema.methods.decryptApiKey = function (encryptedKey: string): string 
   return decrypted;
 };
 
+// Define the model interface with static methods
+interface IAppConfigModel extends mongoose.Model<IAppConfig> {
+  getConfig(): Promise<IAppConfig>;
+}
+
 // Static method to get or create the singleton config
 appConfigSchema.statics.getConfig = async function (): Promise<IAppConfig> {
-  let config = await this.findOne().select('+openAIApiKey');
+  let config = await this.findOne().select('+openAIApiKey +anthropicApiKey +grokApiKey +geminiApiKey +stabilityApiKey');
   if (!config) {
     config = await this.create({});
   }
   return config;
 };
 
-export const AppConfig = mongoose.model<IAppConfig>('AppConfig', appConfigSchema);
+export const AppConfig = mongoose.model<IAppConfig, IAppConfigModel>('AppConfig', appConfigSchema);

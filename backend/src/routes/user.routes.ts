@@ -1,12 +1,29 @@
 import express, { Request, Response } from 'express';
+import multer from 'multer';
 import { User, UserRole } from '../models/User';
 import { isAuthenticated } from '../middleware/auth';
 import { canManageUsers } from '../middleware/rbac';
 import { validateUserCreation, validateUserUpdate, validateMongoId } from '../middleware/validation';
 import { logUserCreated, logAudit } from '../utils/auditLogger';
 import { AuditAction } from '../models/AuditLog';
+import { uploadToS3, deleteFromS3 } from '../utils/s3Service';
 
 const router = express.Router();
+
+// Configure multer for logo uploads
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB limit for logos
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed for logos'));
+    }
+  }
+});
 
 /**
  * @route   POST /api/users
@@ -251,7 +268,20 @@ router.get('/me/company-info', isAuthenticated, async (req: Request, res: Respon
  */
 router.patch('/me/company-info', isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const { companyName, sector, about, productsServices, usp, brandTone, audienceProfile, globalRules } = req.body;
+    const {
+      companyName,
+      sector,
+      about,
+      productsServices,
+      usp,
+      brandTone,
+      audienceProfile,
+      globalRules,
+      brandGuidelines,
+      primaryLogoUrl,
+      secondaryLogoUrl,
+      tertiaryLogoUrl
+    } = req.body;
 
     const user = await User.findById(req.user!._id);
     if (!user) {
@@ -270,7 +300,11 @@ router.patch('/me/company-info', isAuthenticated, async (req: Request, res: Resp
       usp: usp || user.companyInfo?.usp,
       brandTone: brandTone || user.companyInfo?.brandTone,
       audienceProfile: audienceProfile || user.companyInfo?.audienceProfile,
-      globalRules: globalRules || user.companyInfo?.globalRules
+      globalRules: globalRules || user.companyInfo?.globalRules,
+      brandGuidelines: brandGuidelines !== undefined ? brandGuidelines : user.companyInfo?.brandGuidelines,
+      primaryLogoUrl: primaryLogoUrl !== undefined ? primaryLogoUrl : user.companyInfo?.primaryLogoUrl,
+      secondaryLogoUrl: secondaryLogoUrl !== undefined ? secondaryLogoUrl : user.companyInfo?.secondaryLogoUrl,
+      tertiaryLogoUrl: tertiaryLogoUrl !== undefined ? tertiaryLogoUrl : user.companyInfo?.tertiaryLogoUrl
     };
 
     await user.save();
@@ -295,6 +329,92 @@ router.patch('/me/company-info', isAuthenticated, async (req: Request, res: Resp
     res.status(500).json({
       success: false,
       message: 'Error updating company information'
+    });
+  }
+});
+
+/**
+ * @route   POST /api/users/me/upload-logo
+ * @desc    Upload company logo (primary, secondary, or tertiary)
+ * @access  Private
+ */
+router.post('/me/upload-logo', isAuthenticated, upload.single('logo'), async (req: Request, res: Response) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No logo file uploaded'
+      });
+    }
+
+    const { logoType } = req.body;
+
+    // Validate logoType
+    const validTypes = ['primary', 'secondary', 'tertiary'];
+    if (!logoType || !validTypes.includes(logoType)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid logo type. Must be one of: ${validTypes.join(', ')}`
+      });
+    }
+
+    const user = await User.findById(req.user!._id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Delete old logo from S3 if it exists
+    const logoUrlField = `${logoType}LogoUrl` as 'primaryLogoUrl' | 'secondaryLogoUrl' | 'tertiaryLogoUrl';
+    const oldLogoUrl = user.companyInfo?.[logoUrlField];
+    if (oldLogoUrl) {
+      try {
+        // Extract key from URL (format: https://bucket.s3.region.amazonaws.com/folder/file.ext)
+        const urlParts = oldLogoUrl.split('.amazonaws.com/');
+        if (urlParts.length === 2) {
+          const key = urlParts[1];
+          await deleteFromS3(key);
+        }
+      } catch (error) {
+        console.error('Error deleting old logo from S3:', error);
+        // Continue with upload even if deletion fails
+      }
+    }
+
+    // Upload new logo to S3
+    const { location } = await uploadToS3(req.file, 'company-logos');
+
+    // Update user's company info
+    if (!user.companyInfo) {
+      user.companyInfo = {};
+    }
+    user.companyInfo[logoUrlField] = location;
+
+    await user.save();
+
+    // Log upload
+    await logAudit({
+      action: AuditAction.USER_UPDATED,
+      userId: req.user!._id,
+      targetType: 'User',
+      targetId: user._id,
+      metadata: { logoType, logoUrl: location },
+      req
+    });
+
+    res.json({
+      success: true,
+      message: `${logoType.charAt(0).toUpperCase() + logoType.slice(1)} logo uploaded successfully`,
+      logoUrl: location,
+      logoType
+    });
+  } catch (error: any) {
+    console.error('Error uploading logo:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Error uploading logo'
     });
   }
 });

@@ -766,7 +766,7 @@ export default function DetailsSheet() {
                               <TableCell sx={{ fontWeight: 600 }}>Task Name</TableCell>
                               <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
                               <TableCell sx={{ fontWeight: 600 }}>Photos</TableCell>
-                              <TableCell sx={{ fontWeight: 600 }}>Notes</TableCell>
+                              <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
                               <TableCell sx={{ fontWeight: 600 }}>Last Updated</TableCell>
                               <TableCell align="right" sx={{ fontWeight: 600 }}>Actions</TableCell>
                             </TableRow>

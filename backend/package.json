@@ -11,8 +11,10 @@
     "test": "jest"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.2",
     "@aws-sdk/client-s3": "^3.478.0",
     "@aws-sdk/s3-request-presigner": "^3.478.0",
+    "@google/generative-ai": "^0.24.1",
     "@types/passport-google-oauth20": "^2.0.17",
     "bcryptjs": "^2.4.3",
     "connect-mongo": "^5.1.0",

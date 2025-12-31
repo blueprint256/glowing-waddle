@@ -3,7 +3,8 @@ import multer from 'multer';
 import { Task, TaskStatus } from '../models/Task';
 import { Project } from '../models/Project';
 import { Campaign } from '../models/Campaign';
-import { UserRole } from '../models/User';
+import { User, UserRole } from '../models/User';
+import { CommandMapping } from '../models/CommandMapping';
 import { isAuthenticated } from '../middleware/auth';
 import { canManageTasks } from '../middleware/rbac';
 import { checkTaskOwnership } from '../middleware/ownership';
@@ -11,6 +12,7 @@ import { validateMongoId } from '../middleware/validation';
 import { logAudit } from '../utils/auditLogger';
 import { AuditAction } from '../models/AuditLog';
 import { uploadTaskImage } from '../utils/s3Service';
+import { generateWithPrompt } from '../services/llmService';
 import mongoose from 'mongoose';
 
 const router = express.Router();
@@ -369,6 +371,79 @@ router.post('/:id/upload-image', isAuthenticated, canManageTasks, validateMongoI
     res.status(500).json({
       success: false,
       message: error.message || 'Error uploading image'
+    });
+  }
+});
+
+/**
+ * @route   POST /api/tasks/:id/refine-description
+ * @desc    Refine task description using LLM with command-to-prompt mapping
+ * @access  Private (System Admin, Hybrid)
+ */
+router.post('/:id/refine-description', isAuthenticated, canManageTasks, validateMongoId('id'), checkTaskOwnership, async (req: Request, res: Response) => {
+  try {
+    const task = await Task.findById(req.params.id);
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found'
+      });
+    }
+
+    if (!task.description || task.description.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Task has no description to refine'
+      });
+    }
+
+    // Resolve command-to-prompt mapping for "refine-task-description"
+    const commandName = 'refine-task-description';
+    const mapping = await CommandMapping.findOne({ command: commandName }).populate('promptId');
+
+    if (!mapping || !mapping.promptId) {
+      return res.status(400).json({
+        success: false,
+        message: `No prompt configured for "${commandName}" command. Please configure it in Settings → Command Mappings.`
+      });
+    }
+
+    // Get user's company info for placeholders
+    const user = await User.findById(req.user!._id);
+    const companyInfo = user?.companyInfo;
+
+    // Build dynamic data for prompt compilation
+    const dynamicData: any = {
+      taskDescription: task.description
+    };
+
+    // Add company info if available
+    if (companyInfo) {
+      dynamicData.companyInfo = companyInfo;
+    }
+
+    // Call LLM service with the mapped prompt
+    const result = await generateWithPrompt(
+      (mapping.promptId as any).name, // Prompt name from mapping
+      dynamicData,
+      {
+        userId: req.user!._id
+      }
+    );
+
+    res.json({
+      success: true,
+      message: 'Task description refined successfully',
+      originalDescription: task.description,
+      refinedDescription: result.content.trim(),
+      usage: result.usage
+    });
+
+  } catch (error: any) {
+    console.error('Error refining task description:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Error refining task description'
     });
   }
 });
