@@ -8,9 +8,9 @@ export interface IPrompt extends Document {
   llmProvider?: string; // 'openai' | 'anthropic' | 'grok' | 'gemini'
   llmModel?: string;
 
-  // Per-prompt Image LLM configuration overrides (for image generation)
-  imageLLMProvider?: string; // 'openai' | 'stability'
-  imageLLMModel?: string;
+  // Per-prompt Image LLM configuration overrides (RESTRICTED: gpt-image-1.5 only)
+  imageLLMProvider?: string; // 'openai' (only option)
+  imageLLMModel?: string; // 'gpt-image-1.5' (only option)
 
   createdAt: Date;
   updatedAt: Date;
@@ -39,10 +39,10 @@ const promptSchema = new Schema<IPrompt>(
       type: String,
       required: false
     },
-    // Per-prompt Image LLM configuration overrides (for image generation)
+    // Per-prompt Image LLM configuration overrides (RESTRICTED: gpt-image-1.5 only)
     imageLLMProvider: {
       type: String,
-      enum: ['openai', 'stability'],
+      enum: ['openai'],
       required: false
     },
     imageLLMModel: {

@@ -148,10 +148,6 @@ export default function Settings() {
   const [defaultImageModel, setDefaultImageModel] = useState('gpt-image-1.5');
   const [savingDefaultImageConfig, setSavingDefaultImageConfig] = useState(false);
 
-  // Stability AI state (System Admin only)
-  const [stabilityConfigured, setStabilityConfigured] = useState(false);
-  const [stabilityApiKey, setStabilityApiKey] = useState('');
-
   // Command Mappings state (System Admin only)
   const [commandMappings, setCommandMappings] = useState<any[]>([]);
   const [commandMappingsLoading, setCommandMappingsLoading] = useState(false);

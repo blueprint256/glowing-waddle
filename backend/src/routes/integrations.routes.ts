@@ -846,171 +846,6 @@ router.delete('/gemini/key', isAuthenticated, isSystemAdmin, async (req: Request
   }
 });
 
-// ====================================
-// STABILITY AI INTEGRATION (IMAGE GEN)
-// ====================================
-
-/**
- * @route   GET /api/integrations/stability/status
- * @desc    Check Stability AI API key status (Admin only)
- * @access  Private (System Admin)
- */
-router.get('/stability/status', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
-  try {
-    const config = await AppConfig.getConfig();
-
-    res.json({
-      success: true,
-      configured: !!config.stabilityApiKey,
-      updatedAt: config.stabilityKeyUpdatedAt
-    });
-  } catch (error: any) {
-    console.error('Stability status check error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to check Stability AI status'
-    });
-  }
-});
-
-/**
- * @route   PATCH /api/integrations/stability/key
- * @desc    Save or update Stability AI API key (Admin only)
- * @access  Private (System Admin)
- */
-router.patch('/stability/key', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
-  try {
-    const { apiKey } = req.body;
-
-    if (!apiKey || typeof apiKey !== 'string') {
-      return res.status(400).json({
-        success: false,
-        message: 'API key is required'
-      });
-    }
-
-    if (!apiKey.startsWith('sk-')) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid Stability AI API key format. Key should start with "sk-"'
-      });
-    }
-
-    const config = await AppConfig.getConfig();
-
-    config.stabilityApiKey = config.encryptApiKey(apiKey.trim());
-    config.stabilityKeyUpdatedAt = new Date();
-    config.stabilityKeyUpdatedBy = req.user!._id;
-
-    await config.save();
-
-    console.log(`Stability AI API key saved/updated by: ${req.user!.email}`);
-
-    res.json({
-      success: true,
-      message: 'Stability AI API key saved successfully',
-      configured: true,
-      updatedAt: config.stabilityKeyUpdatedAt
-    });
-  } catch (error: any) {
-    console.error('Stability key save error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to save Stability AI API key'
-    });
-  }
-});
-
-/**
- * @route   POST /api/integrations/stability/test
- * @desc    Test Stability AI API key connection (Admin only)
- * @access  Private (System Admin)
- */
-router.post('/stability/test', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
-  try {
-    const config = await AppConfig.getConfig();
-
-    if (!config.stabilityApiKey) {
-      return res.status(400).json({
-        success: false,
-        message: 'No Stability AI API key configured. Please save a key first.'
-      });
-    }
-
-    const apiKey = config.decryptApiKey(config.stabilityApiKey);
-
-    // Test the API with a simple request to get account info
-    const response = await fetch('https://api.stability.ai/v1/user/account', {
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Accept': 'application/json'
-      }
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      return res.status(response.status).json({
-        success: false,
-        message: `Stability AI API test failed: ${errorText}`
-      });
-    }
-
-    const data = await response.json();
-
-    res.json({
-      success: true,
-      message: 'Stability AI connection successful!',
-      email: data.email || 'N/A'
-    });
-  } catch (error: any) {
-    console.error('Stability test error:', error);
-
-    if (error.message?.includes('401') || error.message?.includes('403')) {
-      return res.status(401).json({
-        success: false,
-        message: 'Stability AI API authentication failed. Please check your API key.'
-      });
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to test Stability AI connection',
-      error: error.message
-    });
-  }
-});
-
-/**
- * @route   DELETE /api/integrations/stability/key
- * @desc    Remove Stability AI API key (Admin only)
- * @access  Private (System Admin)
- */
-router.delete('/stability/key', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
-  try {
-    const config = await AppConfig.getConfig();
-
-    config.stabilityApiKey = undefined;
-    config.stabilityKeyUpdatedAt = new Date();
-    config.stabilityKeyUpdatedBy = req.user!._id;
-
-    await config.save();
-
-    console.log(`Stability AI API key removed by: ${req.user!.email}`);
-
-    res.json({
-      success: true,
-      message: 'Stability AI API key removed successfully',
-      configured: false
-    });
-  } catch (error: any) {
-    console.error('Stability key removal error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to remove Stability AI API key'
-    });
-  }
-});
-
 // ===========================
 // DEFAULT LLM CONFIGURATION
 // ===========================
@@ -1110,6 +945,7 @@ router.patch('/llm/default', isAuthenticated, isSystemAdmin, async (req: Request
  * @route   GET /api/integrations/image-llm/default
  * @desc    Get default Image LLM configuration (Admin only)
  * @access  Private (System Admin)
+ * @note    RESTRICTED: Only gpt-image-1.5 is supported for image generation
  */
 router.get('/image-llm/default', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
   try {
@@ -1118,7 +954,7 @@ router.get('/image-llm/default', isAuthenticated, isSystemAdmin, async (req: Req
     res.json({
       success: true,
       defaultProvider: config.defaultImageLLMProvider || 'openai',
-      defaultModel: config.defaultImageLLMModel || 'dall-e-3'
+      defaultModel: config.defaultImageLLMModel || 'gpt-image-1.5'
     });
   } catch (error: any) {
     console.error('Get default Image LLM config error:', error);
@@ -1133,6 +969,7 @@ router.get('/image-llm/default', isAuthenticated, isSystemAdmin, async (req: Req
  * @route   PATCH /api/integrations/image-llm/default
  * @desc    Set default Image LLM configuration (Admin only)
  * @access  Private (System Admin)
+ * @note    RESTRICTED: Only gpt-image-1.5 is supported for image generation
  */
 router.patch('/image-llm/default', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
   try {
@@ -1145,36 +982,37 @@ router.patch('/image-llm/default', isAuthenticated, isSystemAdmin, async (req: R
       });
     }
 
-    // Validate provider
-    const validProviders = ['openai', 'stability'];
-    if (!validProviders.includes(provider)) {
+    // ENFORCED: Only OpenAI with gpt-image-1.5 is allowed
+    if (provider !== 'openai') {
       return res.status(400).json({
         success: false,
-        message: `Invalid provider. Must be one of: ${validProviders.join(', ')}`
+        message: 'Invalid provider. Only "openai" is supported for image generation.'
+      });
+    }
+
+    if (model !== 'gpt-image-1.5') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid model. Only "gpt-image-1.5" is supported for image generation.'
       });
     }
 
     const config = await AppConfig.getConfig();
 
-    // Check if the selected provider has an API key configured
-    const providerKeyMap: Record<string, string | undefined> = {
-      openai: config.openAIApiKey,
-      stability: config.stabilityApiKey
-    };
-
-    if (!providerKeyMap[provider]) {
+    // Check if OpenAI API key is configured
+    if (!config.openAIApiKey) {
       return res.status(400).json({
         success: false,
-        message: `Cannot set ${provider} as default image provider. No API key configured for this provider.`
+        message: 'Cannot set OpenAI as default image provider. No OpenAI API key configured.'
       });
     }
 
-    config.defaultImageLLMProvider = provider;
-    config.defaultImageLLMModel = model;
+    config.defaultImageLLMProvider = 'openai';
+    config.defaultImageLLMModel = 'gpt-image-1.5';
 
     await config.save();
 
-    console.log(`Default Image LLM config updated by ${req.user!.email}: ${provider}/${model}`);
+    console.log(`Default Image LLM config updated by ${req.user!.email}: openai/gpt-image-1.5`);
 
     res.json({
       success: true,
