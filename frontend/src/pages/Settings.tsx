@@ -81,9 +81,9 @@ const LLM_MODELS: Record<string, string[]> = {
 };
 
 // Image LLM Provider models (for image generation)
+// RESTRICTED TO GPT-IMAGE-1.5 ONLY as of late 2025
 const IMAGE_LLM_MODELS: Record<string, string[]> = {
-  openai: ['gpt-image-1.5', 'dall-e-3', 'dall-e-2'],
-  stability: ['stable-diffusion-xl-1024-v1-0', 'sd3-medium']
+  openai: ['gpt-image-1.5']
 };
 
 export default function Settings() {
@@ -143,8 +143,9 @@ export default function Settings() {
   const [savingDefaultConfig, setSavingDefaultConfig] = useState(false);
 
   // Default Image LLM configuration state (System Admin only)
+  // RESTRICTED TO GPT-IMAGE-1.5 ONLY
   const [defaultImageProvider, setDefaultImageProvider] = useState('openai');
-  const [defaultImageModel, setDefaultImageModel] = useState('dall-e-3');
+  const [defaultImageModel, setDefaultImageModel] = useState('gpt-image-1.5');
   const [savingDefaultImageConfig, setSavingDefaultImageConfig] = useState(false);
 
   // Stability AI state (System Admin only)
@@ -1441,53 +1442,34 @@ export default function Settings() {
               <Card sx={{ mb: 4 }}>
                 <CardContent>
                   <Typography variant="h6" gutterBottom>
-                    Default Image Generation LLM Configuration
+                    Image Generation Model
                   </Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                    Set the default image generation provider and model for AI-powered image creation
+                    Image generation is powered by OpenAI's GPT-Image-1.5 (Latest, as of late 2025)
                   </Typography>
 
-                  <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                  <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center' }}>
                     <TextField
-                      select
                       label="Provider"
-                      value={defaultImageProvider}
-                      onChange={(e) => {
-                        setDefaultImageProvider(e.target.value);
-                        // Set default model for selected provider
-                        const models = IMAGE_LLM_MODELS[e.target.value];
-                        if (models && models.length > 0) {
-                          setDefaultImageModel(models[0]);
-                        }
-                      }}
+                      value="OpenAI"
+                      disabled
                       sx={{ minWidth: 200 }}
-                    >
-                      <MenuItem value="openai">OpenAI</MenuItem>
-                      <MenuItem value="stability">Stability AI</MenuItem>
-                    </TextField>
+                    />
 
                     <TextField
-                      select
                       label="Model"
-                      value={defaultImageModel}
-                      onChange={(e) => setDefaultImageModel(e.target.value)}
+                      value="GPT-Image-1.5 (Latest)"
+                      disabled
                       sx={{ minWidth: 300 }}
-                    >
-                      {IMAGE_LLM_MODELS[defaultImageProvider]?.map((model) => (
-                        <MenuItem key={model} value={model}>
-                          {model === 'gpt-image-1.5' ? 'GPT-Image-1.5 (Latest Image Gen)' : model}
-                        </MenuItem>
-                      ))}
-                    </TextField>
+                    />
                   </Box>
 
-                  <Button
-                    variant="contained"
-                    onClick={handleSaveDefaultLLMConfig}
-                    disabled={savingDefaultImageConfig}
-                  >
-                    {savingDefaultImageConfig ? 'Saving...' : 'Save Image Generation Configuration'}
-                  </Button>
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    <Typography variant="body2">
+                      All image generation uses <strong>gpt-image-1.5</strong>, OpenAI's latest and most advanced image model.
+                      This ensures the highest quality and consistency across all generated posters.
+                    </Typography>
+                  </Alert>
                 </CardContent>
               </Card>
 
@@ -1600,54 +1582,19 @@ export default function Settings() {
                                 </TableCell>
                                 <TableCell>
                                   <TextField
-                                    select
                                     size="small"
-                                    value={promptImageProvider}
-                                    onChange={async (e) => {
-                                      const newProvider = e.target.value;
-                                      const newModel = IMAGE_LLM_MODELS[newProvider][0];
-                                      try {
-                                        await promptAPI.update(prompt._id, {
-                                          imageLLMProvider: newProvider,
-                                          imageLLMModel: newModel
-                                        });
-                                        fetchPrompts();
-                                        setMessage({ type: 'success', text: `Updated ${prompt.name} image provider to ${newProvider}` });
-                                      } catch (error) {
-                                        setMessage({ type: 'error', text: 'Failed to update image LLM configuration' });
-                                      }
-                                    }}
+                                    value="OpenAI"
+                                    disabled
                                     sx={{ minWidth: 130 }}
-                                  >
-                                    <MenuItem value="openai">OpenAI</MenuItem>
-                                    <MenuItem value="stability">Stability</MenuItem>
-                                  </TextField>
+                                  />
                                 </TableCell>
                                 <TableCell>
                                   <TextField
-                                    select
                                     size="small"
-                                    value={promptImageModel}
-                                    onChange={async (e) => {
-                                      try {
-                                        await promptAPI.update(prompt._id, {
-                                          imageLLMProvider: promptImageProvider,
-                                          imageLLMModel: e.target.value
-                                        });
-                                        fetchPrompts();
-                                        setMessage({ type: 'success', text: `Updated ${prompt.name} image model` });
-                                      } catch (error) {
-                                        setMessage({ type: 'error', text: 'Failed to update image model' });
-                                      }
-                                    }}
+                                    value="GPT-Image-1.5 (Latest)"
+                                    disabled
                                     sx={{ minWidth: 180 }}
-                                  >
-                                    {IMAGE_LLM_MODELS[promptImageProvider]?.map((model) => (
-                                      <MenuItem key={model} value={model}>
-                                        {model === 'gpt-image-1.5' ? 'GPT-Image-1.5 (Latest)' : model}
-                                      </MenuItem>
-                                    ))}
-                                  </TextField>
+                                  />
                                 </TableCell>
                                 <TableCell align="right">
                                   {(isTextOverridden || isImageOverridden) && (

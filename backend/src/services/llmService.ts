@@ -676,22 +676,26 @@ export async function generateImageWithPrompt(
     // Get the prompt configuration to check for image LLM overrides
     const prompt = await Prompt.findOne({ name: promptName });
 
-    // Determine which image model to use (priority: options > prompt override > default)
-    const config = await AppConfig.getConfig();
-    const imageModel = options?.model
-      || prompt?.imageLLMModel
-      || config.defaultImageModel
-      || 'dall-e-3';
-
-    const imageProvider = prompt?.imageLLMProvider || config.defaultImageProvider || 'openai';
+    // CRITICAL: Image generation is RESTRICTED to gpt-image-1.5 ONLY (as of late 2025)
+    // All other models/providers are deprecated and not supported
+    const imageModel = 'gpt-image-1.5';
+    const imageProvider = 'openai';
     const size = options?.size || '1024x1024';
     const quality = options?.quality || 'standard';
+
+    // Log if prompt tried to use a different model (for debugging/migration purposes)
+    if (prompt?.imageLLMModel && prompt.imageLLMModel !== 'gpt-image-1.5') {
+      console.log(`⚠️  Prompt "${promptName}" configured for "${prompt.imageLLMModel}" but enforcing gpt-image-1.5`);
+    }
+    if (prompt?.imageLLMProvider && prompt.imageLLMProvider !== 'openai') {
+      console.log(`⚠️  Prompt "${promptName}" configured for provider "${prompt.imageLLMProvider}" but enforcing openai`);
+    }
 
     console.log('\n========================================');
     console.log('🖼️  IMAGE LLM REQUEST');
     console.log('========================================');
-    console.log('Provider:', imageProvider);
-    console.log('Model:', imageModel);
+    console.log('Provider:', imageProvider, '(ENFORCED)');
+    console.log('Model:', imageModel, '(ENFORCED - gpt-image-1.5 only)');
     console.log('Prompt Name:', promptName);
     console.log('Image Size:', size);
     console.log('Quality:', quality);
@@ -704,11 +708,6 @@ export async function generateImageWithPrompt(
     console.log('User ID:', options?.userId || 'N/A');
     console.log('Timestamp:', new Date().toISOString());
     console.log('========================================\n');
-
-    // For now, we only support OpenAI image generation
-    if (imageProvider !== 'openai') {
-      throw new Error(`Image provider "${imageProvider}" is not yet supported. Please use OpenAI.`);
-    }
 
     // Get OpenAI client
     const openai = await getOpenAIClient();

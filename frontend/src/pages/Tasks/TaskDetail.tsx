@@ -19,7 +19,8 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
+  Snackbar
 } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -54,6 +55,9 @@ export default function TaskDetail() {
   const [generatingPoster, setGeneratingPoster] = useState(false);
   const [generatedPosterUrl, setGeneratedPosterUrl] = useState<string | null>(null);
   const [adoptingPoster, setAdoptingPoster] = useState(false);
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error' | 'info' | 'warning'>('info');
 
   const [editForm, setEditForm] = useState({
     name: '',
@@ -208,10 +212,22 @@ export default function TaskDetail() {
       setError(null);
       const res = await taskAPI.generatePoster(id!);
       setGeneratedPosterUrl(res.data.generatedImageUrl);
+      setSnackbarMessage('Poster generated successfully!');
+      setSnackbarSeverity('success');
+      setSnackbarOpen(true);
     } catch (error: any) {
       console.error('Error generating poster:', error);
-      setError(error.response?.data?.message || 'Failed to generate poster');
-      alert(error.response?.data?.message || 'Failed to generate poster');
+      const errorMessage = error.response?.data?.message || 'Image generation failed. Please try again or check your settings.';
+
+      // Show error toast
+      setSnackbarMessage(errorMessage);
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
+
+      // Wait for toast to be visible, then reload the page to ensure clean state
+      setTimeout(() => {
+        window.location.reload();
+      }, 2000);
     } finally {
       setGeneratingPoster(false);
     }
@@ -229,13 +245,24 @@ export default function TaskDetail() {
       await taskAPI.adoptPoster(id!, { generatedImageUrl: generatedPosterUrl });
       setGeneratedPosterUrl(null); // Clear generated poster
       await loadTask(); // Reload task to show new image
-      alert('Poster adopted successfully!');
+
+      setSnackbarMessage('Poster adopted successfully!');
+      setSnackbarSeverity('success');
+      setSnackbarOpen(true);
     } catch (error: any) {
       console.error('Error adopting poster:', error);
-      alert(error.response?.data?.message || 'Failed to adopt poster');
+      const errorMessage = error.response?.data?.message || 'Failed to adopt poster';
+
+      setSnackbarMessage(errorMessage);
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
     } finally {
       setAdoptingPoster(false);
     }
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbarOpen(false);
   };
 
   const getStatusColor = (status: TaskStatus) => {
@@ -644,6 +671,18 @@ export default function TaskDetail() {
             )}
           </List>
         </Paper>
+
+        {/* Snackbar for notifications */}
+        <Snackbar
+          open={snackbarOpen}
+          autoHideDuration={6000}
+          onClose={handleCloseSnackbar}
+          anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+        >
+          <Alert onClose={handleCloseSnackbar} severity={snackbarSeverity} sx={{ width: '100%' }}>
+            {snackbarMessage}
+          </Alert>
+        </Snackbar>
       </Box>
     </LocalizationProvider>
   );
