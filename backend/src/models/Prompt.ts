@@ -55,7 +55,4 @@ const promptSchema = new Schema<IPrompt>(
   }
 );
 
-// Index for quick lookups by name
-promptSchema.index({ name: 1 });
-
 export const Prompt = mongoose.model<IPrompt>('Prompt', promptSchema);

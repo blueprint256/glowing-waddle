@@ -27,7 +27,4 @@ const commandMappingSchema = new Schema<ICommandMapping>(
   }
 );
 
-// Index for quick lookup by command
-commandMappingSchema.index({ command: 1 });
-
 export const CommandMapping = mongoose.model<ICommandMapping>('CommandMapping', commandMappingSchema);
