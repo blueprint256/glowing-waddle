@@ -508,6 +508,17 @@ router.post('/:id/generate-poster', isAuthenticated, canManageTasks, validateMon
       console.log('⚠️  Task has no base image');
     }
 
+    // Add attachedImages if task has them
+    if (task.attachedImages && task.attachedImages.length > 0) {
+      dynamicData.attachedImages = task.attachedImages;
+      console.log(`📎 Task has ${task.attachedImages.length} attached image(s)`);
+      task.attachedImages.forEach((url, index) => {
+        console.log(`   [${index + 1}] ${url}`);
+      });
+    } else {
+      console.log('📎 Task has no attached images');
+    }
+
     // Add company info if available
     if (companyInfo) {
       dynamicData.companyInfo = companyInfo;

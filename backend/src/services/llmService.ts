@@ -148,6 +148,8 @@ export interface SuperPromptParams {
     endDate?: Date;
   };
   taskDescription?: string;
+  baseImage?: string; // S3 URL of primary/base image
+  attachedImages?: string[]; // Array of S3 URLs for additional reference images
   [key: string]: any;
 }
 
@@ -714,6 +716,32 @@ export async function generateImageWithPrompt(
       }
     }
 
+    // Download all attached images if provided (to upload as binary data to the model)
+    const attachedImageFiles: any[] = [];
+    if (params.attachedImages && params.attachedImages.length > 0) {
+      console.log(`\n📎 Downloading ${params.attachedImages.length} attached image(s) for binary upload...`);
+
+      for (let i = 0; i < params.attachedImages.length; i++) {
+        const imageUrl = params.attachedImages[i];
+        console.log(`   [${i + 1}/${params.attachedImages.length}] ${imageUrl}`);
+
+        try {
+          const { buffer, contentType, extension } = await downloadImageFromUrl(imageUrl);
+
+          // Convert buffer to File object for OpenAI API
+          const imageFile = await toFile(buffer, `attached-image-${i}.${extension}`, { type: contentType });
+          attachedImageFiles.push(imageFile);
+
+          console.log(`   ✅ Attached image ${i + 1} downloaded: ${buffer.length} bytes`);
+        } catch (error: any) {
+          console.log(`   ❌ Failed to download attached image ${i + 1}: ${error.message}`);
+          throw new Error(`Failed to download attached image ${i + 1}: ${error.message}`);
+        }
+      }
+
+      console.log(`✅ All ${attachedImageFiles.length} attached images downloaded and prepared for upload`);
+    }
+
     console.log('\n========================================');
     console.log('🖼️  IMAGE LLM REQUEST');
     console.log('========================================');
@@ -728,6 +756,11 @@ export async function generateImageWithPrompt(
       console.log('📤 Base Image:', 'Uploaded as binary data (not URL)');
     } else {
       console.log('🆕 New Image:', 'No base image provided');
+    }
+    if (attachedImageFiles.length > 0) {
+      console.log(`📎 Attached Images: ${attachedImageFiles.length} images uploaded as binary data`);
+    } else {
+      console.log('📎 Attached Images: None');
     }
     console.log('User ID:', options?.userId || 'N/A');
     console.log('Timestamp:', new Date().toISOString());
