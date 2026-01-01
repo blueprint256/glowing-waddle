@@ -519,6 +519,33 @@ router.post('/:id/generate-poster', isAuthenticated, canManageTasks, validateMon
       console.log('📎 Task has no attached images');
     }
 
+    // Add company logos if available (for multi-image poster generation)
+    const logoImages: string[] = [];
+    if (companyInfo?.primaryLogoUrl) {
+      logoImages.push(companyInfo.primaryLogoUrl);
+      console.log('🏢 Primary Logo:', companyInfo.primaryLogoUrl);
+    }
+    if (companyInfo?.secondaryLogoUrl) {
+      logoImages.push(companyInfo.secondaryLogoUrl);
+      console.log('🏢 Secondary Logo:', companyInfo.secondaryLogoUrl);
+    }
+    if (companyInfo?.tertiaryLogoUrl) {
+      logoImages.push(companyInfo.tertiaryLogoUrl);
+      console.log('🏢 Tertiary Logo:', companyInfo.tertiaryLogoUrl);
+    }
+
+    if (logoImages.length > 0) {
+      // Add logos to attachedImages array (or merge if already exists)
+      if (dynamicData.attachedImages) {
+        dynamicData.attachedImages = [...logoImages, ...dynamicData.attachedImages];
+      } else {
+        dynamicData.attachedImages = logoImages;
+      }
+      console.log(`✅ Total ${logoImages.length} company logo(s) added to image inputs`);
+    } else {
+      console.log('⚠️  No company logos configured');
+    }
+
     // Add company info if available
     if (companyInfo) {
       dynamicData.companyInfo = companyInfo;

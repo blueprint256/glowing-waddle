@@ -771,26 +771,36 @@ export async function generateImageWithPrompt(
 
     console.log('📡 Sending request to OpenAI Images API...');
 
-    // Generate or edit image based on whether base image is provided
+    // Build array of ALL images to pass to API (base + attached)
+    const allImageFiles: any[] = [];
+    if (baseImageFile) {
+      allImageFiles.push(baseImageFile);
+    }
+    if (attachedImageFiles.length > 0) {
+      allImageFiles.push(...attachedImageFiles);
+    }
+
+    // Generate or edit image based on whether we have input images
     // NOTE: gpt-image-1.5 does NOT support 'response_format' parameter
     // It always returns base64-encoded images (b64_json format)
     let response;
-    if (baseImageFile) {
-      console.log('🎨 Using images.edit endpoint (base image provided)');
+    if (allImageFiles.length > 0) {
+      console.log(`🎨 Using images.edit endpoint with ${allImageFiles.length} input image(s)`);
 
-      // Use edit endpoint when base image is provided
+      // Use edit endpoint when images are provided
+      // Pass array of images for multi-image combination
       response = await openai.images.edit({
         model: imageModel,
-        image: baseImageFile,
+        image: allImageFiles, // Array of all images (base + logos + attached)
         prompt: compiledPrompt,
         n: 1,
         size: size
         // NOTE: response_format is NOT supported by gpt-image-1.5
       });
     } else {
-      console.log('✨ Using images.generate endpoint (no base image)');
+      console.log('✨ Using images.generate endpoint (no input images)');
 
-      // Use generate endpoint when no base image
+      // Use generate endpoint when no images provided
       response = await openai.images.generate({
         model: imageModel,
         prompt: compiledPrompt,
@@ -825,6 +835,7 @@ export async function generateImageWithPrompt(
     console.log('========================================');
     console.log('Provider:', imageProvider);
     console.log('Model:', imageModel);
+    console.log('Input Images:', allImageFiles.length, 'image(s) combined');
     console.log('Generated Image URL:', imageUrl);
     console.log('Image Size:', size);
     console.log('Quality:', quality);
