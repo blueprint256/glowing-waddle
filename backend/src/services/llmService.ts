@@ -5,6 +5,8 @@ import { Prompt } from '../models/Prompt';
 import { LLMUsage } from '../models/LLMUsage';
 import { AppConfig } from '../models/AppConfig';
 import mongoose from 'mongoose';
+import { downloadImageFromUrl, uploadBufferToS3 } from '../utils/s3Service';
+import { toFile } from 'openai/uploads';
 
 // Cache for LLM clients and keys
 let cachedOpenAI: { client: OpenAI; key: string; timestamp: number } | null = null;
@@ -146,6 +148,14 @@ export interface SuperPromptParams {
     endDate?: Date;
   };
   taskDescription?: string;
+  // Image URLs as individual placeholders (prompt-driven selection)
+  baseImage?: string; // S3 URL - {baseImage}
+  primaryLogo?: string; // S3 URL - {primaryLogo}
+  secondaryLogo?: string; // S3 URL - {secondaryLogo}
+  tertiaryLogo?: string; // S3 URL - {tertiaryLogo}
+  attachedImage1?: string; // S3 URL - {attachedImage1}
+  attachedImage2?: string; // S3 URL - {attachedImage2}
+  // ... and so on for additional attached images
   [key: string]: any;
 }
 
@@ -233,9 +243,14 @@ export function compileSuperPrompt(promptTemplate: string, params: SuperPromptPa
     compiledPrompt = compiledPrompt.replace(/\{taskDescription\}/g, params.taskDescription);
   }
 
+  // Replace {baseImage} if provided (URL of the task's base/original image)
+  if (params.baseImage) {
+    compiledPrompt = compiledPrompt.replace(/\{baseImage\}/g, params.baseImage);
+  }
+
   // Replace any custom placeholders
   Object.keys(params).forEach(key => {
-    if (key !== 'companyInfo' && key !== 'campaignDetails' && key !== 'taskDescription') {
+    if (key !== 'companyInfo' && key !== 'campaignDetails' && key !== 'taskDescription' && key !== 'baseImage') {
       const value = typeof params[key] === 'object'
         ? JSON.stringify(params[key], null, 2)
         : String(params[key]);
@@ -457,6 +472,20 @@ export async function sendToLLM(
   const temperature = options?.temperature || 0.7;
   const maxTokens = options?.maxTokens || 2000;
 
+  console.log('\n========================================');
+  console.log('📤 TEXT LLM REQUEST');
+  console.log('========================================');
+  console.log('Provider:', provider);
+  console.log('Model:', model);
+  console.log('Prompt Name:', options?.promptName || 'N/A');
+  console.log('Temperature:', temperature);
+  console.log('Max Tokens:', maxTokens);
+  console.log('Prompt Length:', prompt.length, 'characters');
+  console.log('Prompt Preview:', prompt.substring(0, 200) + (prompt.length > 200 ? '...' : ''));
+  console.log('User ID:', options?.userId || 'N/A');
+  console.log('Timestamp:', new Date().toISOString());
+  console.log('========================================\n');
+
   try {
     let content: string;
     let usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
@@ -557,9 +586,31 @@ export async function sendToLLM(
       );
     }
 
+    console.log('\n========================================');
+    console.log('✅ TEXT LLM RESPONSE');
+    console.log('========================================');
+    console.log('Provider:', provider);
+    console.log('Model:', model);
+    console.log('Response Length:', content.length, 'characters');
+    console.log('Response Preview:', content.substring(0, 200) + (content.length > 200 ? '...' : ''));
+    console.log('Tokens Used:', usage.total_tokens);
+    console.log('Duration:', duration, 'ms');
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('========================================\n');
+
     return { content, usage };
   } catch (error: any) {
     const duration = Date.now() - startTime;
+
+    console.log('\n========================================');
+    console.log('❌ TEXT LLM ERROR');
+    console.log('========================================');
+    console.log('Provider:', provider);
+    console.log('Model:', model);
+    console.log('Error:', error.message);
+    console.log('Duration:', duration, 'ms');
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('========================================\n');
 
     // Log failed attempt if userId and promptName are provided
     if (options?.userId && options?.promptName) {
@@ -611,4 +662,240 @@ export async function generateWithPrompt(
     ...result,
     compiledPrompt
   };
+}
+
+/**
+ * Generate an image using an image generation LLM with a compiled prompt
+ */
+export async function generateImageWithPrompt(
+  promptName: string,
+  params: SuperPromptParams,
+  options?: {
+    model?: string;
+    size?: '1024x1024' | '1792x1024' | '1024x1792';
+    quality?: 'standard' | 'hd';
+    userId?: mongoose.Types.ObjectId;
+  }
+): Promise<{ imageUrl: string; compiledPrompt: string }> {
+  const startTime = Date.now();
+
+  try {
+    // Get the prompt configuration first to parse for image placeholders
+    const prompt = await Prompt.findOne({ name: promptName });
+    if (!prompt) {
+      throw new Error(`Prompt "${promptName}" not found`);
+    }
+
+    // Parse the prompt template to detect which image placeholders are referenced
+    const promptTemplate = prompt.details;
+    const referencedImages: string[] = [];
+
+    // Define known image placeholders
+    const imagePlaceholders = [
+      'baseImage',
+      'primaryLogo',
+      'secondaryLogo',
+      'tertiaryLogo',
+      'attachedImage1',
+      'attachedImage2',
+      'attachedImage3',
+      'attachedImage4',
+      'attachedImage5',
+      'attachedImage6',
+      'attachedImage7',
+      'attachedImage8',
+      'attachedImage9',
+      'attachedImage10'
+    ];
+
+    // Check which placeholders are actually used in the template
+    for (const placeholder of imagePlaceholders) {
+      if (promptTemplate.includes(`{${placeholder}}`)) {
+        referencedImages.push(placeholder);
+      }
+    }
+
+    console.log('\n========================================');
+    console.log('🔍 PROMPT ANALYSIS');
+    console.log('========================================');
+    console.log('Prompt Template:', promptName);
+    console.log('Referenced Images:', referencedImages.length > 0 ? referencedImages.join(', ') : 'None');
+    console.log('========================================\n');
+
+    // Fetch and compile the prompt
+    const compiledPrompt = await fetchAndCompilePrompt(promptName, params);
+
+    // CRITICAL: Image generation is RESTRICTED to gpt-image-1.5 ONLY (as of late 2025)
+    // All other models/providers are deprecated and not supported
+    const imageModel = 'gpt-image-1.5';
+    const imageProvider = 'openai';
+    const size = options?.size || '1024x1024';
+    const quality = options?.quality || 'standard';
+
+    // Log if prompt tried to use a different model (for debugging/migration purposes)
+    if (prompt?.imageLLMModel && prompt.imageLLMModel !== 'gpt-image-1.5') {
+      console.log(`⚠️  Prompt "${promptName}" configured for "${prompt.imageLLMModel}" but enforcing gpt-image-1.5`);
+    }
+    if (prompt?.imageLLMProvider && prompt.imageLLMProvider !== 'openai') {
+      console.log(`⚠️  Prompt "${promptName}" configured for provider "${prompt.imageLLMProvider}" but enforcing openai`);
+    }
+
+    // Download ONLY the images that are referenced in the prompt template
+    const imagesToDownload: { placeholder: string; url: string }[] = [];
+
+    // Build list of images to download based on what's referenced in the template
+    for (const placeholder of referencedImages) {
+      const imageUrl = params[placeholder];
+      if (imageUrl && typeof imageUrl === 'string') {
+        imagesToDownload.push({ placeholder, url: imageUrl });
+      } else {
+        console.log(`⚠️  Prompt references {${placeholder}} but no URL provided`);
+      }
+    }
+
+    console.log(`\n📥 Downloading ${imagesToDownload.length} referenced image(s)...\n`);
+
+    // Download all referenced images
+    const imageFiles: any[] = [];
+    for (let i = 0; i < imagesToDownload.length; i++) {
+      const { placeholder, url } = imagesToDownload[i];
+      console.log(`   [${i + 1}/${imagesToDownload.length}] {${placeholder}}: ${url}`);
+
+      try {
+        const { buffer, contentType, extension } = await downloadImageFromUrl(url);
+
+        // Convert buffer to File object for OpenAI API
+        const imageFile = await toFile(buffer, `${placeholder}.${extension}`, { type: contentType });
+        imageFiles.push(imageFile);
+
+        console.log(`   ✅ Downloaded: ${buffer.length} bytes`);
+      } catch (error: any) {
+        console.log(`   ❌ Failed to download {${placeholder}}: ${error.message}`);
+        throw new Error(`Failed to download {${placeholder}}: ${error.message}`);
+      }
+    }
+
+    if (imageFiles.length > 0) {
+      console.log(`\n✅ ${imageFiles.length} referenced image(s) downloaded and prepared for upload\n`);
+    } else {
+      console.log(`\n📝 No images referenced in prompt - using text-only generation\n`);
+    }
+
+    console.log('\n========================================');
+    console.log('🖼️  IMAGE LLM REQUEST');
+    console.log('========================================');
+    console.log('Provider:', imageProvider, '(ENFORCED)');
+    console.log('Model:', imageModel, '(ENFORCED - gpt-image-1.5 only)');
+    console.log('Prompt Name:', promptName);
+    console.log('Referenced Images:', imageFiles.length, '(from prompt template)');
+    console.log('Image Size:', size);
+    console.log('Quality:', quality);
+    console.log('Prompt Length:', compiledPrompt.length, 'characters');
+    console.log('Prompt:', compiledPrompt);
+    console.log('User ID:', options?.userId || 'N/A');
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('========================================\n');
+
+    // Get OpenAI client
+    const openai = await getOpenAIClient();
+
+    console.log('📡 Sending request to OpenAI Images API...');
+
+    // Generate or edit image based on whether we have input images
+    // NOTE: gpt-image-1.5 does NOT support 'response_format' parameter
+    // It always returns base64-encoded images (b64_json format)
+    let response;
+    if (imageFiles.length > 0) {
+      console.log(`🎨 Using images.edit endpoint with ${imageFiles.length} referenced image(s)`);
+
+      // Use edit endpoint when images are provided
+      // Pass only the images that were referenced in the prompt
+      response = await openai.images.edit({
+        model: imageModel,
+        image: imageFiles, // Array of ONLY referenced images (prompt-driven)
+        prompt: compiledPrompt,
+        n: 1,
+        size: size
+        // NOTE: response_format is NOT supported by gpt-image-1.5
+      });
+    } else {
+      console.log('✨ Using images.generate endpoint (no images referenced in prompt)');
+
+      // Use generate endpoint when no images referenced
+      response = await openai.images.generate({
+        model: imageModel,
+        prompt: compiledPrompt,
+        n: 1,
+        size: size,
+        quality: quality
+        // NOTE: response_format is NOT supported by gpt-image-1.5
+      });
+    }
+
+    // gpt-image-1.5 returns base64-encoded images, not URLs
+    const base64Image = response.data[0]?.b64_json;
+
+    if (!base64Image) {
+      throw new Error('No base64 image data returned from image generation API');
+    }
+
+    console.log('📥 Received base64 image from API');
+    console.log('   Base64 length:', base64Image.length, 'characters');
+
+    // Decode base64 to buffer
+    const imageBuffer = Buffer.from(base64Image, 'base64');
+    console.log('   Decoded buffer size:', imageBuffer.length, 'bytes');
+
+    // Upload buffer to S3 and get permanent URL
+    const imageUrl = await uploadBufferToS3(imageBuffer, 'image/png', 'generated-images');
+
+    const duration = Date.now() - startTime;
+
+    console.log('\n========================================');
+    console.log('✅ IMAGE LLM RESPONSE');
+    console.log('========================================');
+    console.log('Provider:', imageProvider);
+    console.log('Model:', imageModel);
+    console.log('Input Images:', imageFiles.length, 'referenced image(s)');
+    console.log('Generated Image URL:', imageUrl);
+    console.log('Image Size:', size);
+    console.log('Quality:', quality);
+    console.log('Duration:', duration, 'ms');
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('========================================\n');
+
+    // Log usage if userId provided
+    if (options?.userId) {
+      await LLMUsage.create({
+        userId: options.userId,
+        provider: imageProvider,
+        model: imageModel,
+        promptTokens: 0, // Image generation doesn't use token-based pricing
+        completionTokens: 0,
+        totalTokens: 0,
+        estimatedCost: 0, // Could calculate based on model and size
+        promptName,
+        createdAt: new Date()
+      });
+    }
+
+    return {
+      imageUrl,
+      compiledPrompt
+    };
+  } catch (error: any) {
+    const duration = Date.now() - startTime;
+
+    console.log('\n========================================');
+    console.log('❌ IMAGE LLM ERROR');
+    console.log('========================================');
+    console.log('Prompt Name:', promptName);
+    console.log('Error:', error.message);
+    console.log('Error Stack:', error.stack);
+    console.log('Duration:', duration, 'ms');
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('========================================\n');
+
+    throw new Error(`Image generation failed: ${error.message}`);
+  }
 }

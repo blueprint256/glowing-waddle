@@ -22,18 +22,13 @@ export interface IAppConfig extends Document {
   geminiKeyUpdatedAt?: Date;
   geminiKeyUpdatedBy?: mongoose.Types.ObjectId;
 
-  // Stability AI configuration (for image generation)
-  stabilityApiKey?: string;
-  stabilityKeyUpdatedAt?: Date;
-  stabilityKeyUpdatedBy?: mongoose.Types.ObjectId;
-
   // Default LLM configuration (for text generation)
   defaultLLMProvider?: string; // 'openai' | 'anthropic' | 'grok' | 'gemini'
   defaultLLMModel?: string;
 
-  // Default Image LLM configuration (for image generation)
-  defaultImageLLMProvider?: string; // 'openai' | 'stability'
-  defaultImageLLMModel?: string;
+  // Default Image LLM configuration (RESTRICTED: gpt-image-1.5 only)
+  defaultImageLLMProvider?: string; // 'openai' (only option)
+  defaultImageLLMModel?: string; // 'gpt-image-1.5' (only option)
 
   createdAt: Date;
   updatedAt: Date;
@@ -100,19 +95,6 @@ const appConfigSchema = new Schema<IAppConfig>(
       ref: 'User'
     },
 
-    // Stability AI configuration (for image generation)
-    stabilityApiKey: {
-      type: String,
-      select: false
-    },
-    stabilityKeyUpdatedAt: {
-      type: Date
-    },
-    stabilityKeyUpdatedBy: {
-      type: Schema.Types.ObjectId,
-      ref: 'User'
-    },
-
     // Default LLM configuration (for text generation)
     defaultLLMProvider: {
       type: String,
@@ -124,15 +106,15 @@ const appConfigSchema = new Schema<IAppConfig>(
       default: 'gpt-4o-mini'
     },
 
-    // Default Image LLM configuration (for image generation)
+    // Default Image LLM configuration (RESTRICTED: gpt-image-1.5 only)
     defaultImageLLMProvider: {
       type: String,
-      enum: ['openai', 'stability'],
+      enum: ['openai'],
       default: 'openai'
     },
     defaultImageLLMModel: {
       type: String,
-      default: 'dall-e-3'
+      default: 'gpt-image-1.5'
     }
   },
   {
@@ -169,7 +151,7 @@ interface IAppConfigModel extends mongoose.Model<IAppConfig> {
 
 // Static method to get or create the singleton config
 appConfigSchema.statics.getConfig = async function (): Promise<IAppConfig> {
-  let config = await this.findOne().select('+openAIApiKey +anthropicApiKey +grokApiKey +geminiApiKey +stabilityApiKey');
+  let config = await this.findOne().select('+openAIApiKey +anthropicApiKey +grokApiKey +geminiApiKey');
   if (!config) {
     config = await this.create({});
   }

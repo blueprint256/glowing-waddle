@@ -11,8 +11,8 @@ import { checkTaskOwnership } from '../middleware/ownership';
 import { validateMongoId } from '../middleware/validation';
 import { logAudit } from '../utils/auditLogger';
 import { AuditAction } from '../models/AuditLog';
-import { uploadTaskImage } from '../utils/s3Service';
-import { generateWithPrompt } from '../services/llmService';
+import { uploadTaskImage, uploadImageFromUrl } from '../utils/s3Service';
+import { generateWithPrompt, generateImageWithPrompt } from '../services/llmService';
 import mongoose from 'mongoose';
 
 const router = express.Router();
@@ -444,6 +444,211 @@ router.post('/:id/refine-description', isAuthenticated, canManageTasks, validate
     res.status(500).json({
       success: false,
       message: error.message || 'Error refining task description'
+    });
+  }
+});
+
+/**
+ * @route   POST /api/tasks/:id/generate-poster
+ * @desc    Generate a campaign poster image using AI with command-to-prompt mapping
+ * @access  Private (System Admin, Hybrid)
+ */
+router.post('/:id/generate-poster', isAuthenticated, canManageTasks, validateMongoId('id'), checkTaskOwnership, async (req: Request, res: Response) => {
+  console.log('\n========================================');
+  console.log('🎨 POSTER GENERATION REQUEST');
+  console.log('========================================');
+  console.log('Task ID:', req.params.id);
+  console.log('User ID:', req.user!._id);
+  console.log('User Email:', req.user!.email);
+  console.log('Timestamp:', new Date().toISOString());
+  console.log('========================================\n');
+
+  try {
+    const task = await Task.findById(req.params.id);
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found'
+      });
+    }
+
+    console.log('📋 Task Found:', task.name);
+
+    // Resolve command-to-prompt mapping for "generate-poster"
+    const commandName = 'generate-poster';
+    const mapping = await CommandMapping.findOne({ command: commandName }).populate('promptId');
+
+    if (!mapping || !mapping.promptId) {
+      console.log('❌ No command mapping found for:', commandName);
+      return res.status(400).json({
+        success: false,
+        message: `No prompt configured for "${commandName}" command. Please configure it in Settings → Command Mappings.`
+      });
+    }
+
+    console.log('✅ Command Mapping Found:', (mapping.promptId as any).name);
+
+    // Get user's company info for placeholders
+    const user = await User.findById(req.user!._id);
+    const companyInfo = user?.companyInfo;
+
+    // Get campaign details for placeholders
+    const campaign = await Campaign.findById(task.campaignId);
+
+    // Build dynamic data for prompt compilation
+    const dynamicData: any = {
+      taskDescription: task.description || task.name
+    };
+
+    // Add available image URLs as individual placeholders (NOT automatically sent to API)
+    // The compiled prompt will determine which images are actually used
+    if (task.designedImage) {
+      dynamicData.baseImage = task.designedImage;
+      console.log('🖼️  Available - Base Image:', task.designedImage);
+    } else {
+      console.log('⚠️  No base image available');
+    }
+
+    // Add company logos as individual placeholders (for prompt-driven selection)
+    if (companyInfo?.primaryLogoUrl) {
+      dynamicData.primaryLogo = companyInfo.primaryLogoUrl;
+      console.log('🏢 Available - Primary Logo:', companyInfo.primaryLogoUrl);
+    }
+    if (companyInfo?.secondaryLogoUrl) {
+      dynamicData.secondaryLogo = companyInfo.secondaryLogoUrl;
+      console.log('🏢 Available - Secondary Logo:', companyInfo.secondaryLogoUrl);
+    }
+    if (companyInfo?.tertiaryLogoUrl) {
+      dynamicData.tertiaryLogo = companyInfo.tertiaryLogoUrl;
+      console.log('🏢 Available - Tertiary Logo:', companyInfo.tertiaryLogoUrl);
+    }
+
+    // Add other attached images if task has them
+    if (task.attachedImages && task.attachedImages.length > 0) {
+      task.attachedImages.forEach((url, index) => {
+        dynamicData[`attachedImage${index + 1}`] = url;
+        console.log(`📎 Available - Attached Image ${index + 1}:`, url);
+      });
+    }
+
+    console.log('\n📝 Prompt will determine which images (if any) are sent to API\n');
+
+    // Add company info if available
+    if (companyInfo) {
+      dynamicData.companyInfo = companyInfo;
+      console.log('🏢 Company info included:', companyInfo.companyName || 'N/A');
+    }
+
+    // Add campaign details if available
+    if (campaign) {
+      dynamicData.campaignDetails = campaign;
+      console.log('📢 Campaign details included:', campaign.name);
+    }
+
+    console.log('\n🚀 Starting image generation workflow...\n');
+
+    // Call image generation LLM service with the mapped prompt
+    const result = await generateImageWithPrompt(
+      (mapping.promptId as any).name, // Prompt name from mapping
+      dynamicData,
+      {
+        userId: req.user!._id
+      }
+    );
+
+    console.log('🎉 Image generated successfully, uploading to S3...\n');
+
+    // Download the generated image from OpenAI's temporary URL and upload to S3
+    const permanentImageUrl = await uploadImageFromUrl(result.imageUrl, 'generated-posters');
+
+    console.log('\n========================================');
+    console.log('✅ POSTER GENERATION SUCCESS');
+    console.log('========================================');
+    console.log('Task ID:', req.params.id);
+    console.log('Permanent Image URL:', permanentImageUrl);
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('========================================\n');
+
+    res.json({
+      success: true,
+      message: 'Poster generated successfully',
+      generatedImageUrl: permanentImageUrl,
+      compiledPrompt: result.compiledPrompt
+    });
+
+  } catch (error: any) {
+    console.log('\n========================================');
+    console.log('❌ POSTER GENERATION FAILED');
+    console.log('========================================');
+    console.log('Task ID:', req.params.id);
+    console.log('Error:', error.message);
+    console.log('Stack:', error.stack);
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('========================================\n');
+
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Error generating poster'
+    });
+  }
+});
+
+/**
+ * @route   PATCH /api/tasks/:id/adopt-poster
+ * @desc    Adopt the generated poster as the main task image
+ * @access  Private (System Admin, Hybrid)
+ */
+router.patch('/:id/adopt-poster', isAuthenticated, canManageTasks, validateMongoId('id'), checkTaskOwnership, async (req: Request, res: Response) => {
+  try {
+    const task = await Task.findById(req.params.id);
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found'
+      });
+    }
+
+    const { generatedImageUrl } = req.body;
+
+    if (!generatedImageUrl) {
+      return res.status(400).json({
+        success: false,
+        message: 'Generated image URL is required'
+      });
+    }
+
+    // Update task's designedImage with the generated poster
+    task.designedImage = generatedImageUrl;
+    task.lastModifiedBy = req.user!._id;
+    await task.save();
+
+    // Log the update
+    await logAudit({
+      action: AuditAction.EVENT_UPDATED,
+      userId: req.user!._id,
+      targetType: 'Task',
+      targetId: task._id,
+      metadata: { action: 'adopted-poster', imageUrl: generatedImageUrl },
+      req
+    });
+
+    const updatedTask = await Task.findById(task._id)
+      .populate('projectId', 'name')
+      .populate('campaignId', 'name')
+      .populate('createdBy', 'firstName lastName')
+      .populate('lastModifiedBy', 'firstName lastName');
+
+    res.json({
+      success: true,
+      message: 'Poster adopted successfully',
+      task: updatedTask
+    });
+
+  } catch (error: any) {
+    console.error('Error adopting poster:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Error adopting poster'
     });
   }
 });

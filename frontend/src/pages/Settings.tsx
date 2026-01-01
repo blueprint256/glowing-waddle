@@ -81,9 +81,9 @@ const LLM_MODELS: Record<string, string[]> = {
 };
 
 // Image LLM Provider models (for image generation)
+// RESTRICTED TO GPT-IMAGE-1.5 ONLY as of late 2025
 const IMAGE_LLM_MODELS: Record<string, string[]> = {
-  openai: ['gpt-image-1.5', 'dall-e-3', 'dall-e-2'],
-  stability: ['stable-diffusion-xl-1024-v1-0', 'sd3-medium']
+  openai: ['gpt-image-1.5']
 };
 
 export default function Settings() {
@@ -143,13 +143,10 @@ export default function Settings() {
   const [savingDefaultConfig, setSavingDefaultConfig] = useState(false);
 
   // Default Image LLM configuration state (System Admin only)
+  // RESTRICTED TO GPT-IMAGE-1.5 ONLY
   const [defaultImageProvider, setDefaultImageProvider] = useState('openai');
-  const [defaultImageModel, setDefaultImageModel] = useState('dall-e-3');
+  const [defaultImageModel, setDefaultImageModel] = useState('gpt-image-1.5');
   const [savingDefaultImageConfig, setSavingDefaultImageConfig] = useState(false);
-
-  // Stability AI state (System Admin only)
-  const [stabilityConfigured, setStabilityConfigured] = useState(false);
-  const [stabilityApiKey, setStabilityApiKey] = useState('');
 
   // Command Mappings state (System Admin only)
   const [commandMappings, setCommandMappings] = useState<any[]>([]);
@@ -1437,6 +1434,41 @@ export default function Settings() {
                 </CardContent>
               </Card>
 
+              {/* Default Image LLM Configuration Section */}
+              <Card sx={{ mb: 4 }}>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Image Generation Model
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                    Image generation is powered by OpenAI's GPT-Image-1.5 (Latest, as of late 2025)
+                  </Typography>
+
+                  <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center' }}>
+                    <TextField
+                      label="Provider"
+                      value="OpenAI"
+                      disabled
+                      sx={{ minWidth: 200 }}
+                    />
+
+                    <TextField
+                      label="Model"
+                      value="GPT-Image-1.5 (Latest)"
+                      disabled
+                      sx={{ minWidth: 300 }}
+                    />
+                  </Box>
+
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    <Typography variant="body2">
+                      All image generation uses <strong>gpt-image-1.5</strong>, OpenAI's latest and most advanced image model.
+                      This ensures the highest quality and consistency across all generated posters.
+                    </Typography>
+                  </Alert>
+                </CardContent>
+              </Card>
+
               {/* Per-Prompt Overrides Section */}
               <Card>
                 <CardContent>
@@ -1463,8 +1495,10 @@ export default function Settings() {
                         <TableHead>
                           <TableRow>
                             <TableCell>Prompt Name</TableCell>
-                            <TableCell>Provider</TableCell>
-                            <TableCell>Model</TableCell>
+                            <TableCell>Text Provider</TableCell>
+                            <TableCell>Text Model</TableCell>
+                            <TableCell>Image Provider</TableCell>
+                            <TableCell>Image Model</TableCell>
                             <TableCell align="right">Actions</TableCell>
                           </TableRow>
                         </TableHead>
@@ -1472,7 +1506,10 @@ export default function Settings() {
                           {prompts.map((prompt) => {
                             const promptProvider = prompt.llmProvider || defaultProvider;
                             const promptModel = prompt.llmModel || defaultModel;
-                            const isOverridden = !!prompt.llmProvider;
+                            const promptImageProvider = prompt.imageLLMProvider || defaultImageProvider;
+                            const promptImageModel = prompt.imageLLMModel || defaultImageModel;
+                            const isTextOverridden = !!prompt.llmProvider;
+                            const isImageOverridden = !!prompt.imageLLMProvider;
 
                             return (
                               <TableRow key={prompt._id}>
@@ -1481,8 +1518,8 @@ export default function Settings() {
                                     <Typography variant="body2" fontWeight="500">
                                       {prompt.name}
                                     </Typography>
-                                    {!isOverridden && (
-                                      <Chip label="Using Default" size="small" variant="outlined" />
+                                    {!isTextOverridden && !isImageOverridden && (
+                                      <Chip label="Using Defaults" size="small" variant="outlined" />
                                     )}
                                   </Box>
                                 </TableCell>
@@ -1500,12 +1537,12 @@ export default function Settings() {
                                           llmModel: newModel
                                         });
                                         fetchPrompts();
-                                        setMessage({ type: 'success', text: `Updated ${prompt.name} to use ${newProvider}` });
+                                        setMessage({ type: 'success', text: `Updated ${prompt.name} text provider to ${newProvider}` });
                                       } catch (error) {
                                         setMessage({ type: 'error', text: 'Failed to update prompt configuration' });
                                       }
                                     }}
-                                    sx={{ minWidth: 150 }}
+                                    sx={{ minWidth: 130 }}
                                   >
                                     <MenuItem value="openai">OpenAI</MenuItem>
                                     <MenuItem value="anthropic">Anthropic</MenuItem>
@@ -1525,12 +1562,12 @@ export default function Settings() {
                                           llmModel: e.target.value
                                         });
                                         fetchPrompts();
-                                        setMessage({ type: 'success', text: `Updated ${prompt.name} model` });
+                                        setMessage({ type: 'success', text: `Updated ${prompt.name} text model` });
                                       } catch (error) {
                                         setMessage({ type: 'error', text: 'Failed to update prompt model' });
                                       }
                                     }}
-                                    sx={{ minWidth: 250 }}
+                                    sx={{ minWidth: 180 }}
                                   >
                                     {LLM_MODELS[promptProvider]?.map((model) => (
                                       <MenuItem key={model} value={model}>
@@ -1539,15 +1576,33 @@ export default function Settings() {
                                     ))}
                                   </TextField>
                                 </TableCell>
+                                <TableCell>
+                                  <TextField
+                                    size="small"
+                                    value="OpenAI"
+                                    disabled
+                                    sx={{ minWidth: 130 }}
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <TextField
+                                    size="small"
+                                    value="GPT-Image-1.5 (Latest)"
+                                    disabled
+                                    sx={{ minWidth: 180 }}
+                                  />
+                                </TableCell>
                                 <TableCell align="right">
-                                  {isOverridden && (
+                                  {(isTextOverridden || isImageOverridden) && (
                                     <Button
                                       size="small"
                                       onClick={async () => {
                                         try {
                                           await promptAPI.update(prompt._id, {
                                             llmProvider: null,
-                                            llmModel: null
+                                            llmModel: null,
+                                            imageLLMProvider: null,
+                                            imageLLMModel: null
                                           });
                                           fetchPrompts();
                                           setMessage({ type: 'success', text: `${prompt.name} now uses default configuration` });
@@ -1813,7 +1868,7 @@ export default function Settings() {
                   <strong>Available Placeholders:</strong><br />
                   <strong>Company:</strong> {'{companyInfo}'} (full object), {'{companyName}'}, {'{sector}'}, {'{brandTone}'}, {'{brandGuidelines}'}<br />
                   <strong>Campaign:</strong> {'{campaignDetails}'} (full object), {'{campaignName}'}, {'{coreMessages}'}, {'{hashtags}'}<br />
-                  <strong>Task:</strong> {'{taskDescription}'}<br />
+                  <strong>Task:</strong> {'{taskDescription}'}, {'{baseImage}'} (URL of task's original image)<br />
                   <strong>Brand Assets:</strong> {'{primaryLogo}'}, {'{secondaryLogo}'}, {'{tertiaryLogo}'} (logo URLs)
                 </Typography>
               </Alert>

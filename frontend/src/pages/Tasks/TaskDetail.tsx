@@ -19,7 +19,8 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
+  Snackbar
 } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -51,6 +52,12 @@ export default function TaskDetail() {
   const [refining, setRefining] = useState(false);
   const [refinedDescription, setRefinedDescription] = useState('');
   const [refineError, setRefineError] = useState<string | null>(null);
+  const [generatingPoster, setGeneratingPoster] = useState(false);
+  const [generatedPosterUrl, setGeneratedPosterUrl] = useState<string | null>(null);
+  const [adoptingPoster, setAdoptingPoster] = useState(false);
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error' | 'info' | 'warning'>('info');
 
   const [editForm, setEditForm] = useState({
     name: '',
@@ -199,6 +206,65 @@ export default function TaskDetail() {
     setRefineError(null);
   };
 
+  const handleGeneratePoster = async () => {
+    try {
+      setGeneratingPoster(true);
+      setError(null);
+      const res = await taskAPI.generatePoster(id!);
+      setGeneratedPosterUrl(res.data.generatedImageUrl);
+      setSnackbarMessage('Poster generated successfully!');
+      setSnackbarSeverity('success');
+      setSnackbarOpen(true);
+    } catch (error: any) {
+      console.error('Error generating poster:', error);
+      const errorMessage = error.response?.data?.message || 'Image generation failed – please try again.';
+
+      // Show error toast
+      setSnackbarMessage(errorMessage);
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
+
+      // Wait for toast to be visible (2 seconds), then navigate back to task page
+      setTimeout(() => {
+        navigate(`/tasks/${id}`);
+      }, 2000);
+    } finally {
+      setGeneratingPoster(false);
+    }
+  };
+
+  const handleAdoptPoster = async () => {
+    if (!generatedPosterUrl) return;
+
+    if (!window.confirm('This will replace the current task image with the generated poster. Continue?')) {
+      return;
+    }
+
+    try {
+      setAdoptingPoster(true);
+      await taskAPI.adoptPoster(id!, { generatedImageUrl: generatedPosterUrl });
+      setGeneratedPosterUrl(null); // Clear generated poster
+      await loadTask(); // Reload task to show new image
+
+      setSnackbarMessage('Poster adopted successfully!');
+      setSnackbarSeverity('success');
+      setSnackbarOpen(true);
+    } catch (error: any) {
+      console.error('Error adopting poster:', error);
+      const errorMessage = error.response?.data?.message || 'Failed to adopt poster';
+
+      setSnackbarMessage(errorMessage);
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
+    } finally {
+      setAdoptingPoster(false);
+    }
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbarOpen(false);
+  };
+
   const getStatusColor = (status: TaskStatus) => {
     switch (status) {
       case TaskStatus.COMPLETED:
@@ -277,36 +343,114 @@ export default function TaskDetail() {
               {/* Designed Image Section */}
               <Box sx={{ mt: 3 }}>
                 <Typography variant="h6" gutterBottom>Designed Image</Typography>
-                {task.designedImage ? (
-                  <Box>
-                    <CardMedia
-                      component="img"
-                      image={task.designedImage}
-                      alt="Task designed image"
-                      sx={{ maxWidth: 600, maxHeight: 400, objectFit: 'contain', borderRadius: 1 }}
-                    />
-                  </Box>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No image uploaded yet
-                  </Typography>
-                )}
 
-                <Button
-                  variant="outlined"
-                  component="label"
-                  startIcon={uploading ? <CircularProgress size={20} /> : <CloudUploadIcon />}
-                  disabled={uploading}
-                  sx={{ mt: 2 }}
-                >
-                  {uploading ? 'Uploading...' : task.designedImage ? 'Replace Image' : 'Upload Image'}
-                  <input
-                    type="file"
-                    hidden
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                  />
-                </Button>
+                <Grid container spacing={3}>
+                  {/* Base Image */}
+                  <Grid item xs={12} md={generatedPosterUrl ? 6 : 12}>
+                    <Box>
+                      {task.designedImage || generatedPosterUrl ? (
+                        <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                          {generatedPosterUrl ? 'Current Image' : 'Task Image'}
+                        </Typography>
+                      ) : null}
+                      {task.designedImage ? (
+                        <Box>
+                          <CardMedia
+                            component="img"
+                            image={task.designedImage}
+                            alt="Task designed image"
+                            sx={{
+                              width: '100%',
+                              maxWidth: generatedPosterUrl ? 500 : 600,
+                              maxHeight: 400,
+                              objectFit: 'contain',
+                              borderRadius: 1,
+                              border: '1px solid #e0e0e0'
+                            }}
+                          />
+                        </Box>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">
+                          No image uploaded yet
+                        </Typography>
+                      )}
+
+                      <Box sx={{ mt: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                        <Button
+                          variant="outlined"
+                          component="label"
+                          startIcon={uploading ? <CircularProgress size={20} /> : <CloudUploadIcon />}
+                          disabled={uploading}
+                        >
+                          {uploading ? 'Uploading...' : task.designedImage ? 'Replace Image' : 'Upload Image'}
+                          <input
+                            type="file"
+                            hidden
+                            accept="image/*"
+                            onChange={handleImageUpload}
+                          />
+                        </Button>
+
+                        <Button
+                          variant="contained"
+                          startIcon={generatingPoster ? <CircularProgress size={20} /> : <AutoAwesomeIcon />}
+                          onClick={handleGeneratePoster}
+                          disabled={generatingPoster}
+                          sx={{
+                            backgroundColor: '#9333EA',
+                            '&:hover': { backgroundColor: '#7C3AED' }
+                          }}
+                        >
+                          {generatingPoster ? 'Generating Poster...' : 'Generate Poster with AI'}
+                        </Button>
+                      </Box>
+                    </Box>
+                  </Grid>
+
+                  {/* Generated Poster Preview */}
+                  {generatedPosterUrl && (
+                    <Grid item xs={12} md={6}>
+                      <Box>
+                        <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                          Generated Poster
+                        </Typography>
+                        <CardMedia
+                          component="img"
+                          image={generatedPosterUrl}
+                          alt="Generated poster"
+                          sx={{
+                            width: '100%',
+                            maxWidth: 500,
+                            maxHeight: 400,
+                            objectFit: 'contain',
+                            borderRadius: 1,
+                            border: '2px solid #9333EA'
+                          }}
+                        />
+                        <Box sx={{ mt: 2 }}>
+                          <Button
+                            variant="contained"
+                            color="success"
+                            onClick={handleAdoptPoster}
+                            disabled={adoptingPoster}
+                            startIcon={adoptingPoster ? <CircularProgress size={20} /> : null}
+                            fullWidth
+                          >
+                            {adoptingPoster ? 'Adopting...' : 'Adopt This Poster'}
+                          </Button>
+                          <Button
+                            variant="outlined"
+                            onClick={() => setGeneratedPosterUrl(null)}
+                            sx={{ mt: 1 }}
+                            fullWidth
+                          >
+                            Discard
+                          </Button>
+                        </Box>
+                      </Box>
+                    </Grid>
+                  )}
+                </Grid>
               </Box>
 
               <Box sx={{ mt: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
@@ -527,6 +671,18 @@ export default function TaskDetail() {
             )}
           </List>
         </Paper>
+
+        {/* Snackbar for notifications */}
+        <Snackbar
+          open={snackbarOpen}
+          autoHideDuration={6000}
+          onClose={handleCloseSnackbar}
+          anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+        >
+          <Alert onClose={handleCloseSnackbar} severity={snackbarSeverity} sx={{ width: '100%' }}>
+            {snackbarMessage}
+          </Alert>
+        </Snackbar>
       </Box>
     </LocalizationProvider>
   );

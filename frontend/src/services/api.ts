@@ -85,6 +85,8 @@ export const taskAPI = {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
   refineDescription: (id: string) => api.post(`/tasks/${id}/refine-description`),
+  generatePoster: (id: string) => api.post(`/tasks/${id}/generate-poster`),
+  adoptPoster: (id: string, data: { generatedImageUrl: string }) => api.patch(`/tasks/${id}/adopt-poster`, data),
   delete: (id: string) => api.delete(`/tasks/${id}`)
 };
 
@@ -155,12 +157,6 @@ export const integrationsAPI = {
     saveKey: (apiKey: string) => api.patch('/integrations/gemini/key', { apiKey }),
     testConnection: () => api.post('/integrations/gemini/test'),
     removeKey: () => api.delete('/integrations/gemini/key')
-  },
-  stability: {
-    getStatus: () => api.get('/integrations/stability/status'),
-    saveKey: (apiKey: string) => api.patch('/integrations/stability/key', { apiKey }),
-    testConnection: () => api.post('/integrations/stability/test'),
-    removeKey: () => api.delete('/integrations/stability/key')
   },
   llm: {
     getDefault: () => api.get('/integrations/llm/default'),
