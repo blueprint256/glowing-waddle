@@ -148,8 +148,14 @@ export interface SuperPromptParams {
     endDate?: Date;
   };
   taskDescription?: string;
-  baseImage?: string; // S3 URL of primary/base image
-  attachedImages?: string[]; // Array of S3 URLs for additional reference images
+  // Image URLs as individual placeholders (prompt-driven selection)
+  baseImage?: string; // S3 URL - {baseImage}
+  primaryLogo?: string; // S3 URL - {primaryLogo}
+  secondaryLogo?: string; // S3 URL - {secondaryLogo}
+  tertiaryLogo?: string; // S3 URL - {tertiaryLogo}
+  attachedImage1?: string; // S3 URL - {attachedImage1}
+  attachedImage2?: string; // S3 URL - {attachedImage2}
+  // ... and so on for additional attached images
   [key: string]: any;
 }
 
@@ -674,11 +680,50 @@ export async function generateImageWithPrompt(
   const startTime = Date.now();
 
   try {
+    // Get the prompt configuration first to parse for image placeholders
+    const prompt = await Prompt.findOne({ name: promptName });
+    if (!prompt) {
+      throw new Error(`Prompt "${promptName}" not found`);
+    }
+
+    // Parse the prompt template to detect which image placeholders are referenced
+    const promptTemplate = prompt.details;
+    const referencedImages: string[] = [];
+
+    // Define known image placeholders
+    const imagePlaceholders = [
+      'baseImage',
+      'primaryLogo',
+      'secondaryLogo',
+      'tertiaryLogo',
+      'attachedImage1',
+      'attachedImage2',
+      'attachedImage3',
+      'attachedImage4',
+      'attachedImage5',
+      'attachedImage6',
+      'attachedImage7',
+      'attachedImage8',
+      'attachedImage9',
+      'attachedImage10'
+    ];
+
+    // Check which placeholders are actually used in the template
+    for (const placeholder of imagePlaceholders) {
+      if (promptTemplate.includes(`{${placeholder}}`)) {
+        referencedImages.push(placeholder);
+      }
+    }
+
+    console.log('\n========================================');
+    console.log('🔍 PROMPT ANALYSIS');
+    console.log('========================================');
+    console.log('Prompt Template:', promptName);
+    console.log('Referenced Images:', referencedImages.length > 0 ? referencedImages.join(', ') : 'None');
+    console.log('========================================\n');
+
     // Fetch and compile the prompt
     const compiledPrompt = await fetchAndCompilePrompt(promptName, params);
-
-    // Get the prompt configuration to check for image LLM overrides
-    const prompt = await Prompt.findOne({ name: promptName });
 
     // CRITICAL: Image generation is RESTRICTED to gpt-image-1.5 ONLY (as of late 2025)
     // All other models/providers are deprecated and not supported
@@ -695,51 +740,45 @@ export async function generateImageWithPrompt(
       console.log(`⚠️  Prompt "${promptName}" configured for provider "${prompt.imageLLMProvider}" but enforcing openai`);
     }
 
-    // Download base image if provided (to upload as binary data to the model)
-    let baseImageFile: any = null;
-    if (params.baseImage) {
-      console.log('\n🖼️  Downloading base image for binary upload...');
-      console.log('Base Image URL:', params.baseImage);
+    // Download ONLY the images that are referenced in the prompt template
+    const imagesToDownload: { placeholder: string; url: string }[] = [];
 
-      try {
-        const { buffer, contentType, extension } = await downloadImageFromUrl(params.baseImage);
-
-        // Convert buffer to File object for OpenAI API
-        baseImageFile = await toFile(buffer, `base-image.${extension}`, { type: contentType });
-
-        console.log('✅ Base image downloaded and prepared for upload');
-        console.log('   Size:', buffer.length, 'bytes');
-        console.log('   Type:', contentType);
-      } catch (error: any) {
-        console.log('❌ Failed to download base image:', error.message);
-        throw new Error(`Failed to download base image: ${error.message}`);
+    // Build list of images to download based on what's referenced in the template
+    for (const placeholder of referencedImages) {
+      const imageUrl = params[placeholder];
+      if (imageUrl && typeof imageUrl === 'string') {
+        imagesToDownload.push({ placeholder, url: imageUrl });
+      } else {
+        console.log(`⚠️  Prompt references {${placeholder}} but no URL provided`);
       }
     }
 
-    // Download all attached images if provided (to upload as binary data to the model)
-    const attachedImageFiles: any[] = [];
-    if (params.attachedImages && params.attachedImages.length > 0) {
-      console.log(`\n📎 Downloading ${params.attachedImages.length} attached image(s) for binary upload...`);
+    console.log(`\n📥 Downloading ${imagesToDownload.length} referenced image(s)...\n`);
 
-      for (let i = 0; i < params.attachedImages.length; i++) {
-        const imageUrl = params.attachedImages[i];
-        console.log(`   [${i + 1}/${params.attachedImages.length}] ${imageUrl}`);
+    // Download all referenced images
+    const imageFiles: any[] = [];
+    for (let i = 0; i < imagesToDownload.length; i++) {
+      const { placeholder, url } = imagesToDownload[i];
+      console.log(`   [${i + 1}/${imagesToDownload.length}] {${placeholder}}: ${url}`);
 
-        try {
-          const { buffer, contentType, extension } = await downloadImageFromUrl(imageUrl);
+      try {
+        const { buffer, contentType, extension } = await downloadImageFromUrl(url);
 
-          // Convert buffer to File object for OpenAI API
-          const imageFile = await toFile(buffer, `attached-image-${i}.${extension}`, { type: contentType });
-          attachedImageFiles.push(imageFile);
+        // Convert buffer to File object for OpenAI API
+        const imageFile = await toFile(buffer, `${placeholder}.${extension}`, { type: contentType });
+        imageFiles.push(imageFile);
 
-          console.log(`   ✅ Attached image ${i + 1} downloaded: ${buffer.length} bytes`);
-        } catch (error: any) {
-          console.log(`   ❌ Failed to download attached image ${i + 1}: ${error.message}`);
-          throw new Error(`Failed to download attached image ${i + 1}: ${error.message}`);
-        }
+        console.log(`   ✅ Downloaded: ${buffer.length} bytes`);
+      } catch (error: any) {
+        console.log(`   ❌ Failed to download {${placeholder}}: ${error.message}`);
+        throw new Error(`Failed to download {${placeholder}}: ${error.message}`);
       }
+    }
 
-      console.log(`✅ All ${attachedImageFiles.length} attached images downloaded and prepared for upload`);
+    if (imageFiles.length > 0) {
+      console.log(`\n✅ ${imageFiles.length} referenced image(s) downloaded and prepared for upload\n`);
+    } else {
+      console.log(`\n📝 No images referenced in prompt - using text-only generation\n`);
     }
 
     console.log('\n========================================');
@@ -748,20 +787,11 @@ export async function generateImageWithPrompt(
     console.log('Provider:', imageProvider, '(ENFORCED)');
     console.log('Model:', imageModel, '(ENFORCED - gpt-image-1.5 only)');
     console.log('Prompt Name:', promptName);
+    console.log('Referenced Images:', imageFiles.length, '(from prompt template)');
     console.log('Image Size:', size);
     console.log('Quality:', quality);
     console.log('Prompt Length:', compiledPrompt.length, 'characters');
     console.log('Prompt:', compiledPrompt);
-    if (baseImageFile) {
-      console.log('📤 Base Image:', 'Uploaded as binary data (not URL)');
-    } else {
-      console.log('🆕 New Image:', 'No base image provided');
-    }
-    if (attachedImageFiles.length > 0) {
-      console.log(`📎 Attached Images: ${attachedImageFiles.length} images uploaded as binary data`);
-    } else {
-      console.log('📎 Attached Images: None');
-    }
     console.log('User ID:', options?.userId || 'N/A');
     console.log('Timestamp:', new Date().toISOString());
     console.log('========================================\n');
@@ -771,36 +801,27 @@ export async function generateImageWithPrompt(
 
     console.log('📡 Sending request to OpenAI Images API...');
 
-    // Build array of ALL images to pass to API (base + attached)
-    const allImageFiles: any[] = [];
-    if (baseImageFile) {
-      allImageFiles.push(baseImageFile);
-    }
-    if (attachedImageFiles.length > 0) {
-      allImageFiles.push(...attachedImageFiles);
-    }
-
     // Generate or edit image based on whether we have input images
     // NOTE: gpt-image-1.5 does NOT support 'response_format' parameter
     // It always returns base64-encoded images (b64_json format)
     let response;
-    if (allImageFiles.length > 0) {
-      console.log(`🎨 Using images.edit endpoint with ${allImageFiles.length} input image(s)`);
+    if (imageFiles.length > 0) {
+      console.log(`🎨 Using images.edit endpoint with ${imageFiles.length} referenced image(s)`);
 
       // Use edit endpoint when images are provided
-      // Pass array of images for multi-image combination
+      // Pass only the images that were referenced in the prompt
       response = await openai.images.edit({
         model: imageModel,
-        image: allImageFiles, // Array of all images (base + logos + attached)
+        image: imageFiles, // Array of ONLY referenced images (prompt-driven)
         prompt: compiledPrompt,
         n: 1,
         size: size
         // NOTE: response_format is NOT supported by gpt-image-1.5
       });
     } else {
-      console.log('✨ Using images.generate endpoint (no input images)');
+      console.log('✨ Using images.generate endpoint (no images referenced in prompt)');
 
-      // Use generate endpoint when no images provided
+      // Use generate endpoint when no images referenced
       response = await openai.images.generate({
         model: imageModel,
         prompt: compiledPrompt,
@@ -835,7 +856,7 @@ export async function generateImageWithPrompt(
     console.log('========================================');
     console.log('Provider:', imageProvider);
     console.log('Model:', imageModel);
-    console.log('Input Images:', allImageFiles.length, 'image(s) combined');
+    console.log('Input Images:', imageFiles.length, 'referenced image(s)');
     console.log('Generated Image URL:', imageUrl);
     console.log('Image Size:', size);
     console.log('Quality:', quality);

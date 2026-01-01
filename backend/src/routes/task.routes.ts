@@ -500,51 +500,38 @@ router.post('/:id/generate-poster', isAuthenticated, canManageTasks, validateMon
       taskDescription: task.description || task.name
     };
 
-    // Add baseImage if task has a designed image
+    // Add available image URLs as individual placeholders (NOT automatically sent to API)
+    // The compiled prompt will determine which images are actually used
     if (task.designedImage) {
       dynamicData.baseImage = task.designedImage;
-      console.log('🖼️  Task has base image:', task.designedImage);
+      console.log('🖼️  Available - Base Image:', task.designedImage);
     } else {
-      console.log('⚠️  Task has no base image');
+      console.log('⚠️  No base image available');
     }
 
-    // Add attachedImages if task has them
-    if (task.attachedImages && task.attachedImages.length > 0) {
-      dynamicData.attachedImages = task.attachedImages;
-      console.log(`📎 Task has ${task.attachedImages.length} attached image(s)`);
-      task.attachedImages.forEach((url, index) => {
-        console.log(`   [${index + 1}] ${url}`);
-      });
-    } else {
-      console.log('📎 Task has no attached images');
-    }
-
-    // Add company logos if available (for multi-image poster generation)
-    const logoImages: string[] = [];
+    // Add company logos as individual placeholders (for prompt-driven selection)
     if (companyInfo?.primaryLogoUrl) {
-      logoImages.push(companyInfo.primaryLogoUrl);
-      console.log('🏢 Primary Logo:', companyInfo.primaryLogoUrl);
+      dynamicData.primaryLogo = companyInfo.primaryLogoUrl;
+      console.log('🏢 Available - Primary Logo:', companyInfo.primaryLogoUrl);
     }
     if (companyInfo?.secondaryLogoUrl) {
-      logoImages.push(companyInfo.secondaryLogoUrl);
-      console.log('🏢 Secondary Logo:', companyInfo.secondaryLogoUrl);
+      dynamicData.secondaryLogo = companyInfo.secondaryLogoUrl;
+      console.log('🏢 Available - Secondary Logo:', companyInfo.secondaryLogoUrl);
     }
     if (companyInfo?.tertiaryLogoUrl) {
-      logoImages.push(companyInfo.tertiaryLogoUrl);
-      console.log('🏢 Tertiary Logo:', companyInfo.tertiaryLogoUrl);
+      dynamicData.tertiaryLogo = companyInfo.tertiaryLogoUrl;
+      console.log('🏢 Available - Tertiary Logo:', companyInfo.tertiaryLogoUrl);
     }
 
-    if (logoImages.length > 0) {
-      // Add logos to attachedImages array (or merge if already exists)
-      if (dynamicData.attachedImages) {
-        dynamicData.attachedImages = [...logoImages, ...dynamicData.attachedImages];
-      } else {
-        dynamicData.attachedImages = logoImages;
-      }
-      console.log(`✅ Total ${logoImages.length} company logo(s) added to image inputs`);
-    } else {
-      console.log('⚠️  No company logos configured');
+    // Add other attached images if task has them
+    if (task.attachedImages && task.attachedImages.length > 0) {
+      task.attachedImages.forEach((url, index) => {
+        dynamicData[`attachedImage${index + 1}`] = url;
+        console.log(`📎 Available - Attached Image ${index + 1}:`, url);
+      });
     }
+
+    console.log('\n📝 Prompt will determine which images (if any) are sent to API\n');
 
     // Add company info if available
     if (companyInfo) {
