@@ -94,17 +94,17 @@ export default function DetailsSheet() {
     createdBy: []
   });
 
-  // Color coding constants - Blue/Purple Brand Theme
-  const CAMPAIGN_COLOR = '#DBEAFE'; // Deep blue background
-  const CAMPAIGN_BORDER = '#2563EB'; // Deep brand blue
-  const CAMPAIGN_HOVER = '#BFDBFE'; // Lighter blue hover
-  const PROJECT_COLOR = '#E0E7FF';  // Mid blue-purple background
-  const PROJECT_BORDER = '#6366F1';  // Mid blue-purple
-  const PROJECT_HOVER = '#C7D2FE';   // Lighter purple hover
-  const TASK_COLOR = '#C7D2FE';      // Lighter violet-blue
-  const TASK_HOVER = '#E0E7FF';      // Very light violet hover
-  const CREATOR_COLOR = '#F0F9FF';   // Very light blue for creator grouping
-  const CREATOR_BORDER = '#0284C7';  // Sky blue border
+  // Color coding constants - Unified Blue Hierarchy (#1976d2 shades)
+  const CAMPAIGN_COLOR = '#BBDEFB'; // Deep blue background (lighter shade)
+  const CAMPAIGN_BORDER = '#1565C0'; // Darkest blue border (dark shade of #1976d2)
+  const CAMPAIGN_HOVER = '#90CAF9'; // Medium blue hover
+  const PROJECT_COLOR = '#E3F2FD';  // Light blue background
+  const PROJECT_BORDER = '#1976D2';  // Primary blue border (base color)
+  const PROJECT_HOVER = '#BBDEFB';   // Lighter blue hover
+  const TASK_COLOR = '#E3F2FD';      // Very light blue
+  const TASK_HOVER = '#BBDEFB';      // Light blue hover
+  const CREATOR_COLOR = '#E3F2FD';   // Very light blue for creator grouping
+  const CREATOR_BORDER = '#1976D2';  // Primary blue border
 
   // Group campaigns by creator for System Admins
   const groupedCampaigns = (() => {
@@ -918,47 +918,37 @@ export default function DetailsSheet() {
                                     </Box>
                                   </TableCell>
                                   <TableCell>
-                                    {editingCell?.type === 'task' && editingCell?.id === task._id && editingCell?.field === 'description' ? (
-                                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                                        <TextField
-                                          inputRef={editInputRef}
-                                          value={editValue}
-                                          onChange={(e) => setEditValue(e.target.value)}
-                                          onKeyDown={(e) => {
-                                            if (e.key === 'Enter') saveEdit();
-                                            if (e.key === 'Escape') cancelEditing();
-                                          }}
-                                          size="small"
-                                          multiline
-                                          fullWidth
-                                        />
-                                        <IconButton size="small" onClick={saveEdit} color="primary">
-                                          <CheckIcon fontSize="small" />
-                                        </IconButton>
-                                        <IconButton size="small" onClick={cancelEditing}>
-                                          <CloseIcon fontSize="small" />
-                                        </IconButton>
-                                      </Box>
-                                    ) : (
-                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                        <Typography
-                                          variant="body2"
-                                          noWrap
-                                          sx={{ maxWidth: 200, cursor: 'pointer' }}
-                                          onClick={() => startEditing('task', task._id, 'description', task.description || '')}
-                                        >
-                                          {task.description || '-'}
-                                        </Typography>
-                                        {!task.description && (
-                                          <IconButton
-                                            size="small"
-                                            onClick={() => startEditing('task', task._id, 'description', '')}
-                                          >
-                                            <EditIcon fontSize="small" />
-                                          </IconButton>
-                                        )}
-                                      </Box>
-                                    )}
+                                    <Box
+                                      sx={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 1,
+                                        cursor: 'pointer',
+                                        '&:hover .edit-icon': {
+                                          opacity: 1
+                                        }
+                                      }}
+                                      onClick={() => setPreviewTask(task)}
+                                    >
+                                      <Typography
+                                        variant="body2"
+                                        noWrap
+                                        sx={{ maxWidth: 200, flex: 1 }}
+                                      >
+                                        {task.description || '-'}
+                                      </Typography>
+                                      <IconButton
+                                        className="edit-icon"
+                                        size="small"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setPreviewTask(task);
+                                        }}
+                                        sx={{ opacity: 0, transition: 'opacity 0.2s' }}
+                                      >
+                                        <EditIcon fontSize="small" />
+                                      </IconButton>
+                                    </Box>
                                   </TableCell>
                                   <TableCell>
                                     <Typography variant="caption" color="text.secondary">

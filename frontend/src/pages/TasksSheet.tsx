@@ -30,7 +30,9 @@ import {
   Close as CloseIcon,
   ExpandMore as ExpandMoreIcon,
   CalendarToday as CalendarIcon,
-  Visibility as VisibilityIcon
+  Visibility as VisibilityIcon,
+  PhotoCamera as PhotoCameraIcon,
+  Upload as UploadIcon
 } from '@mui/icons-material';
 import { useAuthStore } from '../store/authStore';
 import { taskAPI } from '../services/api';
@@ -203,6 +205,35 @@ export default function TasksSheet() {
     }
   };
 
+  const getPhotoCount = (task: Task): number => {
+    let count = 0;
+    if (task.designedImage) count++;
+    return count;
+  };
+
+  const handlePhotoUpload = async (taskId: string) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = async (e: any) => {
+      const file = e.target?.files?.[0];
+      if (!file) return;
+
+      try {
+        const formData = new FormData();
+        formData.append('image', file);
+
+        await taskAPI.uploadImage(taskId, formData);
+        await loadTasks();
+        alert('Photo uploaded successfully!');
+      } catch (error: any) {
+        console.error('Error uploading photo:', error);
+        alert(error.response?.data?.message || 'Failed to upload photo');
+      }
+    };
+    input.click();
+  };
+
   const renderEditableCell = (
     task: Task,
     field: 'name' | 'description',
@@ -345,13 +376,14 @@ export default function TasksSheet() {
             <Table>
               <TableHead>
                 <TableRow sx={{ backgroundColor: '#F3F4F6' }}>
-                  <TableCell sx={{ fontWeight: 700, width: '18%' }}>Task Name</TableCell>
-                  <TableCell sx={{ fontWeight: 700, width: '13%' }}>Campaign</TableCell>
-                  <TableCell sx={{ fontWeight: 700, width: '13%' }}>Project</TableCell>
-                  <TableCell sx={{ fontWeight: 700, width: '10%' }}>Status</TableCell>
-                  <TableCell sx={{ fontWeight: 700, width: '10%' }}>Date</TableCell>
-                  <TableCell sx={{ fontWeight: 700, width: '26%' }}>Description</TableCell>
-                  <TableCell sx={{ fontWeight: 700, width: '10%', textAlign: 'center' }}>Actions</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: '15%' }}>Task Name</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: '12%' }}>Campaign</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: '12%' }}>Project</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: '9%' }}>Status</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: '9%' }}>Date</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: '8%' }}>Photos</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: '25%' }}>Description</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: '10%', textAlign: 'center' }}>Preview</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -439,7 +471,52 @@ export default function TasksSheet() {
                       />
                     </TableCell>
                     <TableCell>
-                      {renderEditableCell(task, 'description', task.description || '')}
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        {getPhotoCount(task) > 0 && (
+                          <>
+                            <PhotoCameraIcon fontSize="small" color="action" />
+                            <Typography variant="caption">{getPhotoCount(task)}</Typography>
+                          </>
+                        )}
+                        <Tooltip title="Upload Photo">
+                          <IconButton
+                            size="small"
+                            onClick={() => handlePhotoUpload(task._id)}
+                            color="primary"
+                          >
+                            <UploadIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          cursor: 'pointer',
+                          '&:hover .edit-icon': {
+                            opacity: 1
+                          }
+                        }}
+                        onClick={() => setPreviewTask(task)}
+                      >
+                        <Typography variant="body2" sx={{ flex: 1 }}>
+                          {task.description || '-'}
+                        </Typography>
+                        <IconButton
+                          className="edit-icon"
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPreviewTask(task);
+                          }}
+                          sx={{ opacity: 0, transition: 'opacity 0.2s' }}
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
                     </TableCell>
                     <TableCell sx={{ textAlign: 'center' }}>
                       <Tooltip title="Preview on Social Media">
