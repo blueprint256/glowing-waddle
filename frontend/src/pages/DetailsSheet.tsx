@@ -84,6 +84,7 @@ export default function DetailsSheet() {
   const [editValue, setEditValue] = useState('');
   const editInputRef = useRef<HTMLInputElement>(null);
   const [previewTask, setPreviewTask] = useState<Task | null>(null);
+  const [editDescriptionTask, setEditDescriptionTask] = useState<Task | null>(null);
   const [filters, setFilters] = useState<FilterOptions>({
     search: '',
     campaignIds: [],
@@ -94,17 +95,17 @@ export default function DetailsSheet() {
     createdBy: []
   });
 
-  // Color coding constants - Blue/Purple Brand Theme
-  const CAMPAIGN_COLOR = '#DBEAFE'; // Deep blue background
-  const CAMPAIGN_BORDER = '#2563EB'; // Deep brand blue
-  const CAMPAIGN_HOVER = '#BFDBFE'; // Lighter blue hover
-  const PROJECT_COLOR = '#E0E7FF';  // Mid blue-purple background
-  const PROJECT_BORDER = '#6366F1';  // Mid blue-purple
-  const PROJECT_HOVER = '#C7D2FE';   // Lighter purple hover
-  const TASK_COLOR = '#C7D2FE';      // Lighter violet-blue
-  const TASK_HOVER = '#E0E7FF';      // Very light violet hover
-  const CREATOR_COLOR = '#F0F9FF';   // Very light blue for creator grouping
-  const CREATOR_BORDER = '#0284C7';  // Sky blue border
+  // Color coding constants - Unified Blue Hierarchy (#1976d2 shades)
+  const CAMPAIGN_COLOR = '#BBDEFB'; // Deep blue background (lighter shade)
+  const CAMPAIGN_BORDER = '#1565C0'; // Darkest blue border (dark shade of #1976d2)
+  const CAMPAIGN_HOVER = '#90CAF9'; // Medium blue hover
+  const PROJECT_COLOR = '#E3F2FD';  // Light blue background
+  const PROJECT_BORDER = '#1976D2';  // Primary blue border (base color)
+  const PROJECT_HOVER = '#BBDEFB';   // Lighter blue hover
+  const TASK_COLOR = '#E3F2FD';      // Very light blue
+  const TASK_HOVER = '#BBDEFB';      // Light blue hover
+  const CREATOR_COLOR = '#E3F2FD';   // Very light blue for creator grouping
+  const CREATOR_BORDER = '#1976D2';  // Primary blue border
 
   // Group campaigns by creator for System Admins
   const groupedCampaigns = (() => {
@@ -469,6 +470,27 @@ export default function DetailsSheet() {
     }
   };
 
+  const handleSaveDescription = async (taskId: string, description: string) => {
+    try {
+      await taskAPI.update(taskId, { description });
+      setCampaigns(prev =>
+        prev.map(c => ({
+          ...c,
+          projects: c.projects?.map(p => ({
+            ...p,
+            tasks: p.tasks?.map(t =>
+              t._id === taskId ? { ...t, description } : t
+            )
+          }))
+        }))
+      );
+    } catch (error: any) {
+      console.error('Error updating task description:', error);
+      alert(error.response?.data?.message || 'Failed to update task description');
+      throw error;
+    }
+  };
+
   // Photo upload function
   const handlePhotoUpload = async (taskId: string, campaignId: string, projectId: string) => {
     const input = document.createElement('input');
@@ -560,12 +582,24 @@ export default function DetailsSheet() {
         onChange={handleCampaignExpand(campaign._id)}
         sx={{
           mb: 2,
+          borderRadius: '8px',
+          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+          overflow: 'hidden',
+          transition: 'all 0.3s ease',
+          '&:hover': {
+            boxShadow: '0 10px 15px rgba(0, 0, 0, 0.15)',
+            transform: 'scale(1.01)'
+          },
           '& .MuiAccordionSummary-root': {
             backgroundColor: CAMPAIGN_COLOR,
             borderLeft: `4px solid ${CAMPAIGN_BORDER}`,
+            transition: 'background-color 0.2s ease',
             '&:hover': {
               backgroundColor: CAMPAIGN_HOVER
             }
+          },
+          '&.Mui-expanded': {
+            margin: '0 0 16px 0'
           }
         }}
       >
@@ -650,7 +684,17 @@ export default function DetailsSheet() {
               onClick={() => handleOpenCreateProjectModal(campaign._id)}
               sx={{
                 backgroundColor: PROJECT_BORDER,
-                '&:hover': { backgroundColor: '#4F46E5' }
+                borderRadius: '4px',
+                transition: 'all 0.2s ease',
+                boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+                '&:hover': {
+                  backgroundColor: '#4F46E5',
+                  boxShadow: '0 4px 8px rgba(0, 0, 0, 0.15)',
+                  transform: 'scale(0.98)'
+                },
+                '&:active': {
+                  transform: 'scale(0.95)'
+                }
               }}
             >
               Create Project
@@ -672,12 +716,24 @@ export default function DetailsSheet() {
                   onChange={handleProjectExpand(campaign._id, project._id)}
                   sx={{
                     mb: 1,
+                    borderRadius: '8px',
+                    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.08)',
+                    overflow: 'hidden',
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
+                      boxShadow: '0 6px 12px rgba(0, 0, 0, 0.12)',
+                      transform: 'scale(1.005)'
+                    },
                     '& .MuiAccordionSummary-root': {
                       backgroundColor: PROJECT_COLOR,
                       borderLeft: `4px solid ${PROJECT_BORDER}`,
+                      transition: 'background-color 0.2s ease',
                       '&:hover': {
                         backgroundColor: PROJECT_HOVER
                       }
+                    },
+                    '&.Mui-expanded': {
+                      margin: '0 0 8px 0'
                     }
                   }}
                 >
@@ -747,7 +803,17 @@ export default function DetailsSheet() {
                         onClick={() => handleOpenCreateTaskModal(project._id, campaign._id)}
                         sx={{
                           backgroundColor: '#6366F1',
-                          '&:hover': { backgroundColor: '#4F46E5' }
+                          borderRadius: '4px',
+                          transition: 'all 0.2s ease',
+                          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+                          '&:hover': {
+                            backgroundColor: '#4F46E5',
+                            boxShadow: '0 4px 8px rgba(0, 0, 0, 0.15)',
+                            transform: 'scale(0.98)'
+                          },
+                          '&:active': {
+                            transform: 'scale(0.95)'
+                          }
                         }}
                       >
                         Add Task
@@ -758,7 +824,15 @@ export default function DetailsSheet() {
                         <CircularProgress size={24} />
                       </Box>
                     ) : project.tasks && project.tasks.length > 0 ? (
-                      <TableContainer component={Paper} sx={{ boxShadow: 2 }}>
+                      <TableContainer component={Paper} sx={{
+                        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+                        borderRadius: '8px',
+                        overflow: 'hidden',
+                        transition: 'box-shadow 0.3s ease',
+                        '&:hover': {
+                          boxShadow: '0 6px 12px rgba(0, 0, 0, 0.15)'
+                        }
+                      }}>
                         <Table size="small">
                           <TableHead>
                             <TableRow sx={{ backgroundColor: TASK_COLOR }}>
@@ -780,8 +854,13 @@ export default function DetailsSheet() {
                                   key={task._id}
                                   hover
                                   sx={{
+                                    transition: 'all 0.2s ease',
                                     '&:last-child td, &:last-child th': { border: 0 },
-                                    '&:hover': { backgroundColor: TASK_HOVER }
+                                    '&:hover': {
+                                      backgroundColor: TASK_HOVER,
+                                      transform: 'scale(1.002)',
+                                      boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)'
+                                    }
                                   }}
                                 >
                                   <TableCell>{formatDate(task.taskDate)}</TableCell>
@@ -861,47 +940,37 @@ export default function DetailsSheet() {
                                     </Box>
                                   </TableCell>
                                   <TableCell>
-                                    {editingCell?.type === 'task' && editingCell?.id === task._id && editingCell?.field === 'description' ? (
-                                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                                        <TextField
-                                          inputRef={editInputRef}
-                                          value={editValue}
-                                          onChange={(e) => setEditValue(e.target.value)}
-                                          onKeyDown={(e) => {
-                                            if (e.key === 'Enter') saveEdit();
-                                            if (e.key === 'Escape') cancelEditing();
-                                          }}
-                                          size="small"
-                                          multiline
-                                          fullWidth
-                                        />
-                                        <IconButton size="small" onClick={saveEdit} color="primary">
-                                          <CheckIcon fontSize="small" />
-                                        </IconButton>
-                                        <IconButton size="small" onClick={cancelEditing}>
-                                          <CloseIcon fontSize="small" />
-                                        </IconButton>
-                                      </Box>
-                                    ) : (
-                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                        <Typography
-                                          variant="body2"
-                                          noWrap
-                                          sx={{ maxWidth: 200, cursor: 'pointer' }}
-                                          onClick={() => startEditing('task', task._id, 'description', task.description || '')}
-                                        >
-                                          {task.description || '-'}
-                                        </Typography>
-                                        {!task.description && (
-                                          <IconButton
-                                            size="small"
-                                            onClick={() => startEditing('task', task._id, 'description', '')}
-                                          >
-                                            <EditIcon fontSize="small" />
-                                          </IconButton>
-                                        )}
-                                      </Box>
-                                    )}
+                                    <Box
+                                      sx={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 1,
+                                        cursor: 'pointer',
+                                        '&:hover .edit-icon': {
+                                          opacity: 1
+                                        }
+                                      }}
+                                      onClick={() => setEditDescriptionTask(task)}
+                                    >
+                                      <Typography
+                                        variant="body2"
+                                        noWrap
+                                        sx={{ maxWidth: 200, flex: 1 }}
+                                      >
+                                        {task.description || '-'}
+                                      </Typography>
+                                      <IconButton
+                                        className="edit-icon"
+                                        size="small"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setEditDescriptionTask(task);
+                                        }}
+                                        sx={{ opacity: 0, transition: 'opacity 0.2s' }}
+                                      >
+                                        <EditIcon fontSize="small" />
+                                      </IconButton>
+                                    </Box>
                                   </TableCell>
                                   <TableCell>
                                     <Typography variant="caption" color="text.secondary">
@@ -938,7 +1007,13 @@ export default function DetailsSheet() {
                         </Table>
                       </TableContainer>
                     ) : (
-                      <Paper sx={{ py: 3, textAlign: 'center', backgroundColor: '#FAFAFA' }}>
+                      <Paper sx={{
+                        py: 3,
+                        textAlign: 'center',
+                        backgroundColor: '#FAFAFA',
+                        borderRadius: '8px',
+                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)'
+                      }}>
                         <Typography variant="body2" color="text.secondary">
                           No tasks assigned to this project yet.
                         </Typography>
@@ -949,11 +1024,17 @@ export default function DetailsSheet() {
                           onClick={() => handleOpenCreateTaskModal(project._id, campaign._id)}
                           sx={{
                             mt: 2,
+                            borderRadius: '4px',
                             borderColor: '#6366F1',
                             color: '#6366F1',
+                            transition: 'all 0.2s ease',
                             '&:hover': {
                               borderColor: '#4F46E5',
-                              backgroundColor: '#EEF2FF'
+                              backgroundColor: '#EEF2FF',
+                              transform: 'scale(0.98)'
+                            },
+                            '&:active': {
+                              transform: 'scale(0.95)'
                             }
                           }}
                         >
@@ -966,7 +1047,13 @@ export default function DetailsSheet() {
               );
             })
           ) : (
-            <Paper sx={{ py: 3, textAlign: 'center', backgroundColor: '#FAFAFA' }}>
+            <Paper sx={{
+              py: 3,
+              textAlign: 'center',
+              backgroundColor: '#FAFAFA',
+              borderRadius: '8px',
+              boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)'
+            }}>
               <Typography variant="body2" color="text.secondary">
                 No projects in this campaign yet.
               </Typography>
@@ -1028,8 +1115,16 @@ export default function DetailsSheet() {
             fontWeight: 600,
             px: 3,
             py: 1.5,
+            borderRadius: '4px',
+            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+            transition: 'all 0.2s ease',
             '&:hover': {
-              backgroundColor: '#1D4ED8'
+              backgroundColor: '#1D4ED8',
+              boxShadow: '0 6px 12px rgba(0, 0, 0, 0.15)',
+              transform: 'scale(0.98)'
+            },
+            '&:active': {
+              transform: 'scale(0.95)'
             }
           }}
         >
@@ -1041,7 +1136,12 @@ export default function DetailsSheet() {
       {user?.role === UserRole.HYBRID && (
         <>
           {campaigns.length === 0 ? (
-            <Paper sx={{ p: 3, textAlign: 'center' }}>
+            <Paper sx={{
+              p: 3,
+              textAlign: 'center',
+              borderRadius: '8px',
+              boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)'
+            }}>
               <Typography color="text.secondary">No campaigns found</Typography>
             </Paper>
           ) : (
@@ -1069,12 +1169,24 @@ export default function DetailsSheet() {
                   defaultExpanded={false}
                   sx={{
                     mb: 3,
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+                    overflow: 'hidden',
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
+                      boxShadow: '0 10px 15px rgba(0, 0, 0, 0.15)',
+                      transform: 'scale(1.01)'
+                    },
                     '& .MuiAccordionSummary-root': {
                       backgroundColor: CREATOR_COLOR,
                       borderLeft: `4px solid ${CREATOR_BORDER}`,
+                      transition: 'background-color 0.2s ease',
                       '&:hover': {
                         backgroundColor: '#E0F2FE'
                       }
+                    },
+                    '&.Mui-expanded': {
+                      margin: '0 0 24px 0'
                     }
                   }}
                 >
@@ -1105,7 +1217,12 @@ export default function DetailsSheet() {
                 </Accordion>
               ))
             ) : (
-              <Paper sx={{ p: 3, textAlign: 'center' }}>
+              <Paper sx={{
+                p: 3,
+                textAlign: 'center',
+                borderRadius: '8px',
+                boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)'
+              }}>
                 <Typography color="text.secondary">No campaigns found</Typography>
               </Paper>
             )}
@@ -1149,12 +1266,24 @@ export default function DetailsSheet() {
         />
       )}
 
-      {/* Social Preview Modal */}
+      {/* Social Preview Modal (Read-only) */}
       {previewTask && (
         <SocialPreviewModal
           open={!!previewTask}
           onClose={() => setPreviewTask(null)}
           task={previewTask}
+          editable={false}
+        />
+      )}
+
+      {/* Edit Description Modal (Editable with Live Preview) */}
+      {editDescriptionTask && (
+        <SocialPreviewModal
+          open={!!editDescriptionTask}
+          onClose={() => setEditDescriptionTask(null)}
+          task={editDescriptionTask}
+          editable={true}
+          onSave={handleSaveDescription}
         />
       )}
     </Box>

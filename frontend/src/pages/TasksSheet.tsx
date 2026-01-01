@@ -30,7 +30,9 @@ import {
   Close as CloseIcon,
   ExpandMore as ExpandMoreIcon,
   CalendarToday as CalendarIcon,
-  Visibility as VisibilityIcon
+  Visibility as VisibilityIcon,
+  PhotoCamera as PhotoCameraIcon,
+  Upload as UploadIcon
 } from '@mui/icons-material';
 import { useAuthStore } from '../store/authStore';
 import { taskAPI } from '../services/api';
@@ -53,6 +55,7 @@ export default function TasksSheet() {
   const [editValue, setEditValue] = useState('');
   const editInputRef = useRef<HTMLInputElement>(null);
   const [previewTask, setPreviewTask] = useState<Task | null>(null);
+  const [editDescriptionTask, setEditDescriptionTask] = useState<Task | null>(null);
   const [filters, setFilters] = useState<FilterOptions>({
     search: '',
     campaignIds: [],
@@ -190,6 +193,23 @@ export default function TasksSheet() {
     }
   };
 
+  const handleSaveDescription = async (taskId: string, description: string) => {
+    try {
+      await taskAPI.update(taskId, { description });
+
+      // Update local state
+      setTasks((prev) =>
+        prev.map((task) =>
+          task._id === taskId ? { ...task, description } : task
+        )
+      );
+    } catch (error: any) {
+      console.error('Error updating task description:', error);
+      alert(error.response?.data?.message || 'Failed to update task description');
+      throw error;
+    }
+  };
+
   const getStatusColor = (status: TaskStatus) => {
     switch (status) {
       case TaskStatus.PENDING:
@@ -201,6 +221,35 @@ export default function TasksSheet() {
       default:
         return '#6B7280';
     }
+  };
+
+  const getPhotoCount = (task: Task): number => {
+    let count = 0;
+    if (task.designedImage) count++;
+    return count;
+  };
+
+  const handlePhotoUpload = async (taskId: string) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = async (e: any) => {
+      const file = e.target?.files?.[0];
+      if (!file) return;
+
+      try {
+        const formData = new FormData();
+        formData.append('image', file);
+
+        await taskAPI.uploadImage(taskId, formData);
+        await loadTasks();
+        alert('Photo uploaded successfully!');
+      } catch (error: any) {
+        console.error('Error uploading photo:', error);
+        alert(error.response?.data?.message || 'Failed to upload photo');
+      }
+    };
+    input.click();
   };
 
   const renderEditableCell = (
@@ -316,7 +365,12 @@ export default function TasksSheet() {
 
       {/* Tasks Table */}
       {tasks.length === 0 ? (
-        <Paper sx={{ p: 4, textAlign: 'center' }}>
+        <Paper sx={{
+          p: 4,
+          textAlign: 'center',
+          borderRadius: '8px',
+          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)'
+        }}>
           <Typography color="text.secondary" variant="h6">
             No tasks found
           </Typography>
@@ -327,17 +381,27 @@ export default function TasksSheet() {
       ) : (
         <>
           {/* Flat Table View */}
-          <TableContainer component={Paper} sx={{ mb: 3 }}>
+          <TableContainer component={Paper} sx={{
+            mb: 3,
+            borderRadius: '8px',
+            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+            overflow: 'hidden',
+            transition: 'box-shadow 0.3s ease',
+            '&:hover': {
+              boxShadow: '0 6px 12px rgba(0, 0, 0, 0.15)'
+            }
+          }}>
             <Table>
               <TableHead>
                 <TableRow sx={{ backgroundColor: '#F3F4F6' }}>
-                  <TableCell sx={{ fontWeight: 700, width: '18%' }}>Task Name</TableCell>
-                  <TableCell sx={{ fontWeight: 700, width: '13%' }}>Campaign</TableCell>
-                  <TableCell sx={{ fontWeight: 700, width: '13%' }}>Project</TableCell>
-                  <TableCell sx={{ fontWeight: 700, width: '10%' }}>Status</TableCell>
-                  <TableCell sx={{ fontWeight: 700, width: '10%' }}>Date</TableCell>
-                  <TableCell sx={{ fontWeight: 700, width: '26%' }}>Description</TableCell>
-                  <TableCell sx={{ fontWeight: 700, width: '10%', textAlign: 'center' }}>Actions</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: '15%' }}>Task Name</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: '12%' }}>Campaign</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: '12%' }}>Project</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: '9%' }}>Status</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: '9%' }}>Date</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: '8%' }}>Photos</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: '25%' }}>Description</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: '10%', textAlign: 'center' }}>Preview</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -346,8 +410,11 @@ export default function TasksSheet() {
                     key={task._id}
                     sx={{
                       backgroundColor: index % 2 === 0 ? '#FFFFFF' : '#F9FAFB',
+                      transition: 'all 0.2s ease',
                       '&:hover': {
-                        backgroundColor: '#F3F4F6'
+                        backgroundColor: '#F3F4F6',
+                        transform: 'scale(1.002)',
+                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)'
                       }
                     }}
                   >
@@ -374,6 +441,12 @@ export default function TasksSheet() {
                             color: 'white',
                             fontWeight: 600,
                             fontSize: '0.75rem',
+                            borderRadius: '4px',
+                            transition: 'all 0.2s ease',
+                            '&:hover': {
+                              boxShadow: '0 2px 4px rgba(0, 0, 0, 0.15)',
+                              transform: 'scale(0.98)'
+                            },
                             '& .MuiOutlinedInput-notchedOutline': {
                               border: 'none'
                             },
@@ -403,11 +476,65 @@ export default function TasksSheet() {
                         InputProps={{
                           startAdornment: <CalendarIcon sx={{ mr: 0.5, fontSize: '1rem', color: 'text.secondary' }} />
                         }}
-                        sx={{ width: '100%' }}
+                        sx={{
+                          width: '100%',
+                          '& .MuiOutlinedInput-root': {
+                            borderRadius: '4px',
+                            transition: 'all 0.2s ease',
+                            '&:hover': {
+                              boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
+                            }
+                          }
+                        }}
                       />
                     </TableCell>
                     <TableCell>
-                      {renderEditableCell(task, 'description', task.description || '')}
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        {getPhotoCount(task) > 0 && (
+                          <>
+                            <PhotoCameraIcon fontSize="small" color="action" />
+                            <Typography variant="caption">{getPhotoCount(task)}</Typography>
+                          </>
+                        )}
+                        <Tooltip title="Upload Photo">
+                          <IconButton
+                            size="small"
+                            onClick={() => handlePhotoUpload(task._id)}
+                            color="primary"
+                          >
+                            <UploadIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          cursor: 'pointer',
+                          '&:hover .edit-icon': {
+                            opacity: 1
+                          }
+                        }}
+                        onClick={() => setEditDescriptionTask(task)}
+                      >
+                        <Typography variant="body2" sx={{ flex: 1 }}>
+                          {task.description || '-'}
+                        </Typography>
+                        <IconButton
+                          className="edit-icon"
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditDescriptionTask(task);
+                          }}
+                          sx={{ opacity: 0, transition: 'opacity 0.2s' }}
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
                     </TableCell>
                     <TableCell sx={{ textAlign: 'center' }}>
                       <Tooltip title="Preview on Social Media">
@@ -427,17 +554,38 @@ export default function TasksSheet() {
             </Table>
           </TableContainer>
 
-          {/* Social Preview Modal */}
+          {/* Social Preview Modal (Read-only) */}
           {previewTask && (
             <SocialPreviewModal
               open={!!previewTask}
               onClose={() => setPreviewTask(null)}
               task={previewTask}
+              editable={false}
+            />
+          )}
+
+          {/* Edit Description Modal (Editable with Live Preview) */}
+          {editDescriptionTask && (
+            <SocialPreviewModal
+              open={!!editDescriptionTask}
+              onClose={() => setEditDescriptionTask(null)}
+              task={editDescriptionTask}
+              editable={true}
+              onSave={handleSaveDescription}
             />
           )}
 
           {/* Summary Statistics */}
-          <Paper sx={{ p: 2, backgroundColor: '#F3F4F6' }}>
+          <Paper sx={{
+            p: 2,
+            backgroundColor: '#F3F4F6',
+            borderRadius: '8px',
+            boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
+            transition: 'box-shadow 0.3s ease',
+            '&:hover': {
+              boxShadow: '0 4px 8px rgba(0, 0, 0, 0.1)'
+            }
+          }}>
             <Box sx={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
               <Box sx={{ textAlign: 'center' }}>
                 <Typography variant="h5" sx={{ fontWeight: 700, color: '#F59E0B' }}>
