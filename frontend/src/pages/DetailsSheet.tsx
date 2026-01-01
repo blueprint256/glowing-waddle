@@ -560,12 +560,24 @@ export default function DetailsSheet() {
         onChange={handleCampaignExpand(campaign._id)}
         sx={{
           mb: 2,
+          borderRadius: '8px',
+          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+          overflow: 'hidden',
+          transition: 'all 0.3s ease',
+          '&:hover': {
+            boxShadow: '0 10px 15px rgba(0, 0, 0, 0.15)',
+            transform: 'scale(1.01)'
+          },
           '& .MuiAccordionSummary-root': {
             backgroundColor: CAMPAIGN_COLOR,
             borderLeft: `4px solid ${CAMPAIGN_BORDER}`,
+            transition: 'background-color 0.2s ease',
             '&:hover': {
               backgroundColor: CAMPAIGN_HOVER
             }
+          },
+          '&.Mui-expanded': {
+            margin: '0 0 16px 0'
           }
         }}
       >
@@ -650,7 +662,17 @@ export default function DetailsSheet() {
               onClick={() => handleOpenCreateProjectModal(campaign._id)}
               sx={{
                 backgroundColor: PROJECT_BORDER,
-                '&:hover': { backgroundColor: '#4F46E5' }
+                borderRadius: '4px',
+                transition: 'all 0.2s ease',
+                boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+                '&:hover': {
+                  backgroundColor: '#4F46E5',
+                  boxShadow: '0 4px 8px rgba(0, 0, 0, 0.15)',
+                  transform: 'scale(0.98)'
+                },
+                '&:active': {
+                  transform: 'scale(0.95)'
+                }
               }}
             >
               Create Project
@@ -672,12 +694,24 @@ export default function DetailsSheet() {
                   onChange={handleProjectExpand(campaign._id, project._id)}
                   sx={{
                     mb: 1,
+                    borderRadius: '8px',
+                    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.08)',
+                    overflow: 'hidden',
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
+                      boxShadow: '0 6px 12px rgba(0, 0, 0, 0.12)',
+                      transform: 'scale(1.005)'
+                    },
                     '& .MuiAccordionSummary-root': {
                       backgroundColor: PROJECT_COLOR,
                       borderLeft: `4px solid ${PROJECT_BORDER}`,
+                      transition: 'background-color 0.2s ease',
                       '&:hover': {
                         backgroundColor: PROJECT_HOVER
                       }
+                    },
+                    '&.Mui-expanded': {
+                      margin: '0 0 8px 0'
                     }
                   }}
                 >
@@ -747,7 +781,17 @@ export default function DetailsSheet() {
                         onClick={() => handleOpenCreateTaskModal(project._id, campaign._id)}
                         sx={{
                           backgroundColor: '#6366F1',
-                          '&:hover': { backgroundColor: '#4F46E5' }
+                          borderRadius: '4px',
+                          transition: 'all 0.2s ease',
+                          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+                          '&:hover': {
+                            backgroundColor: '#4F46E5',
+                            boxShadow: '0 4px 8px rgba(0, 0, 0, 0.15)',
+                            transform: 'scale(0.98)'
+                          },
+                          '&:active': {
+                            transform: 'scale(0.95)'
+                          }
                         }}
                       >
                         Add Task
@@ -758,7 +802,15 @@ export default function DetailsSheet() {
                         <CircularProgress size={24} />
                       </Box>
                     ) : project.tasks && project.tasks.length > 0 ? (
-                      <TableContainer component={Paper} sx={{ boxShadow: 2 }}>
+                      <TableContainer component={Paper} sx={{
+                        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+                        borderRadius: '8px',
+                        overflow: 'hidden',
+                        transition: 'box-shadow 0.3s ease',
+                        '&:hover': {
+                          boxShadow: '0 6px 12px rgba(0, 0, 0, 0.15)'
+                        }
+                      }}>
                         <Table size="small">
                           <TableHead>
                             <TableRow sx={{ backgroundColor: TASK_COLOR }}>
@@ -780,8 +832,13 @@ export default function DetailsSheet() {
                                   key={task._id}
                                   hover
                                   sx={{
+                                    transition: 'all 0.2s ease',
                                     '&:last-child td, &:last-child th': { border: 0 },
-                                    '&:hover': { backgroundColor: TASK_HOVER }
+                                    '&:hover': {
+                                      backgroundColor: TASK_HOVER,
+                                      transform: 'scale(1.002)',
+                                      boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)'
+                                    }
                                   }}
                                 >
                                   <TableCell>{formatDate(task.taskDate)}</TableCell>
@@ -938,7 +995,13 @@ export default function DetailsSheet() {
                         </Table>
                       </TableContainer>
                     ) : (
-                      <Paper sx={{ py: 3, textAlign: 'center', backgroundColor: '#FAFAFA' }}>
+                      <Paper sx={{
+                        py: 3,
+                        textAlign: 'center',
+                        backgroundColor: '#FAFAFA',
+                        borderRadius: '8px',
+                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)'
+                      }}>
                         <Typography variant="body2" color="text.secondary">
                           No tasks assigned to this project yet.
                         </Typography>
@@ -949,11 +1012,17 @@ export default function DetailsSheet() {
                           onClick={() => handleOpenCreateTaskModal(project._id, campaign._id)}
                           sx={{
                             mt: 2,
+                            borderRadius: '4px',
                             borderColor: '#6366F1',
                             color: '#6366F1',
+                            transition: 'all 0.2s ease',
                             '&:hover': {
                               borderColor: '#4F46E5',
-                              backgroundColor: '#EEF2FF'
+                              backgroundColor: '#EEF2FF',
+                              transform: 'scale(0.98)'
+                            },
+                            '&:active': {
+                              transform: 'scale(0.95)'
                             }
                           }}
                         >
@@ -966,7 +1035,13 @@ export default function DetailsSheet() {
               );
             })
           ) : (
-            <Paper sx={{ py: 3, textAlign: 'center', backgroundColor: '#FAFAFA' }}>
+            <Paper sx={{
+              py: 3,
+              textAlign: 'center',
+              backgroundColor: '#FAFAFA',
+              borderRadius: '8px',
+              boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)'
+            }}>
               <Typography variant="body2" color="text.secondary">
                 No projects in this campaign yet.
               </Typography>
@@ -1028,8 +1103,16 @@ export default function DetailsSheet() {
             fontWeight: 600,
             px: 3,
             py: 1.5,
+            borderRadius: '4px',
+            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+            transition: 'all 0.2s ease',
             '&:hover': {
-              backgroundColor: '#1D4ED8'
+              backgroundColor: '#1D4ED8',
+              boxShadow: '0 6px 12px rgba(0, 0, 0, 0.15)',
+              transform: 'scale(0.98)'
+            },
+            '&:active': {
+              transform: 'scale(0.95)'
             }
           }}
         >
@@ -1041,7 +1124,12 @@ export default function DetailsSheet() {
       {user?.role === UserRole.HYBRID && (
         <>
           {campaigns.length === 0 ? (
-            <Paper sx={{ p: 3, textAlign: 'center' }}>
+            <Paper sx={{
+              p: 3,
+              textAlign: 'center',
+              borderRadius: '8px',
+              boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)'
+            }}>
               <Typography color="text.secondary">No campaigns found</Typography>
             </Paper>
           ) : (
@@ -1069,12 +1157,24 @@ export default function DetailsSheet() {
                   defaultExpanded={false}
                   sx={{
                     mb: 3,
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+                    overflow: 'hidden',
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
+                      boxShadow: '0 10px 15px rgba(0, 0, 0, 0.15)',
+                      transform: 'scale(1.01)'
+                    },
                     '& .MuiAccordionSummary-root': {
                       backgroundColor: CREATOR_COLOR,
                       borderLeft: `4px solid ${CREATOR_BORDER}`,
+                      transition: 'background-color 0.2s ease',
                       '&:hover': {
                         backgroundColor: '#E0F2FE'
                       }
+                    },
+                    '&.Mui-expanded': {
+                      margin: '0 0 24px 0'
                     }
                   }}
                 >
@@ -1105,7 +1205,12 @@ export default function DetailsSheet() {
                 </Accordion>
               ))
             ) : (
-              <Paper sx={{ p: 3, textAlign: 'center' }}>
+              <Paper sx={{
+                p: 3,
+                textAlign: 'center',
+                borderRadius: '8px',
+                boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)'
+              }}>
                 <Typography color="text.secondary">No campaigns found</Typography>
               </Paper>
             )}

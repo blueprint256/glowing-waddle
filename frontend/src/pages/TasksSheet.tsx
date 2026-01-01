@@ -316,7 +316,12 @@ export default function TasksSheet() {
 
       {/* Tasks Table */}
       {tasks.length === 0 ? (
-        <Paper sx={{ p: 4, textAlign: 'center' }}>
+        <Paper sx={{
+          p: 4,
+          textAlign: 'center',
+          borderRadius: '8px',
+          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)'
+        }}>
           <Typography color="text.secondary" variant="h6">
             No tasks found
           </Typography>
@@ -327,7 +332,16 @@ export default function TasksSheet() {
       ) : (
         <>
           {/* Flat Table View */}
-          <TableContainer component={Paper} sx={{ mb: 3 }}>
+          <TableContainer component={Paper} sx={{
+            mb: 3,
+            borderRadius: '8px',
+            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+            overflow: 'hidden',
+            transition: 'box-shadow 0.3s ease',
+            '&:hover': {
+              boxShadow: '0 6px 12px rgba(0, 0, 0, 0.15)'
+            }
+          }}>
             <Table>
               <TableHead>
                 <TableRow sx={{ backgroundColor: '#F3F4F6' }}>
@@ -346,8 +360,11 @@ export default function TasksSheet() {
                     key={task._id}
                     sx={{
                       backgroundColor: index % 2 === 0 ? '#FFFFFF' : '#F9FAFB',
+                      transition: 'all 0.2s ease',
                       '&:hover': {
-                        backgroundColor: '#F3F4F6'
+                        backgroundColor: '#F3F4F6',
+                        transform: 'scale(1.002)',
+                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)'
                       }
                     }}
                   >
@@ -374,6 +391,12 @@ export default function TasksSheet() {
                             color: 'white',
                             fontWeight: 600,
                             fontSize: '0.75rem',
+                            borderRadius: '4px',
+                            transition: 'all 0.2s ease',
+                            '&:hover': {
+                              boxShadow: '0 2px 4px rgba(0, 0, 0, 0.15)',
+                              transform: 'scale(0.98)'
+                            },
                             '& .MuiOutlinedInput-notchedOutline': {
                               border: 'none'
                             },
@@ -403,7 +426,16 @@ export default function TasksSheet() {
                         InputProps={{
                           startAdornment: <CalendarIcon sx={{ mr: 0.5, fontSize: '1rem', color: 'text.secondary' }} />
                         }}
-                        sx={{ width: '100%' }}
+                        sx={{
+                          width: '100%',
+                          '& .MuiOutlinedInput-root': {
+                            borderRadius: '4px',
+                            transition: 'all 0.2s ease',
+                            '&:hover': {
+                              boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
+                            }
+                          }
+                        }}
                       />
                     </TableCell>
                     <TableCell>
@@ -437,7 +469,16 @@ export default function TasksSheet() {
           )}
 
           {/* Summary Statistics */}
-          <Paper sx={{ p: 2, backgroundColor: '#F3F4F6' }}>
+          <Paper sx={{
+            p: 2,
+            backgroundColor: '#F3F4F6',
+            borderRadius: '8px',
+            boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
+            transition: 'box-shadow 0.3s ease',
+            '&:hover': {
+              boxShadow: '0 4px 8px rgba(0, 0, 0, 0.1)'
+            }
+          }}>
             <Box sx={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
               <Box sx={{ textAlign: 'center' }}>
                 <Typography variant="h5" sx={{ fontWeight: 700, color: '#F59E0B' }}>
