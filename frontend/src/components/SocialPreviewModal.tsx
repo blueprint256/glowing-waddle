@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -13,6 +13,7 @@ import {
   Avatar,
   Divider,
   Paper,
+  TextField,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -30,12 +31,15 @@ interface SocialPreviewModalProps {
   open: boolean;
   onClose: () => void;
   task: {
+    _id?: string;
     name: string;
     description?: string;
     content?: string;
     designedImage?: string;
     taskDate?: string;
   };
+  editable?: boolean;
+  onSave?: (taskId: string, description: string) => Promise<void>;
 }
 
 interface TabPanelProps {
@@ -56,16 +60,41 @@ const SocialPreviewModal: React.FC<SocialPreviewModalProps> = ({
   open,
   onClose,
   task,
+  editable = false,
+  onSave,
 }) => {
   const [activeTab, setActiveTab] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [editedDescription, setEditedDescription] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setEditedDescription(task?.description || task?.content || '');
+    }
+  }, [open, task]);
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
   };
 
+  const handleSave = async () => {
+    if (!task._id || !onSave) return;
+
+    try {
+      setSaving(true);
+      await onSave(task._id, editedDescription);
+      onClose();
+    } catch (error) {
+      console.error('Error saving description:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleCopyCaption = () => {
-    const caption = `${task.name}\n\n${task.description || task.content || ''}`;
+    const description = editable ? editedDescription : (task.description || task.content || '');
+    const caption = `${task.name}\n\n${description}`;
     navigator.clipboard.writeText(caption.trim());
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -78,8 +107,8 @@ const SocialPreviewModal: React.FC<SocialPreviewModalProps> = ({
 
   const formatCaption = () => {
     let caption = task.name;
-    if (task.description) caption += `\n\n${task.description}`;
-    else if (task.content) caption += `\n\n${task.content}`;
+    const description = editable ? editedDescription : (task.description || task.content || '');
+    if (description) caption += `\n\n${description}`;
     return caption;
   };
 
@@ -596,7 +625,7 @@ const SocialPreviewModal: React.FC<SocialPreviewModalProps> = ({
     >
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1 }}>
         <Typography variant="h6" component="div">
-          Social Media Preview
+          {editable ? 'Edit Description - Live Preview' : 'Social Media Preview'}
         </Typography>
         <IconButton onClick={onClose} size="small">
           <CloseIcon />
@@ -604,6 +633,31 @@ const SocialPreviewModal: React.FC<SocialPreviewModalProps> = ({
       </DialogTitle>
 
       <DialogContent dividers sx={{ p: 0 }}>
+        {editable && (
+          <Box sx={{ p: 3, backgroundColor: '#fff', borderBottom: '1px solid #e0e0e0' }}>
+            <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600 }}>
+              Edit Description
+            </Typography>
+            <TextField
+              multiline
+              rows={4}
+              fullWidth
+              value={editedDescription}
+              onChange={(e) => setEditedDescription(e.target.value)}
+              placeholder="Enter description for your social media post..."
+              variant="outlined"
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: '8px'
+                }
+              }}
+            />
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+              Changes will reflect in the preview below in real-time
+            </Typography>
+          </Box>
+        )}
+
         <Box sx={{ borderBottom: 1, borderColor: 'divider', backgroundColor: '#fafafa' }}>
           <Tabs
             value={activeTab}
@@ -641,15 +695,39 @@ const SocialPreviewModal: React.FC<SocialPreviewModalProps> = ({
 
       <DialogActions sx={{ justifyContent: 'space-between', px: 3, py: 2 }}>
         <Typography variant="caption" color="text.secondary">
-          This is a preview only - no content will be posted
+          {editable ? 'Preview updates in real-time as you type' : 'This is a preview only - no content will be posted'}
         </Typography>
         <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button onClick={handleCopyCaption} variant="outlined" size="small">
-            {copied ? 'Copied!' : 'Copy Caption'}
-          </Button>
-          <Button onClick={onClose} variant="contained" size="small">
-            Close
-          </Button>
+          {editable ? (
+            <>
+              <Button onClick={onClose} variant="outlined" size="small" disabled={saving}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSave}
+                variant="contained"
+                size="small"
+                disabled={saving}
+                sx={{
+                  backgroundColor: '#1976D2',
+                  '&:hover': {
+                    backgroundColor: '#1565C0'
+                  }
+                }}
+              >
+                {saving ? 'Saving...' : 'Save Description'}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button onClick={handleCopyCaption} variant="outlined" size="small">
+                {copied ? 'Copied!' : 'Copy Caption'}
+              </Button>
+              <Button onClick={onClose} variant="contained" size="small">
+                Close
+              </Button>
+            </>
+          )}
         </Box>
       </DialogActions>
     </Dialog>

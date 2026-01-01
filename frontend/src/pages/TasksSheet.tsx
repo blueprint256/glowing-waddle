@@ -55,6 +55,7 @@ export default function TasksSheet() {
   const [editValue, setEditValue] = useState('');
   const editInputRef = useRef<HTMLInputElement>(null);
   const [previewTask, setPreviewTask] = useState<Task | null>(null);
+  const [editDescriptionTask, setEditDescriptionTask] = useState<Task | null>(null);
   const [filters, setFilters] = useState<FilterOptions>({
     search: '',
     campaignIds: [],
@@ -189,6 +190,23 @@ export default function TasksSheet() {
       );
     } catch (error) {
       console.error('Error updating task date:', error);
+    }
+  };
+
+  const handleSaveDescription = async (taskId: string, description: string) => {
+    try {
+      await taskAPI.update(taskId, { description });
+
+      // Update local state
+      setTasks((prev) =>
+        prev.map((task) =>
+          task._id === taskId ? { ...task, description } : task
+        )
+      );
+    } catch (error: any) {
+      console.error('Error updating task description:', error);
+      alert(error.response?.data?.message || 'Failed to update task description');
+      throw error;
     }
   };
 
@@ -500,7 +518,7 @@ export default function TasksSheet() {
                             opacity: 1
                           }
                         }}
-                        onClick={() => setPreviewTask(task)}
+                        onClick={() => setEditDescriptionTask(task)}
                       >
                         <Typography variant="body2" sx={{ flex: 1 }}>
                           {task.description || '-'}
@@ -510,7 +528,7 @@ export default function TasksSheet() {
                           size="small"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setPreviewTask(task);
+                            setEditDescriptionTask(task);
                           }}
                           sx={{ opacity: 0, transition: 'opacity 0.2s' }}
                         >
@@ -536,12 +554,24 @@ export default function TasksSheet() {
             </Table>
           </TableContainer>
 
-          {/* Social Preview Modal */}
+          {/* Social Preview Modal (Read-only) */}
           {previewTask && (
             <SocialPreviewModal
               open={!!previewTask}
               onClose={() => setPreviewTask(null)}
               task={previewTask}
+              editable={false}
+            />
+          )}
+
+          {/* Edit Description Modal (Editable with Live Preview) */}
+          {editDescriptionTask && (
+            <SocialPreviewModal
+              open={!!editDescriptionTask}
+              onClose={() => setEditDescriptionTask(null)}
+              task={editDescriptionTask}
+              editable={true}
+              onSave={handleSaveDescription}
             />
           )}
 
