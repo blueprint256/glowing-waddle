@@ -450,7 +450,12 @@ router.post('/:id/refine-description', isAuthenticated, canManageTasks, validate
 
 /**
  * @route   POST /api/tasks/:id/generate-poster
- * @desc    Generate a campaign poster image using AI with command-to-prompt mapping
+ * @desc    Generate a campaign poster image using AI with multi-image editing support
+ * @details Uses OpenAI's /images/edits endpoint with gpt-image-1.5 model
+ *          - Supports up to 16 input images (task base image + company logos + attached images)
+ *          - Dynamically detects and sends ONLY images referenced in the prompt template
+ *          - Falls back to /images/generations if no images are referenced
+ *          - Prompt placeholders: {baseImage}, {primaryLogo}, {secondaryLogo}, {tertiaryLogo}, {attachedImage1-10}
  * @access  Private (System Admin, Hybrid)
  */
 router.post('/:id/generate-poster', isAuthenticated, canManageTasks, validateMongoId('id'), checkTaskOwnership, async (req: Request, res: Response) => {
@@ -531,7 +536,11 @@ router.post('/:id/generate-poster', isAuthenticated, canManageTasks, validateMon
       });
     }
 
-    console.log('\n📝 Prompt will determine which images (if any) are sent to API\n');
+    console.log('\n📝 Multi-Image Editing: Prompt will determine which images (if any) are sent to API');
+    console.log('   - Max 16 images supported');
+    console.log('   - Only referenced placeholders will be downloaded and sent');
+    console.log('   - If no images referenced → text-to-image generation');
+    console.log('   - If images referenced → multi-image editing\n');
 
     // Add company info if available
     if (companyInfo) {

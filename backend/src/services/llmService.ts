@@ -798,6 +798,9 @@ export async function generateImageWithPrompt(
     console.log('Model:', imageModel, '(ENFORCED - gpt-image-1.5 only)');
     console.log('Prompt Name:', promptName);
     console.log('Referenced Images:', imageFiles.length, '(from prompt template)');
+    if (imageFiles.length > 0) {
+      console.log('Image Placeholders:', imagesToDownload.map(img => img.placeholder).join(', '));
+    }
     console.log('Image Size:', size);
     console.log('Quality:', quality);
     console.log('Prompt Length:', compiledPrompt.length, 'characters');
@@ -816,13 +819,19 @@ export async function generateImageWithPrompt(
     // It always returns base64-encoded images (b64_json format)
     let response;
     if (imageFiles.length > 0) {
+      // Validate image count (max 16 images supported)
+      if (imageFiles.length > 16) {
+        throw new Error(`Too many images: ${imageFiles.length} provided, but maximum is 16`);
+      }
+
       console.log(`🎨 Using images.edit endpoint with ${imageFiles.length} referenced image(s)`);
 
       // Use edit endpoint when images are provided
       // Pass only the images that were referenced in the prompt
+      // CRITICAL: Use 'images' (plural) parameter for multi-image editing
       response = await openai.images.edit({
         model: imageModel,
-        image: imageFiles, // Array of ONLY referenced images (prompt-driven)
+        images: imageFiles, // Array of ONLY referenced images (prompt-driven, max 16)
         prompt: compiledPrompt,
         n: 1,
         size: size
@@ -867,6 +876,9 @@ export async function generateImageWithPrompt(
     console.log('Provider:', imageProvider);
     console.log('Model:', imageModel);
     console.log('Input Images:', imageFiles.length, 'referenced image(s)');
+    if (imageFiles.length > 0) {
+      console.log('Combined Images:', imagesToDownload.map(img => img.placeholder).join(', '));
+    }
     console.log('Generated Image URL:', imageUrl);
     console.log('Image Size:', size);
     console.log('Quality:', quality);
