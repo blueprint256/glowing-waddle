@@ -1,5 +1,4 @@
 import { useEffect, useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -10,25 +9,19 @@ import {
   TableHead,
   TableRow,
   Paper,
-  Chip,
   CircularProgress,
   Alert,
   TextField,
   Select,
   MenuItem,
   FormControl,
-  SelectChangeEvent,
   IconButton,
-  Tooltip,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails
+  Tooltip
 } from '@mui/material';
 import {
   Edit as EditIcon,
   Check as CheckIcon,
   Close as CloseIcon,
-  ExpandMore as ExpandMoreIcon,
   CalendarToday as CalendarIcon,
   Visibility as VisibilityIcon,
   PhotoCamera as PhotoCameraIcon,
@@ -46,7 +39,6 @@ interface EditingCell {
 }
 
 export default function TasksSheet() {
-  const navigate = useNavigate();
   const { user } = useAuthStore();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -314,16 +306,6 @@ export default function TasksSheet() {
       </Box>
     );
   };
-
-  // Group tasks by campaign for better organization
-  const tasksByCampaign = tasks.reduce((acc, task) => {
-    const campaignName = getCampaignName(task);
-    if (!acc[campaignName]) {
-      acc[campaignName] = [];
-    }
-    acc[campaignName].push(task);
-    return acc;
-  }, {} as Record<string, Task[]>);
 
   if (loading && tasks.length === 0) {
     return (

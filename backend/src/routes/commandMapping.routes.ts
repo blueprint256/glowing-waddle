@@ -1,4 +1,5 @@
 import express, { Request, Response } from 'express';
+import mongoose from 'mongoose';
 import { CommandMapping } from '../models/CommandMapping';
 import { Prompt } from '../models/Prompt';
 import { UserRole } from '../models/User';

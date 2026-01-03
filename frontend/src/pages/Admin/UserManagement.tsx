@@ -47,7 +47,7 @@ export default function UserManagement() {
   const loadUsers = async () => {
     try {
       setLoading(true);
-      const res = await userAPI.getAll({ params: { page, limit: 10 } });
+      const res = await userAPI.getAll({ page, limit: 10 });
       // Only update state if we have valid data
       if (res.data && Array.isArray(res.data.users)) {
         setUsers(res.data.users);

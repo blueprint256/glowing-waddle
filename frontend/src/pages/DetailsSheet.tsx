@@ -23,9 +23,7 @@ import {
   TextField,
   MenuItem,
   Select,
-  FormControl,
-  InputLabel,
-  SelectChangeEvent
+  FormControl
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
@@ -74,7 +72,6 @@ export default function DetailsSheet() {
   const [pagination, setPagination] = useState({ total: 0, pages: 0, limit: 10 });
   const [expandedCampaigns, setExpandedCampaigns] = useState<Set<string>>(new Set());
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
-  const [expandedCreators, setExpandedCreators] = useState<Set<string>>(new Set());
   const [createTaskModalOpen, setCreateTaskModalOpen] = useState(false);
   const [createCampaignModalOpen, setCreateCampaignModalOpen] = useState(false);
   const [createProjectModalOpen, setCreateProjectModalOpen] = useState(false);
@@ -277,7 +274,7 @@ export default function DetailsSheet() {
   };
 
   const handleCampaignExpand = (campaignId: string) => async (
-    event: React.SyntheticEvent,
+    _event: React.SyntheticEvent,
     isExpanded: boolean
   ) => {
     const newExpanded = new Set(expandedCampaigns);
@@ -294,7 +291,7 @@ export default function DetailsSheet() {
   };
 
   const handleProjectExpand = (campaignId: string, projectId: string) => async (
-    event: React.SyntheticEvent,
+    _event: React.SyntheticEvent,
     isExpanded: boolean
   ) => {
     const newExpanded = new Set(expandedProjects);
@@ -336,19 +333,6 @@ export default function DetailsSheet() {
       completed: project.tasks.filter((t) => t.status === TaskStatus.COMPLETED).length,
       total: project.tasks.length
     };
-  };
-
-  const getStatusColor = (status: TaskStatus): 'success' | 'warning' | 'error' => {
-    switch (status) {
-      case TaskStatus.COMPLETED:
-        return 'success';
-      case TaskStatus.IN_PROGRESS:
-        return 'warning';
-      case TaskStatus.PENDING:
-        return 'error';
-      default:
-        return 'error';
-    }
   };
 
   const formatDate = (dateString?: string): string => {

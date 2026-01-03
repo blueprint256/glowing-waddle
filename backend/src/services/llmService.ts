@@ -137,6 +137,10 @@ export interface SuperPromptParams {
     brandTone?: string;
     audienceProfile?: string;
     globalRules?: string;
+    brandGuidelines?: string;
+    primaryLogoUrl?: string;
+    secondaryLogoUrl?: string;
+    tertiaryLogoUrl?: string;
   };
   campaignDetails?: {
     name?: string;
@@ -433,7 +437,7 @@ async function logLLMUsage(
     await LLMUsage.create({
       userId,
       promptName,
-      model: `${provider}/${model}`, // Store as "provider/model"
+      llmModel: `${provider}/${model}`, // Store as "provider/model"
       promptTokens: usage.prompt_tokens,
       completionTokens: usage.completion_tokens,
       totalTokens: usage.total_tokens,
@@ -729,7 +733,13 @@ export async function generateImageWithPrompt(
     // All other models/providers are deprecated and not supported
     const imageModel = 'gpt-image-1.5';
     const imageProvider = 'openai';
-    const size = options?.size || '1024x1024';
+
+    // Map size to supported values for image.edit API
+    // Valid sizes: "256x256" | "512x512" | "1024x1024" | "1536x1024" | "1024x1536" | "auto"
+    const requestedSize = options?.size || '1024x1024';
+    const validEditSizes = ['256x256', '512x512', '1024x1024', '1536x1024', '1024x1536', 'auto'];
+    const size: '256x256' | '512x512' | '1024x1024' | '1536x1024' | '1024x1536' | 'auto' =
+      validEditSizes.includes(requestedSize) ? requestedSize as any : '1024x1024';
     const quality = options?.quality || 'standard';
 
     // Log if prompt tried to use a different model (for debugging/migration purposes)
@@ -833,7 +843,7 @@ export async function generateImageWithPrompt(
     }
 
     // gpt-image-1.5 returns base64-encoded images, not URLs
-    const base64Image = response.data[0]?.b64_json;
+    const base64Image = response.data?.[0]?.b64_json;
 
     if (!base64Image) {
       throw new Error('No base64 image data returned from image generation API');
@@ -868,8 +878,7 @@ export async function generateImageWithPrompt(
     if (options?.userId) {
       await LLMUsage.create({
         userId: options.userId,
-        provider: imageProvider,
-        model: imageModel,
+        llmModel: `${imageProvider}/${imageModel}`,
         promptTokens: 0, // Image generation doesn't use token-based pricing
         completionTokens: 0,
         totalTokens: 0,

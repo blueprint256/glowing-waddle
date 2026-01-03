@@ -1,5 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -44,7 +43,6 @@ interface CalendarEvent {
 }
 
 export default function CalendarView() {
-  const navigate = useNavigate();
   const { user } = useAuthStore();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -165,7 +163,7 @@ export default function CalendarView() {
     setEditModalOpen(true);
   };
 
-  const handleViewChange = (event: React.MouseEvent<HTMLElement>, newView: View | null) => {
+  const handleViewChange = (_event: React.MouseEvent<HTMLElement>, newView: View | null) => {
     if (newView !== null) {
       setView(newView);
     }

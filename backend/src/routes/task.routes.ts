@@ -132,7 +132,7 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
     if (req.query.projectId) {
       const projectIds = Array.isArray(req.query.projectId)
         ? req.query.projectId
-        : req.query.projectId.split(',');
+        : typeof req.query.projectId === 'string' ? req.query.projectId.split(',') : [];
       query.projectId = { $in: projectIds };
     }
 
@@ -140,13 +140,13 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
     if (req.query.campaignId) {
       const campaignIds = Array.isArray(req.query.campaignId)
         ? req.query.campaignId
-        : req.query.campaignId.split(',');
+        : typeof req.query.campaignId === 'string' ? req.query.campaignId.split(',') : [];
 
       // If user is Hybrid, ensure they can only access their own campaigns
       if (req.user!.role === UserRole.HYBRID) {
         const ownedCampaigns = await Campaign.find({ createdBy: req.user!._id }).select('_id');
         const ownedCampaignIds = ownedCampaigns.map(c => c._id.toString());
-        const filteredCampaignIds = campaignIds.filter(id => ownedCampaignIds.includes(id));
+        const filteredCampaignIds = campaignIds.filter((id: any) => ownedCampaignIds.includes(id));
         query.campaignId = { $in: filteredCampaignIds };
       } else {
         query.campaignId = { $in: campaignIds };
@@ -157,7 +157,7 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
     if (req.query.status) {
       const statuses = Array.isArray(req.query.status)
         ? req.query.status
-        : req.query.status.split(',');
+        : typeof req.query.status === 'string' ? req.query.status.split(',') : [];
       query.status = { $in: statuses };
     }
 
@@ -176,7 +176,7 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
     if (req.query.createdBy && req.user!.role === UserRole.SYSTEM_ADMIN) {
       const creatorIds = Array.isArray(req.query.createdBy)
         ? req.query.createdBy
-        : req.query.createdBy.split(',');
+        : typeof req.query.createdBy === 'string' ? req.query.createdBy.split(',') : [];
 
       // Find campaigns created by the specified users
       const campaignsByCreators = await Campaign.find({

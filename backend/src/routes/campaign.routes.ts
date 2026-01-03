@@ -86,7 +86,7 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
     if (req.query.status) {
       const statuses = Array.isArray(req.query.status)
         ? req.query.status
-        : req.query.status.split(',');
+        : typeof req.query.status === 'string' ? req.query.status.split(',') : [];
       query.status = { $in: statuses };
     }
 
@@ -94,7 +94,7 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
     if (req.query.createdBy && req.user!.role === UserRole.SYSTEM_ADMIN) {
       const creatorIds = Array.isArray(req.query.createdBy)
         ? req.query.createdBy
-        : req.query.createdBy.split(',');
+        : typeof req.query.createdBy === 'string' ? req.query.createdBy.split(',') : [];
       query.createdBy = { $in: creatorIds };
     }
 
