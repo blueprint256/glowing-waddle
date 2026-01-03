@@ -175,14 +175,41 @@ export const commandMappingAPI = {
   create: (data: {
     command: string;
     promptId?: string;
+    chainId?: string;
     steps?: Array<{ promptId: string; provider?: string; model?: string }>
   }) => api.post('/command-mappings', data),
   update: (id: string, data: {
     command?: string;
     promptId?: string;
+    chainId?: string;
     steps?: Array<{ promptId: string; provider?: string; model?: string }>
   }) => api.patch(`/command-mappings/${id}`, data),
   delete: (id: string) => api.delete(`/command-mappings/${id}`)
+};
+
+// Chain API (System Admin only)
+export const chainAPI = {
+  getAll: () => api.get('/chains'),
+  getById: (id: string) => api.get(`/chains/${id}`),
+  create: (data: {
+    name: string;
+    steps: Array<{
+      description: string;
+      prompt: string;
+      provider: string;
+      model: string;
+    }>
+  }) => api.post('/chains', data),
+  update: (id: string, data: {
+    name?: string;
+    steps?: Array<{
+      description: string;
+      prompt: string;
+      provider: string;
+      model: string;
+    }>
+  }) => api.patch(`/chains/${id}`, data),
+  delete: (id: string) => api.delete(`/chains/${id}`)
 };
 
 export default api;
