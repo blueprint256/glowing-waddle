@@ -3,7 +3,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 export interface ILLMUsage extends Document {
   userId: mongoose.Types.ObjectId;
   promptName: string;
-  model: string;
+  llmModel: string;
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
@@ -27,7 +27,7 @@ const llmUsageSchema = new Schema<ILLMUsage>(
       required: true,
       index: true
     },
-    model: {
+    llmModel: {
       type: String,
       required: true
     },

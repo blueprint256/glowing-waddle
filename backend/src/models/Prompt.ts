@@ -22,8 +22,7 @@ const promptSchema = new Schema<IPrompt>(
       type: String,
       required: true,
       unique: true,
-      trim: true,
-      index: true
+      trim: true
     },
     details: {
       type: String,
@@ -54,8 +53,5 @@ const promptSchema = new Schema<IPrompt>(
     timestamps: true
   }
 );
-
-// Index for quick lookups by name
-promptSchema.index({ name: 1 });
 
 export const Prompt = mongoose.model<IPrompt>('Prompt', promptSchema);

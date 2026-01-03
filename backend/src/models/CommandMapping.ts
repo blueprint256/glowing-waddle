@@ -13,8 +13,7 @@ const commandMappingSchema = new Schema<ICommandMapping>(
       type: String,
       required: true,
       unique: true,
-      trim: true,
-      index: true
+      trim: true
     },
     promptId: {
       type: Schema.Types.ObjectId,
@@ -26,8 +25,5 @@ const commandMappingSchema = new Schema<ICommandMapping>(
     timestamps: true
   }
 );
-
-// Index for quick lookup by command
-commandMappingSchema.index({ command: 1 });
 
 export const CommandMapping = mongoose.model<ICommandMapping>('CommandMapping', commandMappingSchema);

@@ -2,6 +2,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 
 export enum CampaignStatus {
   DRAFT = 'draft',
+  PLANNING = 'planning',
   ACTIVE = 'active',
   PAUSED = 'paused',
   COMPLETED = 'completed',
