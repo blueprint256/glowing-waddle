@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import { CommandMapping } from '../models/CommandMapping';
 import { Prompt } from '../models/Prompt';
+import { Chain } from '../models/Chain';
 import { UserRole } from '../models/User';
 import { isAuthenticated } from '../middleware/auth';
 import { validateMongoId } from '../middleware/validation';
@@ -30,6 +31,7 @@ router.get('/', isAuthenticated, isSystemAdmin, async (req: Request, res: Respon
   try {
     const mappings = await CommandMapping.find()
       .populate('promptId', 'name details')
+      .populate('chainId') // Populate chain with all steps
       .populate('steps.promptId', 'name details')
       .sort({ command: 1 });
 
@@ -55,6 +57,7 @@ router.get('/command/:commandName', isAuthenticated, async (req: Request, res: R
   try {
     const mapping = await CommandMapping.findOne({ command: req.params.commandName })
       .populate('promptId', 'name details')
+      .populate('chainId') // Populate chain with all steps
       .populate('steps.promptId', 'name details');
 
     if (!mapping) {
@@ -84,7 +87,7 @@ router.get('/command/:commandName', isAuthenticated, async (req: Request, res: R
  */
 router.post('/', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
   try {
-    const { command, promptId, steps } = req.body;
+    const { command, promptId, chainId, steps } = req.body;
 
     // Validation
     if (!command || typeof command !== 'string' || command.trim().length === 0) {
@@ -94,15 +97,27 @@ router.post('/', isAuthenticated, isSystemAdmin, async (req: Request, res: Respo
       });
     }
 
-    // Must provide either promptId (legacy) or steps (new multi-step)
-    if (!promptId && (!steps || !Array.isArray(steps) || steps.length === 0)) {
+    // Must provide exactly one of: promptId, chainId, or steps
+    const hasPromptId = !!promptId;
+    const hasChainId = !!chainId;
+    const hasSteps = !!(steps && Array.isArray(steps) && steps.length > 0);
+    const count = [hasPromptId, hasChainId, hasSteps].filter(Boolean).length;
+
+    if (count === 0) {
       return res.status(400).json({
         success: false,
-        message: 'Either promptId or steps array is required'
+        message: 'Must provide either promptId, chainId, or steps array'
       });
     }
 
-    // Validate legacy promptId format
+    if (count > 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot provide multiple of: promptId, chainId, steps. Choose only one.'
+      });
+    }
+
+    // Validate promptId (single prompt)
     if (promptId) {
       if (typeof promptId !== 'string') {
         return res.status(400).json({
@@ -121,7 +136,26 @@ router.post('/', isAuthenticated, isSystemAdmin, async (req: Request, res: Respo
       }
     }
 
-    // Validate steps array format
+    // Validate chainId (multi-step chain)
+    if (chainId) {
+      if (typeof chainId !== 'string') {
+        return res.status(400).json({
+          success: false,
+          message: 'Chain ID must be a string'
+        });
+      }
+
+      // Check if chain exists
+      const chain = await Chain.findById(chainId);
+      if (!chain) {
+        return res.status(404).json({
+          success: false,
+          message: 'Chain not found'
+        });
+      }
+    }
+
+    // Validate steps array format (legacy)
     if (steps && Array.isArray(steps)) {
       for (let i = 0; i < steps.length; i++) {
         const step = steps[i];
@@ -169,23 +203,27 @@ router.post('/', isAuthenticated, isSystemAdmin, async (req: Request, res: Respo
       });
     }
 
-    // Create mapping with either legacy promptId or new steps
+    // Create mapping with promptId, chainId, or steps
     const mappingData: any = {
       command: command.trim()
     };
 
-    if (steps && Array.isArray(steps) && steps.length > 0) {
-      // Use new multi-step format
-      mappingData.steps = steps;
-    } else if (promptId) {
-      // Use legacy single-prompt format
+    if (promptId) {
+      // Single prompt
       mappingData.promptId = promptId;
+    } else if (chainId) {
+      // Multi-step chain
+      mappingData.chainId = chainId;
+    } else if (steps && Array.isArray(steps) && steps.length > 0) {
+      // Legacy steps array
+      mappingData.steps = steps;
     }
 
     const mapping = await CommandMapping.create(mappingData);
 
     const populatedMapping = await CommandMapping.findById(mapping._id)
       .populate('promptId', 'name details')
+      .populate('chainId')
       .populate('steps.promptId', 'name details');
 
     res.status(201).json({
@@ -209,7 +247,7 @@ router.post('/', isAuthenticated, isSystemAdmin, async (req: Request, res: Respo
  */
 router.patch('/:id', isAuthenticated, isSystemAdmin, validateMongoId('id'), async (req: Request, res: Response) => {
   try {
-    const { command, promptId, steps } = req.body;
+    const { command, promptId, chainId, steps } = req.body;
 
     const mapping = await CommandMapping.findById(req.params.id);
     if (!mapping) {
@@ -289,11 +327,35 @@ router.patch('/:id', isAuthenticated, isSystemAdmin, validateMongoId('id'), asyn
         }
       }
 
-      // Clear legacy promptId and set new steps
+      // Clear other fields and set steps
       mapping.promptId = undefined;
+      mapping.chainId = undefined;
       mapping.steps = steps;
     }
-    // Update legacy promptId if provided (and steps not provided)
+    // Update chainId if provided
+    else if (chainId !== undefined) {
+      if (typeof chainId !== 'string') {
+        return res.status(400).json({
+          success: false,
+          message: 'Chain ID must be a string'
+        });
+      }
+
+      // Check if chain exists
+      const chain = await Chain.findById(chainId);
+      if (!chain) {
+        return res.status(404).json({
+          success: false,
+          message: 'Chain not found'
+        });
+      }
+
+      // Clear other fields and set chainId
+      mapping.promptId = undefined;
+      mapping.steps = undefined;
+      mapping.chainId = new mongoose.Types.ObjectId(chainId);
+    }
+    // Update promptId if provided
     else if (promptId !== undefined) {
       if (typeof promptId !== 'string') {
         return res.status(400).json({
@@ -311,8 +373,9 @@ router.patch('/:id', isAuthenticated, isSystemAdmin, validateMongoId('id'), asyn
         });
       }
 
-      // Clear steps array and set legacy promptId
+      // Clear other fields and set promptId
       mapping.steps = undefined;
+      mapping.chainId = undefined;
       mapping.promptId = new mongoose.Types.ObjectId(promptId);
     }
 
@@ -320,6 +383,7 @@ router.patch('/:id', isAuthenticated, isSystemAdmin, validateMongoId('id'), asyn
 
     const updatedMapping = await CommandMapping.findById(mapping._id)
       .populate('promptId', 'name details')
+      .populate('chainId')
       .populate('steps.promptId', 'name details');
 
     res.json({
