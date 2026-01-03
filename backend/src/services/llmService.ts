@@ -160,6 +160,8 @@ export interface SuperPromptParams {
   attachedImage1?: string; // S3 URL - {attachedImage1}
   attachedImage2?: string; // S3 URL - {attachedImage2}
   // ... and so on for additional attached images
+  // Multi-step chain support
+  previousOutput?: string; // Output from previous step in chain - {previousOutput}
   [key: string]: any;
 }
 
@@ -252,9 +254,14 @@ export function compileSuperPrompt(promptTemplate: string, params: SuperPromptPa
     compiledPrompt = compiledPrompt.replace(/\{baseImage\}/g, params.baseImage);
   }
 
+  // Replace {previousOutput} if provided (for multi-step chains)
+  if (params.previousOutput !== undefined) {
+    compiledPrompt = compiledPrompt.replace(/\{previousOutput\}/g, String(params.previousOutput));
+  }
+
   // Replace any custom placeholders
   Object.keys(params).forEach(key => {
-    if (key !== 'companyInfo' && key !== 'campaignDetails' && key !== 'taskDescription' && key !== 'baseImage') {
+    if (key !== 'companyInfo' && key !== 'campaignDetails' && key !== 'taskDescription' && key !== 'baseImage' && key !== 'previousOutput') {
       const value = typeof params[key] === 'object'
         ? JSON.stringify(params[key], null, 2)
         : String(params[key]);
@@ -906,5 +913,219 @@ export async function generateImageWithPrompt(
     console.log('========================================\n');
 
     throw new Error(`Image generation failed: ${error.message}`);
+  }
+}
+
+/**
+ * Execute a multi-step LLM chain based on command mapping
+ * Each step's output feeds into the next step as {previousOutput}
+ * Attachments (images) are carried forward through the chain
+ */
+export async function executeCommandChain(
+  commandMapping: any, // ICommandMapping with populated steps
+  params: SuperPromptParams,
+  options?: {
+    userId?: mongoose.Types.ObjectId;
+  }
+): Promise<{
+  content: string;
+  imageUrl?: string;
+  usage: any;
+  compiledPrompts: string[];
+  stepResults: Array<{ stepNumber: number; output: string; imageUrl?: string }>;
+}> {
+  const startTime = Date.now();
+
+  try {
+    console.log('\n========================================');
+    console.log('🔗 MULTI-STEP CHAIN EXECUTION');
+    console.log('========================================');
+    console.log('Command:', commandMapping.command);
+    console.log('User ID:', options?.userId || 'N/A');
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('========================================\n');
+
+    // Determine steps: either from steps array (new) or legacy promptId
+    let steps: any[];
+    if (commandMapping.steps && Array.isArray(commandMapping.steps) && commandMapping.steps.length > 0) {
+      steps = commandMapping.steps;
+      console.log(`📋 Executing ${steps.length} step(s) in chain\n`);
+    } else if (commandMapping.promptId) {
+      // Legacy single-prompt mapping - convert to single-step chain
+      steps = [{
+        promptId: commandMapping.promptId,
+        provider: undefined,
+        model: undefined
+      }];
+      console.log('📋 Executing legacy single-step mapping\n');
+    } else {
+      throw new Error('Command mapping must have either steps array or promptId');
+    }
+
+    let previousOutput = '';
+    let previousImageUrl: string | undefined;
+    const compiledPrompts: string[] = [];
+    const stepResults: Array<{ stepNumber: number; output: string; imageUrl?: string }> = [];
+    let totalUsage = {
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      total_tokens: 0
+    };
+
+    // Execute each step in sequence
+    for (let i = 0; i < steps.length; i++) {
+      const step = steps[i];
+      const stepNumber = i + 1;
+
+      console.log(`\n========================================`);
+      console.log(`🔹 STEP ${stepNumber} of ${steps.length}`);
+      console.log(`========================================`);
+
+      // Get prompt details
+      const prompt = step.promptId;
+      if (!prompt || !prompt.details) {
+        throw new Error(`Step ${stepNumber}: Prompt details not found. Ensure prompt is populated.`);
+      }
+
+      console.log('Prompt Name:', prompt.name);
+      console.log('Provider Override:', step.provider || 'None (use default or prompt config)');
+      console.log('Model Override:', step.model || 'None (use default or prompt config)');
+      console.log('Previous Output Available:', !!previousOutput);
+      console.log('Previous Image Available:', !!previousImageUrl);
+
+      // Build params for this step, including previousOutput
+      const stepParams: SuperPromptParams = {
+        ...params,
+        previousOutput: previousOutput || '',
+      };
+
+      // Carry forward previous image URL if available
+      if (previousImageUrl) {
+        // Add previous image as a new attachment placeholder
+        // Count existing attachedImage placeholders and add next one
+        let attachmentIndex = 1;
+        while (stepParams[`attachedImage${attachmentIndex}`]) {
+          attachmentIndex++;
+        }
+        stepParams[`attachedImage${attachmentIndex}`] = previousImageUrl;
+        console.log(`Added previous image as {attachedImage${attachmentIndex}}`);
+      }
+
+      // Compile prompt for this step
+      const compiledPrompt = compileSuperPrompt(prompt.details, stepParams);
+      compiledPrompts.push(compiledPrompt);
+
+      console.log('Compiled Prompt Length:', compiledPrompt.length, 'characters');
+      console.log('Compiled Prompt Preview:', compiledPrompt.substring(0, 150) + (compiledPrompt.length > 150 ? '...' : ''));
+
+      // Determine if this is an image generation step or text generation
+      // Image generation is indicated by imageLLMProvider or imageLLMModel in the prompt
+      const isImageGeneration = !!(prompt.imageLLMProvider || prompt.imageLLMModel);
+
+      console.log('Step Type:', isImageGeneration ? 'Image Generation' : 'Text Generation');
+
+      let stepOutput = '';
+      let stepImageUrl: string | undefined;
+      let stepUsage: any;
+
+      if (isImageGeneration) {
+        // Image generation step
+        console.log('🎨 Executing image generation...');
+
+        const imageResult = await generateImageWithPrompt(
+          prompt.name,
+          stepParams,
+          {
+            userId: options?.userId
+          }
+        );
+
+        stepImageUrl = imageResult.imageUrl;
+        stepOutput = `[Image generated: ${stepImageUrl}]`;
+        stepUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }; // Image gen doesn't use tokens
+
+        console.log('✅ Image generated:', stepImageUrl);
+      } else {
+        // Text generation step
+        console.log('📝 Executing text generation...');
+
+        // Determine provider and model for this step
+        const llmConfig = await resolveLLMConfig(prompt.name);
+        const provider = (step.provider || llmConfig.provider) as LLMProvider;
+        const model = step.model || llmConfig.model;
+
+        console.log('Using Provider:', provider);
+        console.log('Using Model:', model);
+
+        const textResult = await sendToLLM(compiledPrompt, {
+          provider,
+          model,
+          userId: options?.userId,
+          promptName: prompt.name
+        });
+
+        stepOutput = textResult.content;
+        stepUsage = textResult.usage;
+
+        console.log('✅ Text generated, length:', stepOutput.length, 'characters');
+      }
+
+      // Accumulate usage
+      if (stepUsage) {
+        totalUsage.prompt_tokens += stepUsage.prompt_tokens || 0;
+        totalUsage.completion_tokens += stepUsage.completion_tokens || 0;
+        totalUsage.total_tokens += stepUsage.total_tokens || 0;
+      }
+
+      // Store step result
+      stepResults.push({
+        stepNumber,
+        output: stepOutput,
+        imageUrl: stepImageUrl
+      });
+
+      // Update previousOutput and previousImageUrl for next step
+      previousOutput = stepOutput;
+      if (stepImageUrl) {
+        previousImageUrl = stepImageUrl;
+      }
+
+      console.log(`✅ Step ${stepNumber} completed\n`);
+    }
+
+    const duration = Date.now() - startTime;
+
+    console.log('\n========================================');
+    console.log('✅ CHAIN EXECUTION COMPLETE');
+    console.log('========================================');
+    console.log('Total Steps:', steps.length);
+    console.log('Final Output Length:', previousOutput.length, 'characters');
+    console.log('Final Image URL:', previousImageUrl || 'None');
+    console.log('Total Tokens:', totalUsage.total_tokens);
+    console.log('Duration:', duration, 'ms');
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('========================================\n');
+
+    return {
+      content: previousOutput,
+      imageUrl: previousImageUrl,
+      usage: totalUsage,
+      compiledPrompts,
+      stepResults
+    };
+  } catch (error: any) {
+    const duration = Date.now() - startTime;
+
+    console.log('\n========================================');
+    console.log('❌ CHAIN EXECUTION ERROR');
+    console.log('========================================');
+    console.log('Command:', commandMapping.command);
+    console.log('Error:', error.message);
+    console.log('Error Stack:', error.stack);
+    console.log('Duration:', duration, 'ms');
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('========================================\n');
+
+    throw new Error(`Chain execution failed: ${error.message}`);
   }
 }

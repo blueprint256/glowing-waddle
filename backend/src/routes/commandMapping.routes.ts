@@ -30,6 +30,7 @@ router.get('/', isAuthenticated, isSystemAdmin, async (req: Request, res: Respon
   try {
     const mappings = await CommandMapping.find()
       .populate('promptId', 'name details')
+      .populate('steps.promptId', 'name details')
       .sort({ command: 1 });
 
     res.json({
@@ -53,7 +54,8 @@ router.get('/', isAuthenticated, isSystemAdmin, async (req: Request, res: Respon
 router.get('/command/:commandName', isAuthenticated, async (req: Request, res: Response) => {
   try {
     const mapping = await CommandMapping.findOne({ command: req.params.commandName })
-      .populate('promptId', 'name details');
+      .populate('promptId', 'name details')
+      .populate('steps.promptId', 'name details');
 
     if (!mapping) {
       return res.status(404).json({
@@ -77,12 +79,12 @@ router.get('/command/:commandName', isAuthenticated, async (req: Request, res: R
 
 /**
  * @route   POST /api/command-mappings
- * @desc    Create a new command mapping
+ * @desc    Create a new command mapping (supports legacy promptId or new steps array)
  * @access  Private (System Admin only)
  */
 router.post('/', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
   try {
-    const { command, promptId } = req.body;
+    const { command, promptId, steps } = req.body;
 
     // Validation
     if (!command || typeof command !== 'string' || command.trim().length === 0) {
@@ -92,20 +94,70 @@ router.post('/', isAuthenticated, isSystemAdmin, async (req: Request, res: Respo
       });
     }
 
-    if (!promptId || typeof promptId !== 'string') {
+    // Must provide either promptId (legacy) or steps (new multi-step)
+    if (!promptId && (!steps || !Array.isArray(steps) || steps.length === 0)) {
       return res.status(400).json({
         success: false,
-        message: 'Prompt ID is required'
+        message: 'Either promptId or steps array is required'
       });
     }
 
-    // Check if prompt exists
-    const prompt = await Prompt.findById(promptId);
-    if (!prompt) {
-      return res.status(404).json({
-        success: false,
-        message: 'Prompt not found'
-      });
+    // Validate legacy promptId format
+    if (promptId) {
+      if (typeof promptId !== 'string') {
+        return res.status(400).json({
+          success: false,
+          message: 'Prompt ID must be a string'
+        });
+      }
+
+      // Check if prompt exists
+      const prompt = await Prompt.findById(promptId);
+      if (!prompt) {
+        return res.status(404).json({
+          success: false,
+          message: 'Prompt not found'
+        });
+      }
+    }
+
+    // Validate steps array format
+    if (steps && Array.isArray(steps)) {
+      for (let i = 0; i < steps.length; i++) {
+        const step = steps[i];
+
+        if (!step.promptId || typeof step.promptId !== 'string') {
+          return res.status(400).json({
+            success: false,
+            message: `Step ${i + 1}: promptId is required and must be a string`
+          });
+        }
+
+        // Check if prompt exists
+        const prompt = await Prompt.findById(step.promptId);
+        if (!prompt) {
+          return res.status(404).json({
+            success: false,
+            message: `Step ${i + 1}: Prompt not found`
+          });
+        }
+
+        // Validate provider if provided
+        if (step.provider && !['openai', 'anthropic', 'grok', 'gemini'].includes(step.provider)) {
+          return res.status(400).json({
+            success: false,
+            message: `Step ${i + 1}: Invalid provider. Must be one of: openai, anthropic, grok, gemini`
+          });
+        }
+
+        // Validate model if provided (basic validation - model must be a string)
+        if (step.model && typeof step.model !== 'string') {
+          return res.status(400).json({
+            success: false,
+            message: `Step ${i + 1}: Model must be a string`
+          });
+        }
+      }
     }
 
     // Check if command already exists
@@ -117,14 +169,24 @@ router.post('/', isAuthenticated, isSystemAdmin, async (req: Request, res: Respo
       });
     }
 
-    // Create mapping
-    const mapping = await CommandMapping.create({
-      command: command.trim(),
-      promptId
-    });
+    // Create mapping with either legacy promptId or new steps
+    const mappingData: any = {
+      command: command.trim()
+    };
+
+    if (steps && Array.isArray(steps) && steps.length > 0) {
+      // Use new multi-step format
+      mappingData.steps = steps;
+    } else if (promptId) {
+      // Use legacy single-prompt format
+      mappingData.promptId = promptId;
+    }
+
+    const mapping = await CommandMapping.create(mappingData);
 
     const populatedMapping = await CommandMapping.findById(mapping._id)
-      .populate('promptId', 'name details');
+      .populate('promptId', 'name details')
+      .populate('steps.promptId', 'name details');
 
     res.status(201).json({
       success: true,
@@ -135,19 +197,19 @@ router.post('/', isAuthenticated, isSystemAdmin, async (req: Request, res: Respo
     console.error('Error creating command mapping:', error);
     res.status(500).json({
       success: false,
-      message: 'Error creating command mapping'
+      message: error.message || 'Error creating command mapping'
     });
   }
 });
 
 /**
  * @route   PATCH /api/command-mappings/:id
- * @desc    Update a command mapping
+ * @desc    Update a command mapping (supports legacy promptId or new steps array)
  * @access  Private (System Admin only)
  */
 router.patch('/:id', isAuthenticated, isSystemAdmin, validateMongoId('id'), async (req: Request, res: Response) => {
   try {
-    const { command, promptId } = req.body;
+    const { command, promptId, steps } = req.body;
 
     const mapping = await CommandMapping.findById(req.params.id);
     if (!mapping) {
@@ -181,8 +243,58 @@ router.patch('/:id', isAuthenticated, isSystemAdmin, validateMongoId('id'), asyn
       mapping.command = command.trim();
     }
 
-    // Update promptId if provided
-    if (promptId !== undefined) {
+    // Update steps if provided (new multi-step format)
+    if (steps !== undefined) {
+      if (!Array.isArray(steps) || steps.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Steps must be a non-empty array'
+        });
+      }
+
+      // Validate each step
+      for (let i = 0; i < steps.length; i++) {
+        const step = steps[i];
+
+        if (!step.promptId || typeof step.promptId !== 'string') {
+          return res.status(400).json({
+            success: false,
+            message: `Step ${i + 1}: promptId is required and must be a string`
+          });
+        }
+
+        // Check if prompt exists
+        const prompt = await Prompt.findById(step.promptId);
+        if (!prompt) {
+          return res.status(404).json({
+            success: false,
+            message: `Step ${i + 1}: Prompt not found`
+          });
+        }
+
+        // Validate provider if provided
+        if (step.provider && !['openai', 'anthropic', 'grok', 'gemini'].includes(step.provider)) {
+          return res.status(400).json({
+            success: false,
+            message: `Step ${i + 1}: Invalid provider. Must be one of: openai, anthropic, grok, gemini`
+          });
+        }
+
+        // Validate model if provided
+        if (step.model && typeof step.model !== 'string') {
+          return res.status(400).json({
+            success: false,
+            message: `Step ${i + 1}: Model must be a string`
+          });
+        }
+      }
+
+      // Clear legacy promptId and set new steps
+      mapping.promptId = undefined;
+      mapping.steps = steps;
+    }
+    // Update legacy promptId if provided (and steps not provided)
+    else if (promptId !== undefined) {
       if (typeof promptId !== 'string') {
         return res.status(400).json({
           success: false,
@@ -199,13 +311,16 @@ router.patch('/:id', isAuthenticated, isSystemAdmin, validateMongoId('id'), asyn
         });
       }
 
+      // Clear steps array and set legacy promptId
+      mapping.steps = undefined;
       mapping.promptId = new mongoose.Types.ObjectId(promptId);
     }
 
     await mapping.save();
 
     const updatedMapping = await CommandMapping.findById(mapping._id)
-      .populate('promptId', 'name details');
+      .populate('promptId', 'name details')
+      .populate('steps.promptId', 'name details');
 
     res.json({
       success: true,
@@ -216,7 +331,7 @@ router.patch('/:id', isAuthenticated, isSystemAdmin, validateMongoId('id'), asyn
     console.error('Error updating command mapping:', error);
     res.status(500).json({
       success: false,
-      message: 'Error updating command mapping'
+      message: error.message || 'Error updating command mapping'
     });
   }
 });

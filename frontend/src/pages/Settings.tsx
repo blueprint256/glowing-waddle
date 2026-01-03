@@ -147,9 +147,12 @@ export default function Settings() {
   const [commandMappingsLoading, setCommandMappingsLoading] = useState(false);
   const [commandMappingModalOpen, setCommandMappingModalOpen] = useState(false);
   const [editingCommandMapping, setEditingCommandMapping] = useState<any>(null);
-  const [commandMappingForm, setCommandMappingForm] = useState({
+  const [commandMappingForm, setCommandMappingForm] = useState<{
+    command: string;
+    steps: Array<{ promptId: string; provider: string; model: string }>;
+  }>({
     command: '',
-    promptId: ''
+    steps: [{ promptId: '', provider: '', model: '' }]
   });
   const [commandMappingSaving, setCommandMappingSaving] = useState(false);
 
@@ -447,15 +450,39 @@ export default function Settings() {
 
   const handleCreateCommandMapping = () => {
     setEditingCommandMapping(null);
-    setCommandMappingForm({ command: '', promptId: '' });
+    setCommandMappingForm({
+      command: '',
+      steps: [{ promptId: '', provider: '', model: '' }]
+    });
     setCommandMappingModalOpen(true);
   };
 
   const handleEditCommandMapping = (mapping: any) => {
     setEditingCommandMapping(mapping);
+
+    // Convert mapping to steps format
+    let steps;
+    if (mapping.steps && Array.isArray(mapping.steps) && mapping.steps.length > 0) {
+      // New multi-step format
+      steps = mapping.steps.map((step: any) => ({
+        promptId: step.promptId?._id || step.promptId || '',
+        provider: step.provider || '',
+        model: step.model || ''
+      }));
+    } else if (mapping.promptId) {
+      // Legacy single-prompt format - convert to single step
+      steps = [{
+        promptId: mapping.promptId._id || mapping.promptId,
+        provider: '',
+        model: ''
+      }];
+    } else {
+      steps = [{ promptId: '', provider: '', model: '' }];
+    }
+
     setCommandMappingForm({
       command: mapping.command,
-      promptId: mapping.promptId._id
+      steps
     });
     setCommandMappingModalOpen(true);
   };
@@ -463,21 +490,75 @@ export default function Settings() {
   const handleCloseCommandMappingModal = () => {
     setCommandMappingModalOpen(false);
     setEditingCommandMapping(null);
-    setCommandMappingForm({ command: '', promptId: '' });
+    setCommandMappingForm({
+      command: '',
+      steps: [{ promptId: '', provider: '', model: '' }]
+    });
+  };
+
+  const handleAddStep = () => {
+    setCommandMappingForm({
+      ...commandMappingForm,
+      steps: [...commandMappingForm.steps, { promptId: '', provider: '', model: '' }]
+    });
+  };
+
+  const handleRemoveStep = (index: number) => {
+    if (commandMappingForm.steps.length === 1) {
+      setMessage({ type: 'error', text: 'At least one step is required' });
+      return;
+    }
+    const newSteps = commandMappingForm.steps.filter((_, i) => i !== index);
+    setCommandMappingForm({
+      ...commandMappingForm,
+      steps: newSteps
+    });
+  };
+
+  const handleUpdateStep = (index: number, field: 'promptId' | 'provider' | 'model', value: string) => {
+    const newSteps = [...commandMappingForm.steps];
+    newSteps[index] = {
+      ...newSteps[index],
+      [field]: value
+    };
+    setCommandMappingForm({
+      ...commandMappingForm,
+      steps: newSteps
+    });
   };
 
   const handleSaveCommandMapping = async () => {
     try {
       setCommandMappingSaving(true);
 
-      if (!commandMappingForm.command.trim() || !commandMappingForm.promptId) {
-        setMessage({ type: 'error', text: 'Command and prompt are required.' });
+      if (!commandMappingForm.command.trim()) {
+        setMessage({ type: 'error', text: 'Command name is required.' });
         return;
       }
 
+      // Validate that all steps have a promptId
+      for (let i = 0; i < commandMappingForm.steps.length; i++) {
+        if (!commandMappingForm.steps[i].promptId) {
+          setMessage({ type: 'error', text: `Step ${i + 1}: Please select a prompt.` });
+          return;
+        }
+      }
+
+      // Filter out empty provider/model values
+      const steps = commandMappingForm.steps.map(step => ({
+        promptId: step.promptId,
+        ...(step.provider && { provider: step.provider }),
+        ...(step.model && { model: step.model })
+      }));
+
+      const payload = {
+        command: commandMappingForm.command.trim(),
+        steps
+      };
+
       if (editingCommandMapping) {
         // Update existing mapping
-        const response = await commandMappingAPI.update(editingCommandMapping._id, commandMappingForm);
+        const response = await commandMappingAPI.update(editingCommandMapping._id, payload);
         if (response.data.success) {
           setMessage({ type: 'success', text: 'Command mapping updated successfully!' });
           fetchCommandMappings();
@@ -485,7 +566,7 @@ export default function Settings() {
         }
       } else {
         // Create new mapping
-        const response = await commandMappingAPI.create(commandMappingForm);
+        const response = await commandMappingAPI.create(payload);
         if (response.data.success) {
           setMessage({ type: 'success', text: 'Command mapping created successfully!' });
           fetchCommandMappings();
@@ -1755,48 +1836,67 @@ export default function Settings() {
                     <TableHead>
                       <TableRow>
                         <TableCell>Command</TableCell>
-                        <TableCell>Mapped Prompt</TableCell>
+                        <TableCell>Configuration</TableCell>
                         <TableCell align="right">Actions</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {commandMappings.map((mapping) => (
-                        <TableRow key={mapping._id}>
-                          <TableCell>
-                            <Chip
-                              label={mapping.command}
-                              size="small"
-                              color="primary"
-                              variant="outlined"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="body2">
-                              {mapping.promptId?.name || 'N/A'}
-                            </Typography>
-                          </TableCell>
-                          <TableCell align="right">
-                            <Tooltip title="Edit mapping">
-                              <IconButton
+                      {commandMappings.map((mapping) => {
+                        const hasSteps = mapping.steps && Array.isArray(mapping.steps) && mapping.steps.length > 0;
+                        const stepCount = hasSteps ? mapping.steps.length : 1;
+                        const isMultiStep = stepCount > 1;
+
+                        return (
+                          <TableRow key={mapping._id}>
+                            <TableCell>
+                              <Chip
+                                label={mapping.command}
                                 size="small"
-                                onClick={() => handleEditCommandMapping(mapping)}
                                 color="primary"
-                              >
-                                <Edit fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Delete mapping">
-                              <IconButton
-                                size="small"
-                                onClick={() => handleDeleteCommandMapping(mapping._id)}
-                                color="error"
-                              >
-                                <Delete fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                                variant="outlined"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              {isMultiStep ? (
+                                <Box>
+                                  <Typography variant="body2" fontWeight="500">
+                                    Multi-step chain ({stepCount} steps)
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {mapping.steps.map((step: any, idx: number) =>
+                                      step.promptId?.name || `Step ${idx + 1}`
+                                    ).join(' → ')}
+                                  </Typography>
+                                </Box>
+                              ) : (
+                                <Typography variant="body2">
+                                  {hasSteps ? mapping.steps[0]?.promptId?.name : mapping.promptId?.name || 'N/A'}
+                                </Typography>
+                              )}
+                            </TableCell>
+                            <TableCell align="right">
+                              <Tooltip title="Edit mapping">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => handleEditCommandMapping(mapping)}
+                                  color="primary"
+                                >
+                                  <Edit fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Delete mapping">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => handleDeleteCommandMapping(mapping._id)}
+                                  color="error"
+                                >
+                                  <Delete fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </TableContainer>
@@ -1805,8 +1905,10 @@ export default function Settings() {
               <Box sx={{ mt: 2 }}>
                 <Alert severity="info" icon={<Info />}>
                   <Typography variant="body2">
-                    <strong>How it works:</strong> Commands like "generate-campaign" can be configured to use specific prompts.
-                    When users trigger these commands, the system automatically uses the mapped prompt for LLM execution.
+                    <strong>How it works:</strong> Commands can be mapped to single prompts or multi-step chains.
+                    Multi-step chains enable powerful workflows where each step's output feeds into the next
+                    (e.g., Step 1: refine text, Step 2: generate image with refined text). Images and text outputs
+                    are automatically carried forward through the chain.
                   </Typography>
                 </Alert>
               </Box>
@@ -1861,7 +1963,8 @@ export default function Settings() {
                   <strong>Company:</strong> {'{companyInfo}'} (full object), {'{companyName}'}, {'{sector}'}, {'{brandTone}'}, {'{brandGuidelines}'}<br />
                   <strong>Campaign:</strong> {'{campaignDetails}'} (full object), {'{campaignName}'}, {'{coreMessages}'}, {'{hashtags}'}<br />
                   <strong>Task:</strong> {'{taskDescription}'}, {'{baseImage}'} (URL of task's original image)<br />
-                  <strong>Brand Assets:</strong> {'{primaryLogo}'}, {'{secondaryLogo}'}, {'{tertiaryLogo}'} (logo URLs)
+                  <strong>Brand Assets:</strong> {'{primaryLogo}'}, {'{secondaryLogo}'}, {'{tertiaryLogo}'} (logo URLs)<br />
+                  <strong>Multi-step Chains:</strong> {'{previousOutput}'} (output from previous step in a chain)
                 </Typography>
               </Alert>
             </Box>
@@ -1879,7 +1982,7 @@ export default function Settings() {
         </Dialog>
 
         {/* Command Mapping Create/Edit Modal */}
-        <Dialog open={commandMappingModalOpen} onClose={handleCloseCommandMappingModal} maxWidth="sm" fullWidth>
+        <Dialog open={commandMappingModalOpen} onClose={handleCloseCommandMappingModal} maxWidth="md" fullWidth>
           <DialogTitle>
             {editingCommandMapping ? 'Edit Command Mapping' : 'Create New Command Mapping'}
           </DialogTitle>
@@ -1896,31 +1999,114 @@ export default function Settings() {
                 required
                 disabled={!!editingCommandMapping}
               />
-              <TextField
-                fullWidth
-                select
-                label="Select Prompt"
-                value={commandMappingForm.promptId}
-                onChange={(e) => setCommandMappingForm({ ...commandMappingForm, promptId: e.target.value })}
-                margin="normal"
-                helperText="Choose which prompt this command should use"
-                required
-              >
-                {prompts.length === 0 ? (
-                  <MenuItem value="" disabled>
-                    No prompts available. Create a prompt first.
-                  </MenuItem>
-                ) : (
-                  prompts.map((prompt) => (
-                    <MenuItem key={prompt._id} value={prompt._id}>
-                      {prompt.name}
-                    </MenuItem>
-                  ))
-                )}
-              </TextField>
+
+              <Divider sx={{ my: 3 }} />
+
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6">
+                  Chain Steps ({commandMappingForm.steps.length})
+                </Typography>
+                <Button
+                  size="small"
+                  startIcon={<Add />}
+                  onClick={handleAddStep}
+                  variant="outlined"
+                >
+                  Add Step
+                </Button>
+              </Box>
+
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Define a sequence of prompts to execute. Each step's output feeds into the next as {'{previousOutput}'}.
+              </Typography>
+
+              {commandMappingForm.steps.map((step, index) => (
+                <Card key={index} sx={{ mb: 2, p: 2, bgcolor: 'background.default' }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="subtitle2" fontWeight="500">
+                      Step {index + 1}
+                    </Typography>
+                    {commandMappingForm.steps.length > 1 && (
+                      <IconButton
+                        size="small"
+                        onClick={() => handleRemoveStep(index)}
+                        color="error"
+                      >
+                        <Delete fontSize="small" />
+                      </IconButton>
+                    )}
+                  </Box>
+
+                  <TextField
+                    fullWidth
+                    select
+                    label="Prompt"
+                    value={step.promptId}
+                    onChange={(e) => handleUpdateStep(index, 'promptId', e.target.value)}
+                    margin="normal"
+                    size="small"
+                    required
+                  >
+                    {prompts.length === 0 ? (
+                      <MenuItem value="" disabled>
+                        No prompts available. Create a prompt first.
+                      </MenuItem>
+                    ) : (
+                      prompts.map((prompt) => (
+                        <MenuItem key={prompt._id} value={prompt._id}>
+                          {prompt.name}
+                        </MenuItem>
+                      ))
+                    )}
+                  </TextField>
+
+                  <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                    <TextField
+                      select
+                      label="Provider (Optional)"
+                      value={step.provider}
+                      onChange={(e) => handleUpdateStep(index, 'provider', e.target.value)}
+                      size="small"
+                      sx={{ flex: 1 }}
+                      helperText="Override default provider"
+                    >
+                      <MenuItem value="">
+                        <em>Use Default</em>
+                      </MenuItem>
+                      <MenuItem value="openai">OpenAI</MenuItem>
+                      <MenuItem value="anthropic">Anthropic</MenuItem>
+                      <MenuItem value="grok">Grok (xAI)</MenuItem>
+                      <MenuItem value="gemini">Google Gemini</MenuItem>
+                    </TextField>
+
+                    <TextField
+                      select
+                      label="Model (Optional)"
+                      value={step.model}
+                      onChange={(e) => handleUpdateStep(index, 'model', e.target.value)}
+                      size="small"
+                      sx={{ flex: 1 }}
+                      helperText="Override default model"
+                      disabled={!step.provider}
+                    >
+                      <MenuItem value="">
+                        <em>Use Default</em>
+                      </MenuItem>
+                      {step.provider && LLM_MODELS[step.provider]?.map((model) => (
+                        <MenuItem key={model} value={model}>
+                          {model}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Box>
+                </Card>
+              ))}
+
               <Alert severity="info" sx={{ mt: 2 }}>
                 <Typography variant="body2">
-                  This mapping allows the specified command to dynamically use the selected prompt for LLM execution.
+                  <strong>How chains work:</strong> Each step executes sequentially. Use {'{previousOutput}'} in your prompts
+                  to reference the output from the previous step. Images generated in any step are automatically
+                  carried forward as attachments to subsequent steps.
                 </Typography>
               </Alert>
             </Box>
