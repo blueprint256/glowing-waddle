@@ -5,6 +5,7 @@ export interface IChainStep {
   prompt: string; // The actual prompt text with placeholders
   provider: string; // LLM provider (openai, anthropic, grok, gemini) - REQUIRED
   model: string; // LLM model (enforced, not optional) - REQUIRED
+  carryForwardImages?: boolean; // Whether to carry forward images from previous steps (default: true)
 }
 
 export interface IChain extends Document {
@@ -33,6 +34,10 @@ const chainStepSchema = new Schema<IChainStep>(
     model: {
       type: String,
       required: true
+    },
+    carryForwardImages: {
+      type: Boolean,
+      default: true
     }
   },
   { _id: false }

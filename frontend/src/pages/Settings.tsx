@@ -28,7 +28,9 @@ import {
   TableHead,
   TableRow,
   IconButton,
-  Tooltip
+  Tooltip,
+  FormControlLabel,
+  Switch
 } from '@mui/material';
 import {
   CheckCircle,
@@ -72,9 +74,9 @@ function TabPanel(props: TabPanelProps) {
 const SECTORS = ['Tech', 'Retail', 'Healthcare', 'Finance', 'Education', 'Manufacturing', 'Other'];
 const BRAND_TONES = ['Professional', 'Fun', 'Serious', 'Casual', 'Formal', 'Friendly'];
 
-// LLM Provider models (for text generation)
+// LLM Provider models (for text generation and image generation)
 const LLM_MODELS: Record<string, string[]> = {
-  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo'],
+  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo', 'gpt-image-1.5'],
   anthropic: ['claude-3-5-sonnet-20241022', 'claude-3-opus-20240229', 'claude-3-haiku-20240307'],
   grok: ['grok-beta', 'grok-2'],
   gemini: ['gemini-1.5-pro', 'gemini-1.5-flash']
@@ -169,10 +171,10 @@ export default function Settings() {
   const [editingChain, setEditingChain] = useState<any>(null);
   const [chainForm, setChainForm] = useState<{
     name: string;
-    steps: Array<{ description: string; prompt: string; provider: string; model: string }>;
+    steps: Array<{ description: string; prompt: string; provider: string; model: string; carryForwardImages?: boolean }>;
   }>({
     name: '',
-    steps: [{ description: '', prompt: '', provider: 'openai', model: 'gpt-4o-mini' }]
+    steps: [{ description: '', prompt: '', provider: 'openai', model: 'gpt-4o-mini', carryForwardImages: true }]
   });
   const [chainSaving, setChainSaving] = useState(false);
 
@@ -473,7 +475,7 @@ export default function Settings() {
     setEditingChain(null);
     setChainForm({
       name: '',
-      steps: [{ description: '', prompt: '', provider: 'openai', model: 'gpt-4o-mini' }]
+      steps: [{ description: '', prompt: '', provider: 'openai', model: 'gpt-4o-mini', carryForwardImages: true }]
     });
     setChainModalOpen(true);
   };
@@ -489,14 +491,14 @@ export default function Settings() {
     setEditingChain(null);
     setChainForm({
       name: '',
-      steps: [{ description: '', prompt: '', provider: 'openai', model: 'gpt-4o-mini' }]
+      steps: [{ description: '', prompt: '', provider: 'openai', model: 'gpt-4o-mini', carryForwardImages: true }]
     });
   };
 
   const handleAddChainStep = () => {
     setChainForm({
       ...chainForm,
-      steps: [...chainForm.steps, { description: '', prompt: '', provider: 'openai', model: 'gpt-4o-mini' }]
+      steps: [...chainForm.steps, { description: '', prompt: '', provider: 'openai', model: 'gpt-4o-mini', carryForwardImages: true }]
     });
   };
 
@@ -509,7 +511,7 @@ export default function Settings() {
     }
   };
 
-  const handleChainStepChange = (index: number, field: string, value: string) => {
+  const handleChainStepChange = (index: number, field: string, value: string | boolean) => {
     const updatedSteps = [...chainForm.steps];
     updatedSteps[index] = { ...updatedSteps[index], [field]: value };
     setChainForm({ ...chainForm, steps: updatedSteps });
@@ -2361,6 +2363,20 @@ export default function Settings() {
                       ))}
                     </TextField>
                   </Box>
+
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={step.carryForwardImages !== false}
+                        onChange={(e) => handleChainStepChange(index, 'carryForwardImages', e.target.checked)}
+                      />
+                    }
+                    label="Carry forward images from previous steps"
+                    sx={{ mt: 2 }}
+                  />
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ ml: 4, mt: 0.5 }}>
+                    When enabled, any images generated or attached in previous steps will be available as attachments in this step's prompt
+                  </Typography>
                 </Paper>
               ))}
 

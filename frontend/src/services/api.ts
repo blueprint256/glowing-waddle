@@ -198,6 +198,7 @@ export const chainAPI = {
       prompt: string;
       provider: string;
       model: string;
+      carryForwardImages?: boolean;
     }>
   }) => api.post('/chains', data),
   update: (id: string, data: {
@@ -207,6 +208,7 @@ export const chainAPI = {
       prompt: string;
       provider: string;
       model: string;
+      carryForwardImages?: boolean;
     }>
   }) => api.patch(`/chains/${id}`, data),
   delete: (id: string) => api.delete(`/chains/${id}`)

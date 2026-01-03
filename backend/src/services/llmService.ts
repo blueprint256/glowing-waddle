@@ -962,6 +962,7 @@ export async function executeCommandChain(
         description: chainStep.description,
         provider: chainStep.provider, // Enforced provider
         model: chainStep.model, // Enforced model
+        carryForwardImages: chainStep.carryForwardImages !== false, // Default to true
         isEmbedded: true
       }));
       isChainExecution = true;
@@ -1045,8 +1046,14 @@ export async function executeCommandChain(
         previousOutput: previousOutput || '',
       };
 
-      // Carry forward previous image URL if available
-      if (previousImageUrl) {
+      // Carry forward previous image URL if available and enabled for this step
+      // For embedded prompts (chains), check the carryForwardImages flag (defaults to true)
+      // For referenced prompts, always carry forward (legacy behavior)
+      const shouldCarryForwardImages = step.isEmbedded
+        ? (step.carryForwardImages !== false)
+        : true;
+
+      if (previousImageUrl && shouldCarryForwardImages) {
         // Add previous image as a new attachment placeholder
         // Count existing attachedImage placeholders and add next one
         let attachmentIndex = 1;
@@ -1055,6 +1062,8 @@ export async function executeCommandChain(
         }
         stepParams[`attachedImage${attachmentIndex}`] = previousImageUrl;
         console.log(`Added previous image as {attachedImage${attachmentIndex}}`);
+      } else if (previousImageUrl && !shouldCarryForwardImages) {
+        console.log(`Skipping image carry-forward (disabled for this step)`);
       }
 
       // Compile prompt for this step
