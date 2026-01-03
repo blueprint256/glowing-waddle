@@ -2,7 +2,20 @@
 
 A full-stack collaborative campaign management and content production platform with role-based access control, hierarchical project organization, and comprehensive approval workflows.
 
-## Recent Updates (2025)
+## Recent Updates (2025-2026)
+
+### AI-Powered Content Generation (January 2026)
+- **AI Poster Generation**: Generate social media posters using AI (GPT-Image-1.5 model)
+- **Multi-Image Combination**: Combine logos, base images, and attached images into a single poster
+- **Smart Prompt Processing**: AI analyzes task descriptions to create relevant visual content
+- **One-Click Generation**: Generate and preview posters directly from task detail pages
+- **Direct Adoption**: Instantly set generated posters as task designed images
+
+### Social Media Preview Enhancements (January 2026)
+- **Editable Description Preview**: Edit task descriptions with live preview rendering
+- **Real-Time Updates**: Preview changes instantly across Instagram, Twitter, and Facebook formats
+- **Enhanced UX**: Improved visual consistency in TasksSheet and DetailsSheet
+- **Unified Branding**: Harmonized UI elements across all management sheets
 
 ### Authentication Enhancements
 - **Google OAuth2 Integration**: Sign in/sign up with Google for seamless authentication
@@ -27,6 +40,8 @@ A full-stack collaborative campaign management and content production platform w
 
 ### Task Management
 - **Task management** with designed image upload and S3 integration
+- **AI-Powered Poster Generation**: Create social media posters using GPT-Image-1.5 with multi-image combination
+- **Social Media Preview**: Preview tasks across Instagram, Twitter, and Facebook with editable descriptions and live rendering
 - Added **publish date** field for task scheduling
 - Enhanced **status management** with dropdown (Pending, In Progress, Completed)
 
@@ -65,6 +80,8 @@ A full-stack collaborative campaign management and content production platform w
 - RBAC enforcement at API and UI levels
 - Role and ownership-based access control
 - Task management with image uploads and scheduling
+- **AI-powered poster generation** with GPT-Image-1.5 (multi-image combination)
+- **Social media preview** with editable descriptions and live rendering
 - Third-party integrations (Canva)
 - Settings page for user preferences and integrations
 - Comments and collaboration
@@ -246,13 +263,22 @@ Open http://localhost:3000 in your browser.
 
 5. **Work on Task**
    - Open task → Edit content
-   - Upload designed image
+   - Upload designed image or generate poster with AI
+   - **Generate AI Poster** (optional):
+     - Click "Generate Poster with AI" button
+     - AI analyzes task description and combines images
+     - Preview generated poster
+     - Adopt as designed image with one click
    - Update status to "In Progress"
    - Add task description and notes
+   - **Preview Social Media Post**:
+     - Click preview button to see how post looks on Instagram, Twitter, Facebook
+     - Edit description with live preview rendering
+     - Copy formatted caption for posting
 
 6. **Complete Task**
    - Review task details
-   - Ensure image is uploaded
+   - Ensure image is uploaded or generated
    - Update status to "Completed"
    - Set final publish date
 
@@ -312,6 +338,8 @@ The system enforces strict rules for who can assign users to projects:
   - `POST /api/projects/:id/assignments` - Assign user to project
 - `/api/tasks` - Task management
   - `POST /api/tasks/:id/upload-image` - Upload designed image to task
+  - `POST /api/tasks/:id/generate-poster` - Generate AI poster using GPT-Image-1.5
+  - `POST /api/tasks/:id/adopt-generated-poster` - Adopt generated poster as designed image
 - `/api/comments` - Comments on tasks/projects/campaigns
 - `/api/assets` - File uploads and downloads (S3 integration)
 
@@ -356,7 +384,10 @@ Use the seeded demo accounts to test each role:
 **Hybrid User:**
 - Create campaigns and projects
 - Create and manage tasks
-- Upload task images
+- Upload task images or generate AI posters
+- Test AI poster generation with task descriptions
+- Preview tasks in social media formats (Instagram, Twitter, Facebook)
+- Edit descriptions with live preview rendering
 - Set task scheduling and status
 - Assign users to projects
 - View Details Sheet for comprehensive overview
@@ -429,16 +460,20 @@ Integration tests for:
 - [x] Calendar view for scheduled tasks (Implemented)
 - [x] Google OAuth2 authentication (Implemented)
 - [x] Third-party integrations starting with Canva (Implemented)
+- [x] AI-powered content generation for posters (Implemented - GPT-Image-1.5)
+- [x] Social media preview with editable descriptions (Implemented)
 - [ ] Drag-and-drop Kanban boards for task management
 - [ ] Advanced search and filtering in Details Sheet
 - [ ] Export reports (PDF/CSV) from Details Sheet
 - [ ] Mobile app (React Native)
 - [ ] Additional integrations (Figma, Dropbox, Google Drive)
-- [ ] Integration with social media platforms for task publishing
+- [ ] Direct posting to social media platforms (Instagram, Twitter, Facebook)
 - [ ] Automated workflows and triggers
 - [ ] Multi-language support
 - [ ] Dark mode theme
 - [ ] Real-time collaboration features
+- [ ] AI-powered content refinement and suggestions
+- [ ] Batch poster generation for multiple tasks
 
 ---
 
@@ -448,11 +483,13 @@ Integration tests for:
 2. **MongoDB**: Selected for flexible schema and hierarchical data modeling
 3. **Two-Role System**: Simplified from 5 roles to System Admin and Hybrid for clearer permissions
 4. **AWS S3 Integration**: Task images stored in S3 for scalability and reliability
-5. **Role-Based Access**: Access controlled by user role and ownership (createdBy) without teams
-6. **Soft Deletes**: Users marked inactive rather than hard deleted
-7. **Progressive Data Loading**: Details Sheet loads data on-demand for performance
-8. **No Email Verification**: Demo purposes only; add in production
-9. **Password Requirements**: Minimum 6 characters (increase in production)
+5. **AI Content Generation**: Integrated GPT-Image-1.5 for poster generation with multi-image combination support
+6. **Role-Based Access**: Access controlled by user role and ownership (createdBy) without teams
+7. **Soft Deletes**: Users marked inactive rather than hard deleted
+8. **Progressive Data Loading**: Details Sheet loads data on-demand for performance
+9. **Social Media Preview**: Client-side preview rendering for Instagram, Twitter, and Facebook formats
+10. **No Email Verification**: Demo purposes only; add in production
+11. **Password Requirements**: Minimum 6 characters (increase in production)
 
 ---
 
