@@ -82,9 +82,9 @@ const LLM_MODELS: Record<string, string[]> = {
 
 // Image LLM Provider models (for image generation)
 // RESTRICTED TO GPT-IMAGE-1.5 ONLY as of late 2025
-const IMAGE_LLM_MODELS: Record<string, string[]> = {
-  openai: ['gpt-image-1.5']
-};
+// const IMAGE_LLM_MODELS: Record<string, string[]> = {
+//   openai: ['gpt-image-1.5']
+// };
 
 export default function Settings() {
   const [searchParams] = useSearchParams();
@@ -141,12 +141,6 @@ export default function Settings() {
   const [defaultProvider, setDefaultProvider] = useState('openai');
   const [defaultModel, setDefaultModel] = useState('gpt-4o-mini');
   const [savingDefaultConfig, setSavingDefaultConfig] = useState(false);
-
-  // Default Image LLM configuration state (System Admin only)
-  // RESTRICTED TO GPT-IMAGE-1.5 ONLY
-  const [defaultImageProvider, setDefaultImageProvider] = useState('openai');
-  const [defaultImageModel, setDefaultImageModel] = useState('gpt-image-1.5');
-  const [savingDefaultImageConfig, setSavingDefaultImageConfig] = useState(false);
 
   // Command Mappings state (System Admin only)
   const [commandMappings, setCommandMappings] = useState<any[]>([]);
@@ -319,7 +313,7 @@ export default function Settings() {
     }
   };
 
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
     setMessage(null);
   };
@@ -1096,7 +1090,7 @@ export default function Settings() {
 
                       <TextField
                         fullWidth
-                        type={showApiKey ? 'text' : 'password'}
+                        type={showApiKey['openai'] ? 'text' : 'password'}
                         label="OpenAI API Key"
                         value={openAIApiKey}
                         onChange={(e) => setOpenAIApiKey(e.target.value)}
@@ -1105,11 +1099,11 @@ export default function Settings() {
                         InputProps={{
                           endAdornment: (
                             <IconButton
-                              onClick={() => setShowApiKey(!showApiKey)}
+                              onClick={() => setShowApiKey({...showApiKey, openai: !showApiKey['openai']})}
                               edge="end"
                               size="small"
                             >
-                              {showApiKey ? <VisibilityOff /> : <Visibility />}
+                              {showApiKey['openai'] ? <VisibilityOff /> : <Visibility />}
                             </IconButton>
                           )
                         }}
@@ -1506,8 +1500,6 @@ export default function Settings() {
                           {prompts.map((prompt) => {
                             const promptProvider = prompt.llmProvider || defaultProvider;
                             const promptModel = prompt.llmModel || defaultModel;
-                            const promptImageProvider = prompt.imageLLMProvider || defaultImageProvider;
-                            const promptImageModel = prompt.imageLLMModel || defaultImageModel;
                             const isTextOverridden = !!prompt.llmProvider;
                             const isImageOverridden = !!prompt.imageLLMProvider;
 

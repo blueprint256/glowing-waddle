@@ -158,7 +158,8 @@ export default function CampaignDetail() {
     // System Admin can create projects in any campaign
     if (user.role === UserRole.SYSTEM_ADMIN) return true;
     // Hybrid users can only create projects in campaigns they own
-    return campaign.createdBy === user.id || campaign.createdBy?._id === user.id;
+    const createdById = typeof campaign.createdBy === 'string' ? campaign.createdBy : campaign.createdBy._id;
+    return createdById === user.id;
   };
 
   // Check if user is System Admin
@@ -226,15 +227,9 @@ export default function CampaignDetail() {
           </Box>
         )}
 
-        {(campaign.budget || campaign.startDate) && <Divider sx={{ my: 2 }} />}
+        {campaign.startDate && <Divider sx={{ my: 2 }} />}
 
         <Grid container spacing={2}>
-          {campaign.budget && (
-            <Grid item xs={12} sm={6}>
-              <Typography variant="subtitle2">Budget</Typography>
-              <Typography variant="h6">${campaign.budget.toLocaleString()}</Typography>
-            </Grid>
-          )}
           {campaign.startDate && (
             <Grid item xs={12} sm={6}>
               <Typography variant="subtitle2">Start Date</Typography>

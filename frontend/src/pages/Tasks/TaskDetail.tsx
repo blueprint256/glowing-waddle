@@ -27,19 +27,16 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import {
   CloudUpload as CloudUploadIcon,
-  Delete as DeleteIcon,
   Visibility as VisibilityIcon,
   AutoAwesome as AutoAwesomeIcon
 } from '@mui/icons-material';
 import { taskAPI, commentAPI } from '../../services/api';
 import { Task, Comment, TaskStatus } from '../../types';
-import { useAuthStore } from '../../store/authStore';
 import SocialPreviewModal from '../../components/SocialPreviewModal';
 
 export default function TaskDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user } = useAuthStore();
   const [task, setTask] = useState<Task | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');

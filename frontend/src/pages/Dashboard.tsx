@@ -26,7 +26,6 @@ export default function Dashboard() {
   const { user } = useAuthStore();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [recentTasks, setRecentTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadData();
@@ -42,8 +41,6 @@ export default function Dashboard() {
       setRecentTasks((tasksRes.data.tasks || []).slice(0, 5));
     } catch (error) {
       console.error('Error loading dashboard data:', error);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -109,7 +106,6 @@ export default function Dashboard() {
                 <TableHead>
                   <TableRow>
                     <TableCell>Name</TableCell>
-                    <TableCell>Type</TableCell>
                     <TableCell>Status</TableCell>
                     <TableCell>Task Date</TableCell>
                   </TableRow>
@@ -123,9 +119,6 @@ export default function Dashboard() {
                       onClick={() => navigate(`/tasks/${task._id}`)}
                     >
                       <TableCell>{task.name}</TableCell>
-                      <TableCell>
-                        <Chip label={task.type} size="small" />
-                      </TableCell>
                       <TableCell>
                         <Chip
                           label={task.status}

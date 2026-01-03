@@ -41,7 +41,7 @@ export const authAPI = {
 
 // User API
 export const userAPI = {
-  getAll: () => api.get('/users'),
+  getAll: (params?: any) => api.get('/users', { params }),
   getById: (id: string) => api.get(`/users/${id}`),
   create: (data: any) => api.post('/users', data),
   update: (id: string, data: any) => api.put(`/users/${id}`, data),
@@ -49,7 +49,7 @@ export const userAPI = {
   getCompanyInfo: () => api.get('/users/me/company-info'),
   updateCompanyInfo: (data: any) => api.patch('/users/me/company-info', data),
   uploadLogo: (logoType: 'primary' | 'secondary' | 'tertiary', formData: FormData) =>
-    api.post('/users/me/upload-logo', formData, {
+    api.post(`/users/me/upload-logo?type=${logoType}`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
 };

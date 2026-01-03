@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import {
   Box,
   TextField,
-  Button,
   FormControl,
   InputLabel,
   Select,
@@ -65,7 +64,6 @@ const FilterToolbar: React.FC<FilterToolbarProps> = ({
   const [projects, setProjects] = useState<Project[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [expanded, setExpanded] = useState(true);
-  const [loading, setLoading] = useState(false);
 
   // Determine which statuses to show based on type
   const getStatusOptions = () => {
@@ -87,13 +85,10 @@ const FilterToolbar: React.FC<FilterToolbarProps> = ({
   useEffect(() => {
     const loadCampaigns = async () => {
       try {
-        setLoading(true);
         const response = await campaignAPI.getAll({ limit: 1000 });
         setCampaigns(response.data.campaigns || []);
       } catch (error) {
         console.error('Error loading campaigns:', error);
-      } finally {
-        setLoading(false);
       }
     };
 
@@ -106,7 +101,6 @@ const FilterToolbar: React.FC<FilterToolbarProps> = ({
   useEffect(() => {
     const loadProjects = async () => {
       try {
-        setLoading(true);
         const params: any = { limit: 1000 };
         // If campaigns are filtered, only load projects for those campaigns
         if (filters.campaignIds && filters.campaignIds.length > 0) {
@@ -116,8 +110,6 @@ const FilterToolbar: React.FC<FilterToolbarProps> = ({
         setProjects(response.data.projects || []);
       } catch (error) {
         console.error('Error loading projects:', error);
-      } finally {
-        setLoading(false);
       }
     };
 
@@ -130,13 +122,10 @@ const FilterToolbar: React.FC<FilterToolbarProps> = ({
   useEffect(() => {
     const loadUsers = async () => {
       try {
-        setLoading(true);
         const response = await userAPI.getAll();
         setUsers(response.data.users || []);
       } catch (error) {
         console.error('Error loading users:', error);
-      } finally {
-        setLoading(false);
       }
     };
 
