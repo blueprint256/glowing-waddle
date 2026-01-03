@@ -8,9 +8,10 @@ export interface ICommandMappingStep {
 
 export interface ICommandMapping extends Document {
   command: string; // Unique command identifier (e.g., "generate-campaign")
-  // Support both legacy single-prompt and new multi-step chains
-  promptId?: mongoose.Types.ObjectId; // Legacy: Reference to Prompt (deprecated, use steps instead)
-  steps?: ICommandMappingStep[]; // Multi-step chain: array of steps with prompt and optional provider/model
+  // Support three modes: single prompt, chain, or legacy steps array
+  promptId?: mongoose.Types.ObjectId; // Reference to single Prompt
+  chainId?: mongoose.Types.ObjectId; // Reference to Chain (multi-step with embedded prompts)
+  steps?: ICommandMappingStep[]; // Legacy: Direct steps array (deprecated, kept for backward compatibility)
   createdAt: Date;
   updatedAt: Date;
 }
@@ -43,13 +44,19 @@ const commandMappingSchema = new Schema<ICommandMapping>(
       unique: true,
       trim: true
     },
-    // Legacy field for backward compatibility
+    // Single prompt reference
     promptId: {
       type: Schema.Types.ObjectId,
       ref: 'Prompt',
       required: false
     },
-    // New multi-step chain field
+    // Chain reference (new approach)
+    chainId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Chain',
+      required: false
+    },
+    // Legacy steps array (backward compatibility)
     steps: {
       type: [commandMappingStepSchema],
       required: false
@@ -60,10 +67,18 @@ const commandMappingSchema = new Schema<ICommandMapping>(
   }
 );
 
-// Pre-save hook to ensure either promptId or steps is provided
+// Pre-save hook to ensure exactly one of promptId, chainId, or steps is provided
 commandMappingSchema.pre('save', function(next) {
-  if (!this.promptId && (!this.steps || this.steps.length === 0)) {
-    next(new Error('Either promptId or steps array must be provided'));
+  const hasPromptId = !!this.promptId;
+  const hasChainId = !!this.chainId;
+  const hasSteps = !!(this.steps && this.steps.length > 0);
+
+  const count = [hasPromptId, hasChainId, hasSteps].filter(Boolean).length;
+
+  if (count === 0) {
+    next(new Error('Must provide either promptId, chainId, or steps array'));
+  } else if (count > 1) {
+    next(new Error('Cannot provide multiple of: promptId, chainId, steps. Choose only one.'));
   } else {
     next();
   }
