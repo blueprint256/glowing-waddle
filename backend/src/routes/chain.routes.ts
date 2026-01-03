@@ -1,8 +1,22 @@
 import express, { Request, Response } from 'express';
 import { Chain } from '../models/Chain';
-import { isAuthenticated, isSystemAdmin } from '../middleware/auth';
+import { UserRole } from '../models/User';
+import { isAuthenticated } from '../middleware/auth';
 
 const router = express.Router();
+
+/**
+ * Middleware to ensure only System Admins can access chains
+ */
+const isSystemAdmin = (req: Request, res: Response, next: Function) => {
+  if (req.user!.role !== UserRole.SYSTEM_ADMIN) {
+    return res.status(403).json({
+      success: false,
+      message: 'Only System Administrators can manage chains'
+    });
+  }
+  next();
+};
 
 /**
  * @route   GET /api/chains

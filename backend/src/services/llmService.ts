@@ -945,11 +945,31 @@ export async function executeCommandChain(
     console.log('Timestamp:', new Date().toISOString());
     console.log('========================================\n');
 
-    // Determine steps: either from steps array (new) or legacy promptId
+    // Determine steps: from chainId (embedded prompts), steps array, or promptId
     let steps: any[];
-    if (commandMapping.steps && Array.isArray(commandMapping.steps) && commandMapping.steps.length > 0) {
+    let isChainExecution = false;
+
+    if (commandMapping.chainId) {
+      // New chain execution with embedded prompts
+      const chain = commandMapping.chainId;
+      if (!chain || !chain.steps || chain.steps.length === 0) {
+        throw new Error('Chain must have at least one step');
+      }
+
+      // Convert chain steps (embedded prompts) to execution steps
+      steps = chain.steps.map((chainStep: any) => ({
+        prompt: chainStep.prompt, // Embedded prompt text
+        description: chainStep.description,
+        provider: chainStep.provider, // Enforced provider
+        model: chainStep.model, // Enforced model
+        isEmbedded: true
+      }));
+      isChainExecution = true;
+      console.log(`📋 Executing Chain: ${chain.name} (${steps.length} step(s))\n`);
+    } else if (commandMapping.steps && Array.isArray(commandMapping.steps) && commandMapping.steps.length > 0) {
+      // Legacy steps array (references to prompts)
       steps = commandMapping.steps;
-      console.log(`📋 Executing ${steps.length} step(s) in chain\n`);
+      console.log(`📋 Executing ${steps.length} step(s) from steps array\n`);
     } else if (commandMapping.promptId) {
       // Legacy single-prompt mapping - convert to single-step chain
       steps = [{
@@ -957,9 +977,9 @@ export async function executeCommandChain(
         provider: undefined,
         model: undefined
       }];
-      console.log('📋 Executing legacy single-step mapping\n');
+      console.log('📋 Executing single prompt mapping\n');
     } else {
-      throw new Error('Command mapping must have either steps array or promptId');
+      throw new Error('Command mapping must have either chainId, steps array, or promptId');
     }
 
     let previousOutput = '';
@@ -981,15 +1001,41 @@ export async function executeCommandChain(
       console.log(`🔹 STEP ${stepNumber} of ${steps.length}`);
       console.log(`========================================`);
 
-      // Get prompt details
-      const prompt = step.promptId;
-      if (!prompt || !prompt.details) {
-        throw new Error(`Step ${stepNumber}: Prompt details not found. Ensure prompt is populated.`);
+      // Get prompt details - handle both embedded (from chains) and referenced prompts
+      let promptText: string;
+      let promptName: string;
+      let isImageGeneration: boolean;
+
+      if (step.isEmbedded) {
+        // Embedded prompt from chain (new approach)
+        promptText = step.prompt;
+        promptName = step.description;
+
+        // Embedded chain prompts currently only support text generation
+        // Image generation in chains can be added as a future enhancement
+        isImageGeneration = false;
+
+        console.log('Prompt Type: Embedded (from Chain)');
+        console.log('Step Description:', step.description);
+        console.log('Provider (Enforced):', step.provider);
+        console.log('Model (Enforced):', step.model);
+      } else {
+        // Referenced prompt (legacy approach)
+        const prompt = step.promptId;
+        if (!prompt || !prompt.details) {
+          throw new Error(`Step ${stepNumber}: Prompt details not found. Ensure prompt is populated.`);
+        }
+
+        promptText = prompt.details;
+        promptName = prompt.name;
+        isImageGeneration = !!(prompt.imageLLMProvider || prompt.imageLLMModel);
+
+        console.log('Prompt Type: Referenced');
+        console.log('Prompt Name:', prompt.name);
+        console.log('Provider Override:', step.provider || 'None (use default or prompt config)');
+        console.log('Model Override:', step.model || 'None (use default or prompt config)');
       }
 
-      console.log('Prompt Name:', prompt.name);
-      console.log('Provider Override:', step.provider || 'None (use default or prompt config)');
-      console.log('Model Override:', step.model || 'None (use default or prompt config)');
       console.log('Previous Output Available:', !!previousOutput);
       console.log('Previous Image Available:', !!previousImageUrl);
 
@@ -1012,15 +1058,11 @@ export async function executeCommandChain(
       }
 
       // Compile prompt for this step
-      const compiledPrompt = compileSuperPrompt(prompt.details, stepParams);
+      const compiledPrompt = compileSuperPrompt(promptText, stepParams);
       compiledPrompts.push(compiledPrompt);
 
       console.log('Compiled Prompt Length:', compiledPrompt.length, 'characters');
       console.log('Compiled Prompt Preview:', compiledPrompt.substring(0, 150) + (compiledPrompt.length > 150 ? '...' : ''));
-
-      // Determine if this is an image generation step or text generation
-      // Image generation is indicated by imageLLMProvider or imageLLMModel in the prompt
-      const isImageGeneration = !!(prompt.imageLLMProvider || prompt.imageLLMModel);
 
       console.log('Step Type:', isImageGeneration ? 'Image Generation' : 'Text Generation');
 
@@ -1029,11 +1071,11 @@ export async function executeCommandChain(
       let stepUsage: any;
 
       if (isImageGeneration) {
-        // Image generation step
+        // Image generation step (only for referenced prompts)
         console.log('🎨 Executing image generation...');
 
         const imageResult = await generateImageWithPrompt(
-          prompt.name,
+          promptName,
           stepParams,
           {
             userId: options?.userId
@@ -1050,9 +1092,19 @@ export async function executeCommandChain(
         console.log('📝 Executing text generation...');
 
         // Determine provider and model for this step
-        const llmConfig = await resolveLLMConfig(prompt.name);
-        const provider = (step.provider || llmConfig.provider) as LLMProvider;
-        const model = step.model || llmConfig.model;
+        let provider: LLMProvider;
+        let model: string;
+
+        if (step.isEmbedded) {
+          // For embedded prompts, use enforced provider and model from chain
+          provider = step.provider as LLMProvider;
+          model = step.model;
+        } else {
+          // For referenced prompts, allow overrides or use prompt config
+          const llmConfig = await resolveLLMConfig(promptName);
+          provider = (step.provider || llmConfig.provider) as LLMProvider;
+          model = step.model || llmConfig.model;
+        }
 
         console.log('Using Provider:', provider);
         console.log('Using Model:', model);
@@ -1061,7 +1113,7 @@ export async function executeCommandChain(
           provider,
           model,
           userId: options?.userId,
-          promptName: prompt.name
+          promptName: promptName
         });
 
         stepOutput = textResult.content;
