@@ -684,7 +684,7 @@ export async function generateImageWithPrompt(
   options?: {
     model?: string;
     size?: '1024x1024' | '1792x1024' | '1024x1792';
-    quality?: 'standard' | 'hd';
+    quality?: 'standard' | 'hd'; // Deprecated: not supported by gpt-image-1.5
     userId?: mongoose.Types.ObjectId;
   }
 ): Promise<{ imageUrl: string; compiledPrompt: string }> {
@@ -747,7 +747,7 @@ export async function generateImageWithPrompt(
     const validEditSizes = ['256x256', '512x512', '1024x1024', '1536x1024', '1024x1536', 'auto'];
     const size: '256x256' | '512x512' | '1024x1024' | '1536x1024' | '1024x1536' | 'auto' =
       validEditSizes.includes(requestedSize) ? requestedSize as any : '1024x1024';
-    const quality = options?.quality || 'standard';
+    // NOTE: quality parameter not supported by gpt-image-1.5
 
     // Log if prompt tried to use a different model (for debugging/migration purposes)
     if (prompt?.imageLLMModel && prompt.imageLLMModel !== 'gpt-image-1.5') {
@@ -806,7 +806,6 @@ export async function generateImageWithPrompt(
     console.log('Prompt Name:', promptName);
     console.log('Referenced Images:', imageFiles.length, '(from prompt template)');
     console.log('Image Size:', size);
-    console.log('Quality:', quality);
     console.log('Prompt Length:', compiledPrompt.length, 'characters');
     console.log('Prompt:', compiledPrompt);
     console.log('User ID:', options?.userId || 'N/A');
@@ -843,9 +842,8 @@ export async function generateImageWithPrompt(
         model: imageModel,
         prompt: compiledPrompt,
         n: 1,
-        size: size,
-        quality: quality
-        // NOTE: response_format is NOT supported by gpt-image-1.5
+        size: size
+        // NOTE: quality and response_format are NOT supported by gpt-image-1.5
       });
     }
 
@@ -876,7 +874,6 @@ export async function generateImageWithPrompt(
     console.log('Input Images:', imageFiles.length, 'referenced image(s)');
     console.log('Generated Image URL:', imageUrl);
     console.log('Image Size:', size);
-    console.log('Quality:', quality);
     console.log('Duration:', duration, 'ms');
     console.log('Timestamp:', new Date().toISOString());
     console.log('========================================\n');
@@ -1125,7 +1122,6 @@ export async function executeCommandChain(
           const openai = await getOpenAIClient();
           const imageModel = 'gpt-image-1.5';
           const size = '1024x1024';
-          const quality = 'standard';
 
           // Generate or edit image
           let response;
@@ -1144,8 +1140,8 @@ export async function executeCommandChain(
               model: imageModel,
               prompt: compiledPrompt,
               n: 1,
-              size: size,
-              quality: quality
+              size: size
+              // NOTE: quality parameter not supported by gpt-image-1.5
             });
           }
 
