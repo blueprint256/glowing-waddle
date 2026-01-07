@@ -1012,14 +1012,15 @@ export async function executeCommandChain(
         promptText = step.prompt;
         promptName = step.description;
 
-        // Embedded chain prompts currently only support text generation
-        // Image generation in chains can be added as a future enhancement
-        isImageGeneration = false;
+        // Detect image generation based on model name
+        // gpt-image-1.5 is the image generation model
+        isImageGeneration = step.model === 'gpt-image-1.5';
 
         console.log('Prompt Type: Embedded (from Chain)');
         console.log('Step Description:', step.description);
         console.log('Provider (Enforced):', step.provider);
         console.log('Model (Enforced):', step.model);
+        console.log('Is Image Generation:', isImageGeneration);
       } else {
         // Referenced prompt (legacy approach)
         const prompt = step.promptId;
@@ -1080,18 +1081,96 @@ export async function executeCommandChain(
       let stepUsage: any;
 
       if (isImageGeneration) {
-        // Image generation step (only for referenced prompts)
+        // Image generation step
         console.log('🎨 Executing image generation...');
 
-        const imageResult = await generateImageWithPrompt(
-          promptName,
-          stepParams,
-          {
-            userId: options?.userId
-          }
-        );
+        if (step.isEmbedded) {
+          // For embedded prompts, handle image generation inline
+          console.log('🎨 Image generation with embedded prompt (gpt-image-1.5)');
 
-        stepImageUrl = imageResult.imageUrl;
+          // Parse the prompt to detect referenced images
+          const imagePlaceholders = [
+            'baseImage', 'primaryLogo', 'secondaryLogo', 'tertiaryLogo',
+            'attachedImage1', 'attachedImage2', 'attachedImage3', 'attachedImage4',
+            'attachedImage5', 'attachedImage6', 'attachedImage7', 'attachedImage8',
+            'attachedImage9', 'attachedImage10'
+          ];
+
+          const referencedImages: string[] = [];
+          for (const placeholder of imagePlaceholders) {
+            if (compiledPrompt.includes(`{${placeholder}}`)) {
+              referencedImages.push(placeholder);
+            }
+          }
+
+          console.log('Referenced Images:', referencedImages.length > 0 ? referencedImages.join(', ') : 'None');
+
+          // Download referenced images
+          const imageFiles: any[] = [];
+          for (const placeholder of referencedImages) {
+            const imageUrl = stepParams[placeholder];
+            if (imageUrl && typeof imageUrl === 'string') {
+              try {
+                const { buffer, contentType, extension } = await downloadImageFromUrl(imageUrl);
+                const imageFile = await toFile(buffer, `${placeholder}.${extension}`, { type: contentType });
+                imageFiles.push(imageFile);
+                console.log(`✅ Downloaded: ${placeholder} (${buffer.length} bytes)`);
+              } catch (error: any) {
+                console.log(`⚠️  Failed to download ${placeholder}:`, error.message);
+              }
+            }
+          }
+
+          // Initialize OpenAI client
+          const openai = await getOpenAIClient();
+          const imageModel = 'gpt-image-1.5';
+          const size = '1024x1024';
+          const quality = 'standard';
+
+          // Generate or edit image
+          let response;
+          if (imageFiles.length > 0) {
+            console.log(`🎨 Using images.edit with ${imageFiles.length} image(s)`);
+            response = await openai.images.edit({
+              model: imageModel,
+              image: imageFiles,
+              prompt: compiledPrompt,
+              n: 1,
+              size: size
+            });
+          } else {
+            console.log('✨ Using images.generate (no images referenced)');
+            response = await openai.images.generate({
+              model: imageModel,
+              prompt: compiledPrompt,
+              n: 1,
+              size: size,
+              quality: quality
+            });
+          }
+
+          // Get base64 image and upload to S3
+          const base64Image = response.data?.[0]?.b64_json;
+          if (!base64Image) {
+            throw new Error('No base64 image data returned from image generation API');
+          }
+
+          const imageBuffer = Buffer.from(base64Image, 'base64');
+          stepImageUrl = await uploadBufferToS3(imageBuffer, 'image/png', 'generated-images');
+
+          console.log('✅ Image generated and uploaded:', stepImageUrl);
+        } else {
+          // For referenced prompts, use existing function
+          const imageResult = await generateImageWithPrompt(
+            promptName,
+            stepParams,
+            {
+              userId: options?.userId
+            }
+          );
+          stepImageUrl = imageResult.imageUrl;
+        }
+
         stepOutput = `[Image generated: ${stepImageUrl}]`;
         stepUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }; // Image gen doesn't use tokens
 
