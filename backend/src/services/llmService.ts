@@ -1124,14 +1124,23 @@ export async function executeCommandChain(
             const imageUrl = stepParams[placeholder];
             if (imageUrl && typeof imageUrl === 'string') {
               try {
+                console.log(`📥 Downloading ${placeholder} from: ${imageUrl.substring(0, 100)}...`);
                 const { buffer, contentType, extension } = await downloadImageFromUrl(imageUrl);
                 const imageFile = await toFile(buffer, `${placeholder}.${extension}`, { type: contentType });
                 imageFiles.push(imageFile);
                 console.log(`✅ Downloaded: ${placeholder} (${buffer.length} bytes)`);
               } catch (error: any) {
-                console.log(`⚠️  Failed to download ${placeholder}:`, error.message);
+                console.error(`❌ Failed to download ${placeholder}:`, error.message);
+                console.error(`   URL: ${imageUrl}`);
               }
+            } else {
+              console.log(`⚠️  Skipping ${placeholder}: ${!imageUrl ? 'No URL available' : 'Invalid URL type'}`);
             }
+          }
+
+          console.log(`\n📦 Total images downloaded: ${imageFiles.length} of ${imagesToUse.length}`);
+          if (imageFiles.length < imagesToUse.length) {
+            console.warn(`⚠️  Warning: Not all images were downloaded successfully`);
           }
 
           // Initialize OpenAI client

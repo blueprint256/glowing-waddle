@@ -14,7 +14,8 @@ export interface ITask extends Document {
   status: TaskStatus;
   taskDate?: Date; // Single date for when task should be carried out
   content?: string;
-  designedImage?: string; // S3 URL for product marketing image
+  designedImage?: string; // S3 URL for product marketing image (adopted)
+  pendingGeneratedImage?: string; // S3 URL for AI-generated image pending adoption/discard
   attachedImages?: string[]; // Array of S3 URLs for additional reference images
   createdBy: mongoose.Types.ObjectId;
   lastModifiedBy?: mongoose.Types.ObjectId;
@@ -55,7 +56,10 @@ const taskSchema = new Schema<ITask>(
       type: String
     },
     designedImage: {
-      type: String // S3 URL
+      type: String // S3 URL for adopted image
+    },
+    pendingGeneratedImage: {
+      type: String // S3 URL for AI-generated image pending adoption/discard
     },
     attachedImages: {
       type: [String], // Array of S3 URLs
