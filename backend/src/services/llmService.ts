@@ -1085,7 +1085,7 @@ export async function executeCommandChain(
           // For embedded prompts, handle image generation inline
           console.log('🎨 Image generation with embedded prompt (gpt-image-1.5)');
 
-          // Parse the prompt to detect referenced images
+          // Collect available images based on carryForwardImages setting
           const imagePlaceholders = [
             'baseImage', 'primaryLogo', 'secondaryLogo', 'tertiaryLogo',
             'attachedImage1', 'attachedImage2', 'attachedImage3', 'attachedImage4',
@@ -1093,18 +1093,34 @@ export async function executeCommandChain(
             'attachedImage9', 'attachedImage10'
           ];
 
-          const referencedImages: string[] = [];
-          for (const placeholder of imagePlaceholders) {
-            if (compiledPrompt.includes(`{${placeholder}}`)) {
-              referencedImages.push(placeholder);
+          let imagesToUse: string[] = [];
+
+          // Determine which images to use based on carryForwardImages setting
+          const shouldCarryForward = step.carryForwardImages !== false; // Default to true
+
+          if (shouldCarryForward) {
+            // Carry forward mode: Use ALL available images from stepParams
+            console.log('🔄 Carry Forward Images: ENABLED');
+            for (const placeholder of imagePlaceholders) {
+              if (stepParams[placeholder] && typeof stepParams[placeholder] === 'string') {
+                imagesToUse.push(placeholder);
+              }
             }
+            console.log('Available Images to Carry Forward:', imagesToUse.length > 0 ? imagesToUse.join(', ') : 'None');
+          } else {
+            // No carry forward: Only use explicitly referenced images in the prompt
+            console.log('🔄 Carry Forward Images: DISABLED');
+            for (const placeholder of imagePlaceholders) {
+              if (compiledPrompt.includes(`{${placeholder}}`)) {
+                imagesToUse.push(placeholder);
+              }
+            }
+            console.log('Referenced Images in Prompt:', imagesToUse.length > 0 ? imagesToUse.join(', ') : 'None');
           }
 
-          console.log('Referenced Images:', referencedImages.length > 0 ? referencedImages.join(', ') : 'None');
-
-          // Download referenced images
+          // Download images
           const imageFiles: any[] = [];
-          for (const placeholder of referencedImages) {
+          for (const placeholder of imagesToUse) {
             const imageUrl = stepParams[placeholder];
             if (imageUrl && typeof imageUrl === 'string') {
               try {
