@@ -7,10 +7,6 @@ import {
   Chip,
   Button,
   TextField,
-  List,
-  ListItem,
-  ListItemText,
-  Divider,
   Grid,
   MenuItem,
   CircularProgress,
@@ -20,7 +16,10 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Snackbar
+  Snackbar,
+  Breadcrumbs,
+  Link,
+  IconButton
 } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -28,21 +27,20 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import {
   CloudUpload as CloudUploadIcon,
   Visibility as VisibilityIcon,
-  AutoAwesome as AutoAwesomeIcon
+  AutoAwesome as AutoAwesomeIcon,
+  ArrowBack as ArrowBackIcon,
+  Home as HomeIcon
 } from '@mui/icons-material';
-import { taskAPI, commentAPI } from '../../services/api';
-import { Task, Comment, TaskStatus } from '../../types';
+import { taskAPI } from '../../services/api';
+import { Task, TaskStatus } from '../../types';
 import SocialPreviewModal from '../../components/SocialPreviewModal';
 
 export default function TaskDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [task, setTask] = useState<Task | null>(null);
-  const [comments, setComments] = useState<Comment[]>([]);
-  const [newComment, setNewComment] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [refineModalOpen, setRefineModalOpen] = useState(false);
@@ -67,7 +65,6 @@ export default function TaskDetail() {
   useEffect(() => {
     if (id) {
       loadTask();
-      loadComments();
     }
   }, [id]);
 
@@ -92,26 +89,6 @@ export default function TaskDetail() {
       setError(error.response?.data?.message || 'Failed to load task');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadComments = async () => {
-    try {
-      const res = await commentAPI.getAll({ taskId: id });
-      setComments(res.data.comments || []);
-    } catch (error) {
-      console.error('Error loading comments:', error);
-    }
-  };
-
-  const handleAddComment = async () => {
-    if (!newComment.trim()) return;
-    try {
-      await commentAPI.create({ content: newComment, taskId: id });
-      setNewComment('');
-      loadComments();
-    } catch (error) {
-      console.error('Error adding comment:', error);
     }
   };
 
@@ -150,11 +127,15 @@ export default function TaskDetail() {
         ...editForm,
         taskDate: editForm.taskDate?.toISOString()
       });
-      setIsEditing(false);
       loadTask();
+      setSnackbarMessage('Task updated successfully!');
+      setSnackbarSeverity('success');
+      setSnackbarOpen(true);
     } catch (error: any) {
       console.error('Error updating task:', error);
-      alert(error.response?.data?.message || 'Failed to update task');
+      setSnackbarMessage(error.response?.data?.message || 'Failed to update task');
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
     }
   };
 
@@ -295,268 +276,251 @@ export default function TaskDetail() {
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
       <Box>
+        {/* Breadcrumb Navigation */}
+        <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
+          <IconButton
+            onClick={() => navigate(-1)}
+            sx={{
+              backgroundColor: 'primary.main',
+              color: 'white',
+              '&:hover': { backgroundColor: 'primary.dark' },
+              width: 40,
+              height: 40
+            }}
+          >
+            <ArrowBackIcon />
+          </IconButton>
+          <Breadcrumbs aria-label="breadcrumb">
+            <Link
+              underline="hover"
+              sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}
+              color="inherit"
+              onClick={() => navigate('/')}
+            >
+              <HomeIcon sx={{ mr: 0.5 }} fontSize="inherit" />
+              Home
+            </Link>
+            <Link
+              underline="hover"
+              sx={{ cursor: 'pointer' }}
+              color="inherit"
+              onClick={() => navigate('/details-sheet')}
+            >
+              Details Sheet
+            </Link>
+            <Typography color="text.primary">{task?.name || 'Task Details'}</Typography>
+          </Breadcrumbs>
+        </Box>
+
         <Paper sx={{ p: 3, mb: 3 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-            <Typography variant="h4">{task.name}</Typography>
-            <Box>
-              <Chip
-                label={task.status}
-                color={getStatusColor(task.status)}
-              />
-            </Box>
-          </Box>
+          {/* Task Details Form - Always Editable */}
+          <Box>
+            <TextField
+              fullWidth
+              label="Task Name"
+              value={editForm.name}
+              onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+              margin="normal"
+              required
+              variant="outlined"
+              sx={{ mb: 2 }}
+            />
 
-          {!isEditing ? (
-            // View Mode
-            <Box>
-              <Typography variant="body1" paragraph>
-                {task.description}
-              </Typography>
+            <TextField
+              fullWidth
+              label="Description"
+              value={editForm.description}
+              onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+              margin="normal"
+              multiline
+              rows={3}
+              variant="outlined"
+            />
 
-              <Grid container spacing={2} sx={{ mb: 2 }}>
-                <Grid item xs={12} md={6}>
-                  <Typography variant="subtitle2" color="text.secondary">Status</Typography>
-                  <Typography variant="body1">{task.status}</Typography>
-                </Grid>
-                {task.taskDate && (
-                  <Grid item xs={12} md={6}>
-                    <Typography variant="subtitle2" color="text.secondary">Task Date</Typography>
-                    <Typography variant="body1">
-                      {new Date(task.taskDate).toLocaleDateString()}
-                    </Typography>
-                  </Grid>
-                )}
+            <Button
+              variant="outlined"
+              startIcon={refining ? <CircularProgress size={20} /> : <AutoAwesomeIcon />}
+              onClick={handleRefineDescription}
+              disabled={refining || !editForm.description.trim()}
+              sx={{ mt: 1, mb: 2 }}
+            >
+              {refining ? 'Refining...' : 'Refine Description with AI'}
+            </Button>
+
+            <Grid container spacing={2} sx={{ mb: 2 }}>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  select
+                  label="Status"
+                  value={editForm.status}
+                  onChange={(e) => setEditForm({ ...editForm, status: e.target.value as TaskStatus })}
+                >
+                  {Object.values(TaskStatus).map((status) => (
+                    <MenuItem key={status} value={status}>
+                      {status}
+                    </MenuItem>
+                  ))}
+                </TextField>
               </Grid>
+              <Grid item xs={12} md={6}>
+                <DatePicker
+                  label="Task Date"
+                  value={editForm.taskDate}
+                  onChange={(date) => setEditForm({ ...editForm, taskDate: date })}
+                  slotProps={{ textField: { fullWidth: true } }}
+                />
+              </Grid>
+            </Grid>
 
-              {task.content && (
-                <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
-                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                    Content
-                  </Typography>
-                  <Typography variant="body2">{task.content}</Typography>
-                </Box>
-              )}
+            <TextField
+              fullWidth
+              label="Content"
+              value={editForm.content}
+              onChange={(e) => setEditForm({ ...editForm, content: e.target.value })}
+              margin="normal"
+              multiline
+              rows={4}
+              variant="outlined"
+              sx={{ mb: 3 }}
+            />
 
-              {/* Designed Image Section */}
-              <Box sx={{ mt: 3 }}>
-                <Typography variant="h6" gutterBottom>Designed Image</Typography>
+            {/* Designed Image Section */}
+            <Box sx={{ mt: 3, mb: 3 }}>
+              <Typography variant="h6" gutterBottom>Designed Image</Typography>
 
-                <Grid container spacing={3}>
-                  {/* Base Image */}
-                  <Grid item xs={12} md={generatedPosterUrl ? 6 : 12}>
+              <Grid container spacing={3}>
+                {/* Base Image */}
+                <Grid item xs={12} md={generatedPosterUrl ? 6 : 12}>
+                  <Box>
+                    {task.designedImage || generatedPosterUrl ? (
+                      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                        {generatedPosterUrl ? 'Current Image' : 'Task Image'}
+                      </Typography>
+                    ) : null}
+                    {task.designedImage ? (
+                      <Box>
+                        <CardMedia
+                          component="img"
+                          image={task.designedImage}
+                          alt="Task designed image"
+                          sx={{
+                            width: '100%',
+                            maxWidth: generatedPosterUrl ? 500 : 600,
+                            maxHeight: 400,
+                            objectFit: 'contain',
+                            borderRadius: 1,
+                            border: '1px solid #e0e0e0'
+                          }}
+                        />
+                      </Box>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        No image uploaded yet
+                      </Typography>
+                    )}
+
+                    <Box sx={{ mt: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                      <Button
+                        variant="outlined"
+                        component="label"
+                        startIcon={uploading ? <CircularProgress size={20} /> : <CloudUploadIcon />}
+                        disabled={uploading}
+                      >
+                        {uploading ? 'Uploading...' : task.designedImage ? 'Replace Image' : 'Upload Image'}
+                        <input
+                          type="file"
+                          hidden
+                          accept="image/*"
+                          onChange={handleImageUpload}
+                        />
+                      </Button>
+
+                      <Button
+                        variant="contained"
+                        startIcon={generatingPoster ? <CircularProgress size={20} /> : <AutoAwesomeIcon />}
+                        onClick={handleGeneratePoster}
+                        disabled={generatingPoster}
+                        sx={{
+                          backgroundColor: '#9333EA',
+                          '&:hover': { backgroundColor: '#7C3AED' }
+                        }}
+                      >
+                        {generatingPoster ? 'Generating Poster...' : 'Generate Poster with AI'}
+                      </Button>
+                    </Box>
+                  </Box>
+                </Grid>
+
+                {/* Generated Poster Preview */}
+                {generatedPosterUrl && (
+                  <Grid item xs={12} md={6}>
                     <Box>
-                      {task.designedImage || generatedPosterUrl ? (
-                        <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                          {generatedPosterUrl ? 'Current Image' : 'Task Image'}
-                        </Typography>
-                      ) : null}
-                      {task.designedImage ? (
-                        <Box>
-                          <CardMedia
-                            component="img"
-                            image={task.designedImage}
-                            alt="Task designed image"
-                            sx={{
-                              width: '100%',
-                              maxWidth: generatedPosterUrl ? 500 : 600,
-                              maxHeight: 400,
-                              objectFit: 'contain',
-                              borderRadius: 1,
-                              border: '1px solid #e0e0e0'
-                            }}
-                          />
-                        </Box>
-                      ) : (
-                        <Typography variant="body2" color="text.secondary">
-                          No image uploaded yet
-                        </Typography>
-                      )}
-
-                      <Box sx={{ mt: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                        <Button
-                          variant="outlined"
-                          component="label"
-                          startIcon={uploading ? <CircularProgress size={20} /> : <CloudUploadIcon />}
-                          disabled={uploading}
-                        >
-                          {uploading ? 'Uploading...' : task.designedImage ? 'Replace Image' : 'Upload Image'}
-                          <input
-                            type="file"
-                            hidden
-                            accept="image/*"
-                            onChange={handleImageUpload}
-                          />
-                        </Button>
-
+                      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                        Generated Poster
+                      </Typography>
+                      <CardMedia
+                        component="img"
+                        image={generatedPosterUrl}
+                        alt="Generated poster"
+                        sx={{
+                          width: '100%',
+                          maxWidth: 500,
+                          maxHeight: 400,
+                          objectFit: 'contain',
+                          borderRadius: 1,
+                          border: '2px solid #9333EA'
+                        }}
+                      />
+                      <Box sx={{ mt: 2 }}>
                         <Button
                           variant="contained"
-                          startIcon={generatingPoster ? <CircularProgress size={20} /> : <AutoAwesomeIcon />}
-                          onClick={handleGeneratePoster}
-                          disabled={generatingPoster}
-                          sx={{
-                            backgroundColor: '#9333EA',
-                            '&:hover': { backgroundColor: '#7C3AED' }
-                          }}
+                          color="success"
+                          onClick={handleAdoptPoster}
+                          disabled={adoptingPoster}
+                          startIcon={adoptingPoster ? <CircularProgress size={20} /> : null}
+                          fullWidth
                         >
-                          {generatingPoster ? 'Generating Poster...' : 'Generate Poster with AI'}
+                          {adoptingPoster ? 'Adopting...' : 'Adopt This Poster'}
+                        </Button>
+                        <Button
+                          variant="outlined"
+                          onClick={() => setGeneratedPosterUrl(null)}
+                          sx={{ mt: 1 }}
+                          fullWidth
+                        >
+                          Discard
                         </Button>
                       </Box>
                     </Box>
                   </Grid>
-
-                  {/* Generated Poster Preview */}
-                  {generatedPosterUrl && (
-                    <Grid item xs={12} md={6}>
-                      <Box>
-                        <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                          Generated Poster
-                        </Typography>
-                        <CardMedia
-                          component="img"
-                          image={generatedPosterUrl}
-                          alt="Generated poster"
-                          sx={{
-                            width: '100%',
-                            maxWidth: 500,
-                            maxHeight: 400,
-                            objectFit: 'contain',
-                            borderRadius: 1,
-                            border: '2px solid #9333EA'
-                          }}
-                        />
-                        <Box sx={{ mt: 2 }}>
-                          <Button
-                            variant="contained"
-                            color="success"
-                            onClick={handleAdoptPoster}
-                            disabled={adoptingPoster}
-                            startIcon={adoptingPoster ? <CircularProgress size={20} /> : null}
-                            fullWidth
-                          >
-                            {adoptingPoster ? 'Adopting...' : 'Adopt This Poster'}
-                          </Button>
-                          <Button
-                            variant="outlined"
-                            onClick={() => setGeneratedPosterUrl(null)}
-                            sx={{ mt: 1 }}
-                            fullWidth
-                          >
-                            Discard
-                          </Button>
-                        </Box>
-                      </Box>
-                    </Grid>
-                  )}
-                </Grid>
-              </Box>
-
-              <Box sx={{ mt: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                <Button
-                  variant="contained"
-                  startIcon={<VisibilityIcon />}
-                  onClick={() => setPreviewOpen(true)}
-                  disabled={!task.name && !task.designedImage}
-                  sx={{ backgroundColor: '#1DA1F2', '&:hover': { backgroundColor: '#1A91DA' } }}
-                >
-                  Preview on Social Media
-                </Button>
-                <Button variant="contained" onClick={() => setIsEditing(true)}>
-                  Edit Task
-                </Button>
-                <Button variant="outlined" color="error" onClick={handleDeleteTask}>
-                  Delete Task
-                </Button>
-                <Button variant="outlined" onClick={() => navigate(-1)}>
-                  Back
-                </Button>
-              </Box>
-            </Box>
-          ) : (
-            // Edit Mode
-            <Box>
-              <TextField
-                fullWidth
-                label="Name"
-                value={editForm.name}
-                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                margin="normal"
-                required
-              />
-              <TextField
-                fullWidth
-                label="Description"
-                value={editForm.description}
-                onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                margin="normal"
-                multiline
-                rows={3}
-              />
-              <Button
-                variant="outlined"
-                startIcon={refining ? <CircularProgress size={20} /> : <AutoAwesomeIcon />}
-                onClick={handleRefineDescription}
-                disabled={refining || !editForm.description.trim()}
-                sx={{ mt: 1, mb: 1 }}
-              >
-                {refining ? 'Refining...' : 'Refine Description with AI'}
-              </Button>
-
-              <Grid container spacing={2} sx={{ mt: 1 }}>
-                <Grid item xs={12} md={6}>
-                  <TextField
-                    fullWidth
-                    select
-                    label="Status"
-                    value={editForm.status}
-                    onChange={(e) => setEditForm({ ...editForm, status: e.target.value as TaskStatus })}
-                  >
-                    {Object.values(TaskStatus).map((status) => (
-                      <MenuItem key={status} value={status}>
-                        {status}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <DatePicker
-                    label="Task Date"
-                    value={editForm.taskDate}
-                    onChange={(date) => setEditForm({ ...editForm, taskDate: date })}
-                    slotProps={{ textField: { fullWidth: true } }}
-                  />
-                </Grid>
+                )}
               </Grid>
-
-              <TextField
-                fullWidth
-                label="Content"
-                value={editForm.content}
-                onChange={(e) => setEditForm({ ...editForm, content: e.target.value })}
-                margin="normal"
-                multiline
-                rows={4}
-              />
-
-              <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
-                <Button variant="contained" onClick={handleUpdateTask}>
-                  Save Changes
-                </Button>
-                <Button variant="outlined" onClick={() => {
-                  setIsEditing(false);
-                  // Reset form to original values
-                  setEditForm({
-                    name: task.name,
-                    description: task.description || '',
-                    status: task.status,
-                    taskDate: task.taskDate ? new Date(task.taskDate) : null,
-                    content: task.content || ''
-                  });
-                }}>
-                  Cancel
-                </Button>
-              </Box>
             </Box>
-          )}
+
+            {/* Action Buttons */}
+            <Box sx={{ mt: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+              <Button
+                variant="contained"
+                onClick={handleUpdateTask}
+                sx={{ backgroundColor: '#10B981', '&:hover': { backgroundColor: '#059669' } }}
+              >
+                Save Changes
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<VisibilityIcon />}
+                onClick={() => setPreviewOpen(true)}
+                disabled={!editForm.name && !task.designedImage}
+                sx={{ backgroundColor: '#1DA1F2', '&:hover': { backgroundColor: '#1A91DA' } }}
+              >
+                Preview on Social Media
+              </Button>
+              <Button variant="outlined" color="error" onClick={handleDeleteTask}>
+                Delete Task
+              </Button>
+            </Box>
+          </Box>
         </Paper>
 
         {/* Social Preview Modal */}
@@ -616,58 +580,6 @@ export default function TaskDetail() {
             </Button>
           </DialogActions>
         </Dialog>
-
-        {/* Comments Section */}
-        <Paper sx={{ p: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            Comments
-          </Typography>
-          <Box sx={{ mb: 2 }}>
-            <TextField
-              fullWidth
-              multiline
-              rows={2}
-              placeholder="Add a comment..."
-              value={newComment}
-              onChange={(e) => setNewComment(e.target.value)}
-            />
-            <Button
-              variant="contained"
-              onClick={handleAddComment}
-              sx={{ mt: 1 }}
-              disabled={!newComment.trim()}
-            >
-              Add Comment
-            </Button>
-          </Box>
-          <Divider sx={{ my: 2 }} />
-          <List>
-            {comments.map((comment) => (
-              <ListItem key={comment._id} alignItems="flex-start">
-                <ListItemText
-                  primary={
-                    comment.authorId
-                      ? `${comment.authorId.firstName} ${comment.authorId.lastName}`
-                      : 'Unknown'
-                  }
-                  secondary={
-                    <>
-                      <Typography variant="body2" color="text.primary">
-                        {comment.content}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {new Date(comment.createdAt).toLocaleString()}
-                      </Typography>
-                    </>
-                  }
-                />
-              </ListItem>
-            ))}
-            {comments.length === 0 && (
-              <Typography color="text.secondary">No comments yet</Typography>
-            )}
-          </List>
-        </Paper>
 
         {/* Snackbar for notifications */}
         <Snackbar
