@@ -9,7 +9,7 @@ import { canCreateCampaign } from '../middleware/rbac';
 import { validateCampaignCreation, validateMongoId } from '../middleware/validation';
 import { logAudit } from '../utils/auditLogger';
 import { AuditAction } from '../models/AuditLog';
-import { fetchAndCompilePrompt, generateWithPrompt } from '../services/llmService';
+import { fetchAndCompilePrompt, generateWithPrompt, executeCommandChain } from '../services/llmService';
 
 const router = express.Router();
 
@@ -531,9 +531,11 @@ router.post('/:id/generate', isAuthenticated, validateMongoId('id'), async (req:
       });
     }
 
-    // Look up command mapping to get the prompt
+    // Look up command mapping (supports prompts, chains, and legacy steps)
     const commandMapping = await CommandMapping.findOne({ command: command.trim() })
-      .populate('promptId', 'name details');
+      .populate('promptId', 'name details')
+      .populate('chainId')
+      .populate('steps.promptId');
 
     if (!commandMapping) {
       return res.status(404).json({
@@ -542,11 +544,10 @@ router.post('/:id/generate', isAuthenticated, validateMongoId('id'), async (req:
       });
     }
 
-    const mappedPrompt = commandMapping.promptId as any;
-    if (!mappedPrompt) {
+    if (!commandMapping.promptId && !commandMapping.chainId && (!commandMapping.steps || commandMapping.steps.length === 0)) {
       return res.status(500).json({
         success: false,
-        message: 'Command mapping references an invalid prompt'
+        message: 'Command mapping is invalid - no prompt, chain, or steps configured'
       });
     }
 
@@ -565,8 +566,8 @@ router.post('/:id/generate', isAuthenticated, validateMongoId('id'), async (req:
     };
 
     try {
-      // Generate content with OpenAI using the mapped prompt
-      const result = await generateWithPrompt(mappedPrompt.name, promptParams, {
+      // Execute command using chain execution (supports single prompts, chains, and legacy steps)
+      const result = await executeCommandChain(commandMapping, promptParams, {
         userId: req.user!._id
       });
 
@@ -702,7 +703,7 @@ router.post('/:id/generate', isAuthenticated, validateMongoId('id'), async (req:
         metadata: {
           action: 'generate_campaign_content',
           command: command.trim(),
-          promptName: mappedPrompt.name,
+          mappingType: commandMapping.chainId ? 'chain' : (commandMapping.promptId ? 'prompt' : 'steps'),
           projectsCreated: createdProjects.length,
           tasksCreated: createdTasksCount.reduce((a, b) => a + b, 0),
           tokens: result.usage.total_tokens
@@ -725,7 +726,7 @@ router.post('/:id/generate', isAuthenticated, validateMongoId('id'), async (req:
       if (error.message.includes('not found')) {
         return res.status(404).json({
           success: false,
-          message: `Prompt '${mappedPrompt.name}' not found. Please contact your administrator.`
+          message: `Command '${command.trim()}' mapping not found or invalid. Please contact your administrator.`
         });
       } else if (error.message.includes('API key')) {
         return res.status(500).json({

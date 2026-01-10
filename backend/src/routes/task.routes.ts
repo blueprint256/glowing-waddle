@@ -12,7 +12,7 @@ import { validateMongoId } from '../middleware/validation';
 import { logAudit } from '../utils/auditLogger';
 import { AuditAction } from '../models/AuditLog';
 import { uploadTaskImage, uploadImageFromUrl } from '../utils/s3Service';
-import { generateWithPrompt, generateImageWithPrompt } from '../services/llmService';
+import { generateWithPrompt, generateImageWithPrompt, executeCommandChain } from '../services/llmService';
 import mongoose from 'mongoose';
 
 const router = express.Router();
@@ -399,9 +399,12 @@ router.post('/:id/refine-description', isAuthenticated, canManageTasks, validate
 
     // Resolve command-to-prompt mapping for "refine-task-description"
     const commandName = 'refine-task-description';
-    const mapping = await CommandMapping.findOne({ command: commandName }).populate('promptId');
+    const mapping = await CommandMapping.findOne({ command: commandName })
+      .populate('promptId')
+      .populate('chainId')
+      .populate('steps.promptId');
 
-    if (!mapping || !mapping.promptId) {
+    if (!mapping || (!mapping.promptId && !mapping.chainId && (!mapping.steps || mapping.steps.length === 0))) {
       return res.status(400).json({
         success: false,
         message: `No prompt configured for "${commandName}" command. Please configure it in Settings → Command Mappings.`
@@ -422,9 +425,9 @@ router.post('/:id/refine-description', isAuthenticated, canManageTasks, validate
       dynamicData.companyInfo = companyInfo;
     }
 
-    // Call LLM service with the mapped prompt
-    const result = await generateWithPrompt(
-      (mapping.promptId as any).name, // Prompt name from mapping
+    // Execute command using chain execution (supports single prompts, chains, and legacy steps)
+    const result = await executeCommandChain(
+      mapping,
       dynamicData,
       {
         userId: req.user!._id
@@ -476,9 +479,12 @@ router.post('/:id/generate-poster', isAuthenticated, canManageTasks, validateMon
 
     // Resolve command-to-prompt mapping for "generate-poster"
     const commandName = 'generate-poster';
-    const mapping = await CommandMapping.findOne({ command: commandName }).populate('promptId');
+    const mapping = await CommandMapping.findOne({ command: commandName })
+      .populate('promptId')
+      .populate('chainId')
+      .populate('steps.promptId');
 
-    if (!mapping || !mapping.promptId) {
+    if (!mapping || (!mapping.promptId && !mapping.chainId && (!mapping.steps || mapping.steps.length === 0))) {
       console.log('❌ No command mapping found for:', commandName);
       return res.status(400).json({
         success: false,
@@ -486,7 +492,14 @@ router.post('/:id/generate-poster', isAuthenticated, canManageTasks, validateMon
       });
     }
 
-    console.log('✅ Command Mapping Found:', (mapping.promptId as any).name);
+    // Log which mapping type is being used
+    if (mapping.chainId) {
+      console.log('✅ Command Mapping Found: Chain -', (mapping.chainId as any).name);
+    } else if (mapping.promptId) {
+      console.log('✅ Command Mapping Found: Prompt -', (mapping.promptId as any).name);
+    } else {
+      console.log('✅ Command Mapping Found: Legacy Steps -', mapping.steps?.length, 'step(s)');
+    }
 
     // Get user's company info for placeholders
     const user = await User.findById(req.user!._id);
@@ -545,27 +558,40 @@ router.post('/:id/generate-poster', isAuthenticated, canManageTasks, validateMon
       console.log('📢 Campaign details included:', campaign.name);
     }
 
-    console.log('\n🚀 Starting image generation workflow...\n');
+    console.log('\n🚀 Starting generation workflow...\n');
 
-    // Call image generation LLM service with the mapped prompt
-    const result = await generateImageWithPrompt(
-      (mapping.promptId as any).name, // Prompt name from mapping
+    // Execute command using chain execution (supports single prompts, chains, and legacy steps)
+    const result = await executeCommandChain(
+      mapping,
       dynamicData,
       {
         userId: req.user!._id
       }
     );
 
+    if (!result.imageUrl) {
+      console.log('❌ No image URL in result');
+      return res.status(500).json({
+        success: false,
+        message: 'Image generation failed - no image URL returned'
+      });
+    }
+
     console.log('🎉 Image generated successfully, uploading to S3...\n');
 
     // Download the generated image from OpenAI's temporary URL and upload to S3
     const permanentImageUrl = await uploadImageFromUrl(result.imageUrl, 'generated-posters');
+
+    // Save the generated image to the task as pending (not yet adopted)
+    task.pendingGeneratedImage = permanentImageUrl;
+    await task.save();
 
     console.log('\n========================================');
     console.log('✅ POSTER GENERATION SUCCESS');
     console.log('========================================');
     console.log('Task ID:', req.params.id);
     console.log('Permanent Image URL:', permanentImageUrl);
+    console.log('Saved to task.pendingGeneratedImage');
     console.log('Timestamp:', new Date().toISOString());
     console.log('========================================\n');
 
@@ -573,7 +599,7 @@ router.post('/:id/generate-poster', isAuthenticated, canManageTasks, validateMon
       success: true,
       message: 'Poster generated successfully',
       generatedImageUrl: permanentImageUrl,
-      compiledPrompt: result.compiledPrompt
+      compiledPrompts: result.compiledPrompts
     });
 
   } catch (error: any) {
@@ -608,17 +634,16 @@ router.patch('/:id/adopt-poster', isAuthenticated, canManageTasks, validateMongo
       });
     }
 
-    const { generatedImageUrl } = req.body;
-
-    if (!generatedImageUrl) {
+    if (!task.pendingGeneratedImage) {
       return res.status(400).json({
         success: false,
-        message: 'Generated image URL is required'
+        message: 'No pending generated image to adopt'
       });
     }
 
-    // Update task's designedImage with the generated poster
-    task.designedImage = generatedImageUrl;
+    // Move pendingGeneratedImage to designedImage (adopt the generated poster)
+    task.designedImage = task.pendingGeneratedImage;
+    task.pendingGeneratedImage = undefined; // Clear the pending image
     task.lastModifiedBy = req.user!._id;
     await task.save();
 
@@ -628,7 +653,7 @@ router.patch('/:id/adopt-poster', isAuthenticated, canManageTasks, validateMongo
       userId: req.user!._id,
       targetType: 'Task',
       targetId: task._id,
-      metadata: { action: 'adopted-poster', imageUrl: generatedImageUrl },
+      metadata: { action: 'adopted-poster', imageUrl: task.designedImage },
       req
     });
 
@@ -649,6 +674,65 @@ router.patch('/:id/adopt-poster', isAuthenticated, canManageTasks, validateMongo
     res.status(500).json({
       success: false,
       message: error.message || 'Error adopting poster'
+    });
+  }
+});
+
+/**
+ * @route   PATCH /api/tasks/:id/discard-poster
+ * @desc    Discard the pending generated poster
+ * @access  Private (System Admin, Hybrid)
+ */
+router.patch('/:id/discard-poster', isAuthenticated, canManageTasks, validateMongoId('id'), checkTaskOwnership, async (req: Request, res: Response) => {
+  try {
+    const task = await Task.findById(req.params.id);
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found'
+      });
+    }
+
+    if (!task.pendingGeneratedImage) {
+      return res.status(400).json({
+        success: false,
+        message: 'No pending generated image to discard'
+      });
+    }
+
+    // Clear the pending generated image
+    const discardedImageUrl = task.pendingGeneratedImage;
+    task.pendingGeneratedImage = undefined;
+    task.lastModifiedBy = req.user!._id;
+    await task.save();
+
+    // Log the action
+    await logAudit({
+      action: AuditAction.EVENT_UPDATED,
+      userId: req.user!._id,
+      targetType: 'Task',
+      targetId: task._id,
+      metadata: { action: 'discarded-poster', imageUrl: discardedImageUrl },
+      req
+    });
+
+    const updatedTask = await Task.findById(task._id)
+      .populate('projectId', 'name')
+      .populate('campaignId', 'name')
+      .populate('createdBy', 'firstName lastName')
+      .populate('lastModifiedBy', 'firstName lastName');
+
+    res.json({
+      success: true,
+      message: 'Poster discarded successfully',
+      task: updatedTask
+    });
+
+  } catch (error: any) {
+    console.error('Error discarding poster:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Error discarding poster'
     });
   }
 });

@@ -172,9 +172,46 @@ export const integrationsAPI = {
 export const commandMappingAPI = {
   getAll: () => api.get('/command-mappings'),
   getByCommand: (commandName: string) => api.get(`/command-mappings/command/${commandName}`),
-  create: (data: { command: string; promptId: string }) => api.post('/command-mappings', data),
-  update: (id: string, data: { command?: string; promptId?: string }) => api.patch(`/command-mappings/${id}`, data),
+  create: (data: {
+    command: string;
+    promptId?: string;
+    chainId?: string;
+    steps?: Array<{ promptId: string; provider?: string; model?: string }>
+  }) => api.post('/command-mappings', data),
+  update: (id: string, data: {
+    command?: string;
+    promptId?: string;
+    chainId?: string;
+    steps?: Array<{ promptId: string; provider?: string; model?: string }>
+  }) => api.patch(`/command-mappings/${id}`, data),
   delete: (id: string) => api.delete(`/command-mappings/${id}`)
+};
+
+// Chain API (System Admin only)
+export const chainAPI = {
+  getAll: () => api.get('/chains'),
+  getById: (id: string) => api.get(`/chains/${id}`),
+  create: (data: {
+    name: string;
+    steps: Array<{
+      description: string;
+      prompt: string;
+      provider: string;
+      model: string;
+      carryForwardImages?: boolean;
+    }>
+  }) => api.post('/chains', data),
+  update: (id: string, data: {
+    name?: string;
+    steps?: Array<{
+      description: string;
+      prompt: string;
+      provider: string;
+      model: string;
+      carryForwardImages?: boolean;
+    }>
+  }) => api.patch(`/chains/${id}`, data),
+  delete: (id: string) => api.delete(`/chains/${id}`)
 };
 
 export default api;

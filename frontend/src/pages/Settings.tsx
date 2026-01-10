@@ -28,7 +28,9 @@ import {
   TableHead,
   TableRow,
   IconButton,
-  Tooltip
+  Tooltip,
+  FormControlLabel,
+  Switch
 } from '@mui/material';
 import {
   CheckCircle,
@@ -45,7 +47,7 @@ import {
 } from '@mui/icons-material';
 import { useAuthStore } from '../store/authStore';
 import { UserRole } from '../types';
-import api, { promptAPI, commandMappingAPI } from '../services/api';
+import api, { promptAPI, commandMappingAPI, chainAPI } from '../services/api';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -72,9 +74,9 @@ function TabPanel(props: TabPanelProps) {
 const SECTORS = ['Tech', 'Retail', 'Healthcare', 'Finance', 'Education', 'Manufacturing', 'Other'];
 const BRAND_TONES = ['Professional', 'Fun', 'Serious', 'Casual', 'Formal', 'Friendly'];
 
-// LLM Provider models (for text generation)
+// LLM Provider models (for text generation and image generation)
 const LLM_MODELS: Record<string, string[]> = {
-  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo'],
+  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo', 'gpt-image-1.5'],
   anthropic: ['claude-3-5-sonnet-20241022', 'claude-3-opus-20240229', 'claude-3-haiku-20240307'],
   grok: ['grok-beta', 'grok-2'],
   gemini: ['gemini-1.5-pro', 'gemini-1.5-flash']
@@ -147,11 +149,34 @@ export default function Settings() {
   const [commandMappingsLoading, setCommandMappingsLoading] = useState(false);
   const [commandMappingModalOpen, setCommandMappingModalOpen] = useState(false);
   const [editingCommandMapping, setEditingCommandMapping] = useState<any>(null);
-  const [commandMappingForm, setCommandMappingForm] = useState({
+  const [commandMappingForm, setCommandMappingForm] = useState<{
+    command: string;
+    mappingType: 'prompt' | 'chain' | 'steps'; // Type of mapping
+    promptId?: string; // For single prompt mode
+    chainId?: string; // For chain mode
+    steps: Array<{ promptId: string; provider: string; model: string }>; // For legacy mode
+  }>({
     command: '',
-    promptId: ''
+    mappingType: 'prompt',
+    promptId: '',
+    chainId: '',
+    steps: [{ promptId: '', provider: '', model: '' }]
   });
   const [commandMappingSaving, setCommandMappingSaving] = useState(false);
+
+  // Chains state (System Admin only)
+  const [chains, setChains] = useState<any[]>([]);
+  const [chainsLoading, setChainsLoading] = useState(false);
+  const [chainModalOpen, setChainModalOpen] = useState(false);
+  const [editingChain, setEditingChain] = useState<any>(null);
+  const [chainForm, setChainForm] = useState<{
+    name: string;
+    steps: Array<{ description: string; prompt: string; provider: string; model: string; carryForwardImages?: boolean }>;
+  }>({
+    name: '',
+    steps: [{ description: '', prompt: '', provider: 'openai', model: 'gpt-4o-mini', carryForwardImages: true }]
+  });
+  const [chainSaving, setChainSaving] = useState(false);
 
   useEffect(() => {
     // Check for integration callback status
@@ -176,9 +201,10 @@ export default function Settings() {
       fetchCompanyInfo();
     }
 
-    // Fetch prompts and command mappings if user is System Admin
+    // Fetch prompts, chains, and command mappings if user is System Admin
     if (user?.role === UserRole.SYSTEM_ADMIN) {
       fetchPrompts();
+      fetchChains();
       fetchCommandMappings();
       fetchDefaultLLMConfig();
     }
@@ -429,6 +455,138 @@ export default function Settings() {
     }
   };
 
+  // Chain management functions
+  const fetchChains = async () => {
+    try {
+      setChainsLoading(true);
+      const response = await chainAPI.getAll();
+      if (response.data.success) {
+        setChains(response.data.chains);
+      }
+    } catch (error) {
+      console.error('Error fetching chains:', error);
+      setMessage({ type: 'error', text: 'Failed to load chains. Please try again.' });
+    } finally {
+      setChainsLoading(false);
+    }
+  };
+
+  const handleCreateChain = () => {
+    setEditingChain(null);
+    setChainForm({
+      name: '',
+      steps: [{ description: '', prompt: '', provider: 'openai', model: 'gpt-4o-mini', carryForwardImages: true }]
+    });
+    setChainModalOpen(true);
+  };
+
+  const handleEditChain = (chain: any) => {
+    setEditingChain(chain);
+    setChainForm({ name: chain.name, steps: chain.steps || [] });
+    setChainModalOpen(true);
+  };
+
+  const handleCloseChainModal = () => {
+    setChainModalOpen(false);
+    setEditingChain(null);
+    setChainForm({
+      name: '',
+      steps: [{ description: '', prompt: '', provider: 'openai', model: 'gpt-4o-mini', carryForwardImages: true }]
+    });
+  };
+
+  const handleAddChainStep = () => {
+    setChainForm({
+      ...chainForm,
+      steps: [...chainForm.steps, { description: '', prompt: '', provider: 'openai', model: 'gpt-4o-mini', carryForwardImages: true }]
+    });
+  };
+
+  const handleRemoveChainStep = (index: number) => {
+    if (chainForm.steps.length > 1) {
+      setChainForm({
+        ...chainForm,
+        steps: chainForm.steps.filter((_, i) => i !== index)
+      });
+    }
+  };
+
+  const handleChainStepChange = (index: number, field: string, value: string | boolean) => {
+    const updatedSteps = [...chainForm.steps];
+    updatedSteps[index] = { ...updatedSteps[index], [field]: value };
+    setChainForm({ ...chainForm, steps: updatedSteps });
+  };
+
+  const handleSaveChain = async () => {
+    try {
+      setChainSaving(true);
+
+      if (!chainForm.name.trim()) {
+        setMessage({ type: 'error', text: 'Chain name is required.' });
+        return;
+      }
+
+      if (chainForm.steps.length === 0) {
+        setMessage({ type: 'error', text: 'At least one step is required.' });
+        return;
+      }
+
+      // Validate each step
+      for (let i = 0; i < chainForm.steps.length; i++) {
+        const step = chainForm.steps[i];
+        if (!step.description.trim() || !step.prompt.trim() || !step.provider || !step.model) {
+          setMessage({ type: 'error', text: `Step ${i + 1}: All fields are required.` });
+          return;
+        }
+      }
+
+      if (editingChain) {
+        // Update existing chain
+        const response = await chainAPI.update(editingChain._id, chainForm);
+        if (response.data.success) {
+          setMessage({ type: 'success', text: 'Chain updated successfully!' });
+          fetchChains();
+          handleCloseChainModal();
+        }
+      } else {
+        // Create new chain
+        const response = await chainAPI.create(chainForm);
+        if (response.data.success) {
+          setMessage({ type: 'success', text: 'Chain created successfully!' });
+          fetchChains();
+          handleCloseChainModal();
+        }
+      }
+    } catch (error: any) {
+      console.error('Error saving chain:', error);
+      setMessage({
+        type: 'error',
+        text: error.response?.data?.message || 'Failed to save chain. Please try again.'
+      });
+    } finally {
+      setChainSaving(false);
+    }
+  };
+
+  const handleDeleteChain = async (chainId: string) => {
+    if (!window.confirm('Are you sure you want to delete this chain? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const response = await chainAPI.delete(chainId);
+      if (response.data.success) {
+        setMessage({ type: 'success', text: 'Chain deleted successfully!' });
+        fetchChains();
+        // Also refresh command mappings in case deleted chain was used in a mapping
+        fetchCommandMappings();
+      }
+    } catch (error) {
+      console.error('Error deleting chain:', error);
+      setMessage({ type: 'error', text: 'Failed to delete chain. Please try again.' });
+    }
+  };
+
   // Command Mapping management functions
   const fetchCommandMappings = async () => {
     try {
@@ -447,15 +605,49 @@ export default function Settings() {
 
   const handleCreateCommandMapping = () => {
     setEditingCommandMapping(null);
-    setCommandMappingForm({ command: '', promptId: '' });
+    setCommandMappingForm({
+      command: '',
+      mappingType: 'prompt',
+      promptId: '',
+      chainId: '',
+      steps: [{ promptId: '', provider: '', model: '' }]
+    });
     setCommandMappingModalOpen(true);
   };
 
   const handleEditCommandMapping = (mapping: any) => {
     setEditingCommandMapping(mapping);
-    setCommandMappingForm({
+
+    // Determine mapping type and populate form
+    let mappingType: 'prompt' | 'chain' | 'steps' = 'prompt';
+    let formData: any = {
       command: mapping.command,
-      promptId: mapping.promptId._id
+      promptId: '',
+      chainId: '',
+      steps: [{ promptId: '', provider: '', model: '' }]
+    };
+
+    if (mapping.chainId) {
+      // Chain mapping
+      mappingType = 'chain';
+      formData.chainId = mapping.chainId._id || mapping.chainId;
+    } else if (mapping.steps && Array.isArray(mapping.steps) && mapping.steps.length > 0) {
+      // Legacy steps format
+      mappingType = 'steps';
+      formData.steps = mapping.steps.map((step: any) => ({
+        promptId: step.promptId?._id || step.promptId || '',
+        provider: step.provider || '',
+        model: step.model || ''
+      }));
+    } else if (mapping.promptId) {
+      // Single prompt mapping
+      mappingType = 'prompt';
+      formData.promptId = mapping.promptId._id || mapping.promptId;
+    }
+
+    setCommandMappingForm({
+      ...formData,
+      mappingType
     });
     setCommandMappingModalOpen(true);
   };
@@ -463,21 +655,64 @@ export default function Settings() {
   const handleCloseCommandMappingModal = () => {
     setCommandMappingModalOpen(false);
     setEditingCommandMapping(null);
-    setCommandMappingForm({ command: '', promptId: '' });
+    setCommandMappingForm({
+      command: '',
+      mappingType: 'prompt',
+      promptId: '',
+      chainId: '',
+      steps: [{ promptId: '', provider: '', model: '' }]
+    });
   };
 
   const handleSaveCommandMapping = async () => {
     try {
       setCommandMappingSaving(true);
 
-      if (!commandMappingForm.command.trim() || !commandMappingForm.promptId) {
-        setMessage({ type: 'error', text: 'Command and prompt are required.' });
+      if (!commandMappingForm.command.trim()) {
+        setMessage({ type: 'error', text: 'Command name is required.' });
         return;
+      }
+
+      // Build payload based on mapping type
+      const payload: any = {
+        command: commandMappingForm.command.trim()
+      };
+
+      if (commandMappingForm.mappingType === 'prompt') {
+        // Single prompt mapping
+        if (!commandMappingForm.promptId) {
+          setMessage({ type: 'error', text: 'Please select a prompt.' });
+          return;
+        }
+        payload.promptId = commandMappingForm.promptId;
+      } else if (commandMappingForm.mappingType === 'chain') {
+        // Chain mapping
+        if (!commandMappingForm.chainId) {
+          setMessage({ type: 'error', text: 'Please select a chain.' });
+          return;
+        }
+        payload.chainId = commandMappingForm.chainId;
+      } else if (commandMappingForm.mappingType === 'steps') {
+        // Legacy steps array mapping
+        // Validate that all steps have a promptId
+        for (let i = 0; i < commandMappingForm.steps.length; i++) {
+          if (!commandMappingForm.steps[i].promptId) {
+            setMessage({ type: 'error', text: `Step ${i + 1}: Please select a prompt.` });
+            return;
+          }
+        }
+        // Filter out empty provider/model values
+        const steps = commandMappingForm.steps.map(step => ({
+          promptId: step.promptId,
+          ...(step.provider && { provider: step.provider }),
+          ...(step.model && { model: step.model })
+        }));
+        payload.steps = steps;
       }
 
       if (editingCommandMapping) {
         // Update existing mapping
-        const response = await commandMappingAPI.update(editingCommandMapping._id, commandMappingForm);
+        const response = await commandMappingAPI.update(editingCommandMapping._id, payload);
         if (response.data.success) {
           setMessage({ type: 'success', text: 'Command mapping updated successfully!' });
           fetchCommandMappings();
@@ -485,7 +720,7 @@ export default function Settings() {
         }
       } else {
         // Create new mapping
-        const response = await commandMappingAPI.create(commandMappingForm);
+        const response = await commandMappingAPI.create(payload);
         if (response.data.success) {
           setMessage({ type: 'success', text: 'Command mapping created successfully!' });
           fetchCommandMappings();
@@ -1631,13 +1866,22 @@ export default function Settings() {
                     Manage LLM prompts for dynamic content generation
                   </Typography>
                 </Box>
-                <Button
-                  variant="contained"
-                  startIcon={<Add />}
-                  onClick={handleCreatePrompt}
-                >
-                  Create Prompt
-                </Button>
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                  <Button
+                    variant="contained"
+                    startIcon={<Add />}
+                    onClick={handleCreatePrompt}
+                  >
+                    Create Prompt
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    startIcon={<Add />}
+                    onClick={handleCreateChain}
+                  >
+                    Create Chain
+                  </Button>
+                </Box>
               </Box>
 
               {promptsLoading ? (
@@ -1718,6 +1962,107 @@ export default function Settings() {
                 </Alert>
               </Box>
 
+              {/* Chains Section */}
+              <Divider sx={{ my: 4 }} />
+
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                <Box>
+                  <Typography variant="h6" gutterBottom>
+                    Chain Management
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Create multi-step LLM chains with different models for each step
+                  </Typography>
+                </Box>
+              </Box>
+
+              {chainsLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                  <CircularProgress />
+                </Box>
+              ) : chains.length === 0 ? (
+                <Box sx={{ textAlign: 'center', py: 4 }}>
+                  <Typography variant="body1" color="text.secondary">
+                    No chains created yet. Create your first chain to get started.
+                  </Typography>
+                </Box>
+              ) : (
+                <TableContainer>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Chain Name</TableCell>
+                        <TableCell>Steps</TableCell>
+                        <TableCell>Step Details</TableCell>
+                        <TableCell align="right">Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {chains.map((chain) => (
+                        <TableRow key={chain._id}>
+                          <TableCell>
+                            <Typography variant="body2" fontWeight="500">
+                              {chain.name}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Chip label={`${chain.steps?.length || 0} step(s)`} size="small" />
+                          </TableCell>
+                          <TableCell>
+                            <Box sx={{ maxWidth: 400 }}>
+                              {chain.steps?.map((step: any, idx: number) => (
+                                <Typography
+                                  key={idx}
+                                  variant="caption"
+                                  display="block"
+                                  color="text.secondary"
+                                  sx={{
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap'
+                                  }}
+                                >
+                                  {idx + 1}. {step.description} ({step.provider}/{step.model})
+                                </Typography>
+                              ))}
+                            </Box>
+                          </TableCell>
+                          <TableCell align="right">
+                            <Tooltip title="Edit chain">
+                              <IconButton
+                                size="small"
+                                onClick={() => handleEditChain(chain)}
+                                color="primary"
+                              >
+                                <Edit fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Delete chain">
+                              <IconButton
+                                size="small"
+                                onClick={() => handleDeleteChain(chain._id)}
+                                color="error"
+                              >
+                                <Delete fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+
+              <Box sx={{ mt: 2 }}>
+                <Alert severity="info" icon={<Info />}>
+                  <Typography variant="body2">
+                    <strong>Chains:</strong> Create multi-step workflows where each step can use a different LLM model.
+                    The output from each step is automatically passed to the next step as {'{previousOutput}'}.
+                  </Typography>
+                </Alert>
+              </Box>
+
               {/* Command Mappings Section */}
               <Divider sx={{ my: 4 }} />
 
@@ -1755,48 +2100,86 @@ export default function Settings() {
                     <TableHead>
                       <TableRow>
                         <TableCell>Command</TableCell>
-                        <TableCell>Mapped Prompt</TableCell>
+                        <TableCell>Configuration</TableCell>
                         <TableCell align="right">Actions</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {commandMappings.map((mapping) => (
-                        <TableRow key={mapping._id}>
-                          <TableCell>
-                            <Chip
-                              label={mapping.command}
-                              size="small"
-                              color="primary"
-                              variant="outlined"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="body2">
-                              {mapping.promptId?.name || 'N/A'}
-                            </Typography>
-                          </TableCell>
-                          <TableCell align="right">
-                            <Tooltip title="Edit mapping">
-                              <IconButton
+                      {commandMappings.map((mapping) => {
+                        // Determine mapping type
+                        const hasChain = !!mapping.chainId;
+                        const hasSteps = mapping.steps && Array.isArray(mapping.steps) && mapping.steps.length > 0;
+                        const hasPrompt = !!mapping.promptId;
+
+                        return (
+                          <TableRow key={mapping._id}>
+                            <TableCell>
+                              <Chip
+                                label={mapping.command}
                                 size="small"
-                                onClick={() => handleEditCommandMapping(mapping)}
                                 color="primary"
-                              >
-                                <Edit fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Delete mapping">
-                              <IconButton
-                                size="small"
-                                onClick={() => handleDeleteCommandMapping(mapping._id)}
-                                color="error"
-                              >
-                                <Delete fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                                variant="outlined"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              {hasChain ? (
+                                <Box>
+                                  <Chip label="Chain" size="small" color="success" sx={{ mr: 1 }} />
+                                  <Typography variant="body2" component="span" fontWeight="500">
+                                    {mapping.chainId?.name || 'Unknown Chain'}
+                                  </Typography>
+                                  <Typography variant="caption" display="block" color="text.secondary">
+                                    {mapping.chainId?.steps?.length || 0} step(s)
+                                  </Typography>
+                                </Box>
+                              ) : hasSteps ? (
+                                <Box>
+                                  <Chip label="Legacy Steps" size="small" color="warning" sx={{ mr: 1 }} />
+                                  <Typography variant="body2" fontWeight="500">
+                                    Multi-step ({mapping.steps.length} steps)
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {mapping.steps.map((step: any, idx: number) =>
+                                      step.promptId?.name || `Step ${idx + 1}`
+                                    ).join(' → ')}
+                                  </Typography>
+                                </Box>
+                              ) : hasPrompt ? (
+                                <Box>
+                                  <Chip label="Prompt" size="small" color="info" sx={{ mr: 1 }} />
+                                  <Typography variant="body2" component="span">
+                                    {mapping.promptId?.name || 'Unknown Prompt'}
+                                  </Typography>
+                                </Box>
+                              ) : (
+                                <Typography variant="body2" color="text.secondary">
+                                  N/A
+                                </Typography>
+                              )}
+                            </TableCell>
+                            <TableCell align="right">
+                              <Tooltip title="Edit mapping">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => handleEditCommandMapping(mapping)}
+                                  color="primary"
+                                >
+                                  <Edit fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Delete mapping">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => handleDeleteCommandMapping(mapping._id)}
+                                  color="error"
+                                >
+                                  <Delete fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </TableContainer>
@@ -1805,8 +2188,10 @@ export default function Settings() {
               <Box sx={{ mt: 2 }}>
                 <Alert severity="info" icon={<Info />}>
                   <Typography variant="body2">
-                    <strong>How it works:</strong> Commands like "generate-campaign" can be configured to use specific prompts.
-                    When users trigger these commands, the system automatically uses the mapped prompt for LLM execution.
+                    <strong>How it works:</strong> Commands can be mapped to single prompts or multi-step chains.
+                    Multi-step chains enable powerful workflows where each step's output feeds into the next
+                    (e.g., Step 1: refine text, Step 2: generate image with refined text). Images and text outputs
+                    are automatically carried forward through the chain.
                   </Typography>
                 </Alert>
               </Box>
@@ -1861,7 +2246,8 @@ export default function Settings() {
                   <strong>Company:</strong> {'{companyInfo}'} (full object), {'{companyName}'}, {'{sector}'}, {'{brandTone}'}, {'{brandGuidelines}'}<br />
                   <strong>Campaign:</strong> {'{campaignDetails}'} (full object), {'{campaignName}'}, {'{coreMessages}'}, {'{hashtags}'}<br />
                   <strong>Task:</strong> {'{taskDescription}'}, {'{baseImage}'} (URL of task's original image)<br />
-                  <strong>Brand Assets:</strong> {'{primaryLogo}'}, {'{secondaryLogo}'}, {'{tertiaryLogo}'} (logo URLs)
+                  <strong>Brand Assets:</strong> {'{primaryLogo}'}, {'{secondaryLogo}'}, {'{tertiaryLogo}'} (logo URLs)<br />
+                  <strong>Multi-step Chains:</strong> {'{previousOutput}'} (output from previous step in a chain)
                 </Typography>
               </Alert>
             </Box>
@@ -1878,8 +2264,154 @@ export default function Settings() {
           </DialogActions>
         </Dialog>
 
+        {/* Chain Create/Edit Modal */}
+        <Dialog open={chainModalOpen} onClose={handleCloseChainModal} maxWidth="lg" fullWidth>
+          <DialogTitle>
+            {editingChain ? 'Edit Chain' : 'Create New Chain'}
+          </DialogTitle>
+          <DialogContent>
+            <Box sx={{ mt: 2 }}>
+              <TextField
+                fullWidth
+                label="Chain Name"
+                value={chainForm.name}
+                onChange={(e) => setChainForm({ ...chainForm, name: e.target.value })}
+                margin="normal"
+                placeholder="e.g., Poster Generation Chain"
+                helperText="Unique identifier for this chain"
+                required
+              />
+
+              <Typography variant="h6" sx={{ mt: 3, mb: 2 }}>
+                Chain Steps
+              </Typography>
+
+              {chainForm.steps.map((step, index) => (
+                <Paper key={index} sx={{ p: 2, mb: 2 }} variant="outlined">
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="subtitle1" fontWeight="500">
+                      Step {index + 1}
+                    </Typography>
+                    {chainForm.steps.length > 1 && (
+                      <Button
+                        size="small"
+                        color="error"
+                        startIcon={<Delete />}
+                        onClick={() => handleRemoveChainStep(index)}
+                      >
+                        Remove
+                      </Button>
+                    )}
+                  </Box>
+
+                  <TextField
+                    fullWidth
+                    label="Step Description"
+                    value={step.description}
+                    onChange={(e) => handleChainStepChange(index, 'description', e.target.value)}
+                    margin="normal"
+                    placeholder="e.g., Refine campaign description"
+                    helperText="Brief description of what this step does"
+                    required
+                  />
+
+                  <TextField
+                    fullWidth
+                    label="Prompt Text"
+                    value={step.prompt}
+                    onChange={(e) => handleChainStepChange(index, 'prompt', e.target.value)}
+                    margin="normal"
+                    multiline
+                    rows={6}
+                    placeholder="Enter the prompt for this step. Use {previousOutput} to reference output from the previous step."
+                    helperText="The prompt text with placeholders. Use {previousOutput} to reference output from the previous step."
+                    required
+                  />
+
+                  <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
+                    <TextField
+                      select
+                      label="LLM Provider"
+                      value={step.provider}
+                      onChange={(e) => {
+                        handleChainStepChange(index, 'provider', e.target.value);
+                        // Reset model when provider changes
+                        const defaultModel = LLM_MODELS[e.target.value]?.[0] || '';
+                        handleChainStepChange(index, 'model', defaultModel);
+                      }}
+                      sx={{ flex: 1 }}
+                      required
+                    >
+                      <MenuItem value="openai">OpenAI</MenuItem>
+                      <MenuItem value="anthropic">Anthropic</MenuItem>
+                      <MenuItem value="grok">Grok</MenuItem>
+                      <MenuItem value="gemini">Gemini</MenuItem>
+                    </TextField>
+
+                    <TextField
+                      select
+                      label="Model"
+                      value={step.model}
+                      onChange={(e) => handleChainStepChange(index, 'model', e.target.value)}
+                      sx={{ flex: 1 }}
+                      required
+                    >
+                      {(LLM_MODELS[step.provider] || []).map((model) => (
+                        <MenuItem key={model} value={model}>
+                          {model}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Box>
+
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={step.carryForwardImages !== false}
+                        onChange={(e) => handleChainStepChange(index, 'carryForwardImages', e.target.checked)}
+                      />
+                    }
+                    label="Carry forward images from previous steps"
+                    sx={{ mt: 2 }}
+                  />
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ ml: 4, mt: 0.5 }}>
+                    When enabled, any images generated or attached in previous steps will be available as attachments in this step's prompt
+                  </Typography>
+                </Paper>
+              ))}
+
+              <Button
+                variant="outlined"
+                startIcon={<Add />}
+                onClick={handleAddChainStep}
+                fullWidth
+                sx={{ mt: 2 }}
+              >
+                Add Step
+              </Button>
+
+              <Alert severity="info" sx={{ mt: 3 }}>
+                <Typography variant="body2">
+                  <strong>Chain Execution:</strong> Steps run sequentially. Each step's output is passed to the next step as {'{previousOutput}'}.
+                  You can also use standard placeholders like {'{companyInfo}'}, {'{campaignDetails}'}, etc.
+                </Typography>
+              </Alert>
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseChainModal}>Cancel</Button>
+            <Button
+              onClick={handleSaveChain}
+              variant="contained"
+              disabled={chainSaving}
+            >
+              {chainSaving ? 'Saving...' : (editingChain ? 'Update' : 'Create')}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
         {/* Command Mapping Create/Edit Modal */}
-        <Dialog open={commandMappingModalOpen} onClose={handleCloseCommandMappingModal} maxWidth="sm" fullWidth>
+        <Dialog open={commandMappingModalOpen} onClose={handleCloseCommandMappingModal} maxWidth="md" fullWidth>
           <DialogTitle>
             {editingCommandMapping ? 'Edit Command Mapping' : 'Create New Command Mapping'}
           </DialogTitle>
@@ -1896,33 +2428,91 @@ export default function Settings() {
                 required
                 disabled={!!editingCommandMapping}
               />
-              <TextField
-                fullWidth
-                select
-                label="Select Prompt"
-                value={commandMappingForm.promptId}
-                onChange={(e) => setCommandMappingForm({ ...commandMappingForm, promptId: e.target.value })}
-                margin="normal"
-                helperText="Choose which prompt this command should use"
-                required
-              >
-                {prompts.length === 0 ? (
-                  <MenuItem value="" disabled>
-                    No prompts available. Create a prompt first.
-                  </MenuItem>
-                ) : (
-                  prompts.map((prompt) => (
-                    <MenuItem key={prompt._id} value={prompt._id}>
-                      {prompt.name}
-                    </MenuItem>
-                  ))
-                )}
-              </TextField>
-              <Alert severity="info" sx={{ mt: 2 }}>
-                <Typography variant="body2">
-                  This mapping allows the specified command to dynamically use the selected prompt for LLM execution.
-                </Typography>
-              </Alert>
+
+              <Divider sx={{ my: 3 }} />
+
+              <Typography variant="h6" gutterBottom>
+                Mapping Type
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+                <Button
+                  variant={commandMappingForm.mappingType === 'prompt' ? 'contained' : 'outlined'}
+                  onClick={() => setCommandMappingForm({ ...commandMappingForm, mappingType: 'prompt' })}
+                  fullWidth
+                >
+                  Single Prompt
+                </Button>
+                <Button
+                  variant={commandMappingForm.mappingType === 'chain' ? 'contained' : 'outlined'}
+                  onClick={() => setCommandMappingForm({ ...commandMappingForm, mappingType: 'chain' })}
+                  fullWidth
+                >
+                  Chain
+                </Button>
+              </Box>
+
+              {commandMappingForm.mappingType === 'prompt' && (
+                <>
+                  <TextField
+                    fullWidth
+                    select
+                    label="Select Prompt"
+                    value={commandMappingForm.promptId || ''}
+                    onChange={(e) => setCommandMappingForm({ ...commandMappingForm, promptId: e.target.value })}
+                    margin="normal"
+                    required
+                  >
+                    {prompts.length === 0 ? (
+                      <MenuItem value="" disabled>
+                        No prompts available. Create a prompt first.
+                      </MenuItem>
+                    ) : (
+                      prompts.map((prompt) => (
+                        <MenuItem key={prompt._id} value={prompt._id}>
+                          {prompt.name}
+                        </MenuItem>
+                      ))
+                    )}
+                  </TextField>
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    <Typography variant="body2">
+                      <strong>Single Prompt:</strong> The selected prompt will be executed when this command is triggered.
+                    </Typography>
+                  </Alert>
+                </>
+              )}
+
+              {commandMappingForm.mappingType === 'chain' && (
+                <>
+                  <TextField
+                    fullWidth
+                    select
+                    label="Select Chain"
+                    value={commandMappingForm.chainId || ''}
+                    onChange={(e) => setCommandMappingForm({ ...commandMappingForm, chainId: e.target.value })}
+                    margin="normal"
+                    required
+                  >
+                    {chains.length === 0 ? (
+                      <MenuItem value="" disabled>
+                        No chains available. Create a chain first.
+                      </MenuItem>
+                    ) : (
+                      chains.map((chain) => (
+                        <MenuItem key={chain._id} value={chain._id}>
+                          {chain.name} ({chain.steps?.length || 0} step(s))
+                        </MenuItem>
+                      ))
+                    )}
+                  </TextField>
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    <Typography variant="body2">
+                      <strong>Chain:</strong> The selected multi-step chain will be executed sequentially.
+                      Each step's output feeds into the next as {'{previousOutput}'}.
+                    </Typography>
+                  </Alert>
+                </>
+              )}
             </Box>
           </DialogContent>
           <DialogActions>

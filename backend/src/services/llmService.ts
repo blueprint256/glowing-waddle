@@ -160,6 +160,8 @@ export interface SuperPromptParams {
   attachedImage1?: string; // S3 URL - {attachedImage1}
   attachedImage2?: string; // S3 URL - {attachedImage2}
   // ... and so on for additional attached images
+  // Multi-step chain support
+  previousOutput?: string; // Output from previous step in chain - {previousOutput}
   [key: string]: any;
 }
 
@@ -252,9 +254,14 @@ export function compileSuperPrompt(promptTemplate: string, params: SuperPromptPa
     compiledPrompt = compiledPrompt.replace(/\{baseImage\}/g, params.baseImage);
   }
 
+  // Replace {previousOutput} if provided (for multi-step chains)
+  if (params.previousOutput !== undefined) {
+    compiledPrompt = compiledPrompt.replace(/\{previousOutput\}/g, String(params.previousOutput));
+  }
+
   // Replace any custom placeholders
   Object.keys(params).forEach(key => {
-    if (key !== 'companyInfo' && key !== 'campaignDetails' && key !== 'taskDescription' && key !== 'baseImage') {
+    if (key !== 'companyInfo' && key !== 'campaignDetails' && key !== 'taskDescription' && key !== 'baseImage' && key !== 'previousOutput') {
       const value = typeof params[key] === 'object'
         ? JSON.stringify(params[key], null, 2)
         : String(params[key]);
@@ -677,7 +684,7 @@ export async function generateImageWithPrompt(
   options?: {
     model?: string;
     size?: '1024x1024' | '1792x1024' | '1024x1792';
-    quality?: 'standard' | 'hd';
+    quality?: 'standard' | 'hd'; // Deprecated: not supported by gpt-image-1.5
     userId?: mongoose.Types.ObjectId;
   }
 ): Promise<{ imageUrl: string; compiledPrompt: string }> {
@@ -740,7 +747,7 @@ export async function generateImageWithPrompt(
     const validEditSizes = ['256x256', '512x512', '1024x1024', '1536x1024', '1024x1536', 'auto'];
     const size: '256x256' | '512x512' | '1024x1024' | '1536x1024' | '1024x1536' | 'auto' =
       validEditSizes.includes(requestedSize) ? requestedSize as any : '1024x1024';
-    const quality = options?.quality || 'standard';
+    // NOTE: quality parameter not supported by gpt-image-1.5
 
     // Log if prompt tried to use a different model (for debugging/migration purposes)
     if (prompt?.imageLLMModel && prompt.imageLLMModel !== 'gpt-image-1.5') {
@@ -799,7 +806,6 @@ export async function generateImageWithPrompt(
     console.log('Prompt Name:', promptName);
     console.log('Referenced Images:', imageFiles.length, '(from prompt template)');
     console.log('Image Size:', size);
-    console.log('Quality:', quality);
     console.log('Prompt Length:', compiledPrompt.length, 'characters');
     console.log('Prompt:', compiledPrompt);
     console.log('User ID:', options?.userId || 'N/A');
@@ -836,9 +842,8 @@ export async function generateImageWithPrompt(
         model: imageModel,
         prompt: compiledPrompt,
         n: 1,
-        size: size,
-        quality: quality
-        // NOTE: response_format is NOT supported by gpt-image-1.5
+        size: size
+        // NOTE: quality and response_format are NOT supported by gpt-image-1.5
       });
     }
 
@@ -869,7 +874,6 @@ export async function generateImageWithPrompt(
     console.log('Input Images:', imageFiles.length, 'referenced image(s)');
     console.log('Generated Image URL:', imageUrl);
     console.log('Image Size:', size);
-    console.log('Quality:', quality);
     console.log('Duration:', duration, 'ms');
     console.log('Timestamp:', new Date().toISOString());
     console.log('========================================\n');
@@ -906,5 +910,383 @@ export async function generateImageWithPrompt(
     console.log('========================================\n');
 
     throw new Error(`Image generation failed: ${error.message}`);
+  }
+}
+
+/**
+ * Execute a multi-step LLM chain based on command mapping
+ * Each step's output feeds into the next step as {previousOutput}
+ * Attachments (images) are carried forward through the chain
+ */
+export async function executeCommandChain(
+  commandMapping: any, // ICommandMapping with populated steps
+  params: SuperPromptParams,
+  options?: {
+    userId?: mongoose.Types.ObjectId;
+  }
+): Promise<{
+  content: string;
+  imageUrl?: string;
+  usage: any;
+  compiledPrompts: string[];
+  stepResults: Array<{ stepNumber: number; output: string; imageUrl?: string }>;
+}> {
+  const startTime = Date.now();
+
+  try {
+    console.log('\n========================================');
+    console.log('🔗 MULTI-STEP CHAIN EXECUTION');
+    console.log('========================================');
+    console.log('Command:', commandMapping.command);
+    console.log('User ID:', options?.userId || 'N/A');
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('========================================\n');
+
+    // Determine steps: from chainId (embedded prompts), steps array, or promptId
+    let steps: any[];
+    let isChainExecution = false;
+
+    if (commandMapping.chainId) {
+      // New chain execution with embedded prompts
+      const chain = commandMapping.chainId;
+      if (!chain || !chain.steps || chain.steps.length === 0) {
+        throw new Error('Chain must have at least one step');
+      }
+
+      // Convert chain steps (embedded prompts) to execution steps
+      steps = chain.steps.map((chainStep: any) => ({
+        prompt: chainStep.prompt, // Embedded prompt text
+        description: chainStep.description,
+        provider: chainStep.provider, // Enforced provider
+        model: chainStep.model, // Enforced model
+        carryForwardImages: chainStep.carryForwardImages !== false, // Default to true
+        isEmbedded: true
+      }));
+      isChainExecution = true;
+      console.log(`📋 Executing Chain: ${chain.name} (${steps.length} step(s))\n`);
+    } else if (commandMapping.steps && Array.isArray(commandMapping.steps) && commandMapping.steps.length > 0) {
+      // Legacy steps array (references to prompts)
+      steps = commandMapping.steps;
+      console.log(`📋 Executing ${steps.length} step(s) from steps array\n`);
+    } else if (commandMapping.promptId) {
+      // Legacy single-prompt mapping - convert to single-step chain
+      steps = [{
+        promptId: commandMapping.promptId,
+        provider: undefined,
+        model: undefined
+      }];
+      console.log('📋 Executing single prompt mapping\n');
+    } else {
+      throw new Error('Command mapping must have either chainId, steps array, or promptId');
+    }
+
+    let previousOutput = '';
+    let previousImageUrl: string | undefined;
+    const compiledPrompts: string[] = [];
+    const stepResults: Array<{ stepNumber: number; output: string; imageUrl?: string }> = [];
+    let totalUsage = {
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      total_tokens: 0
+    };
+
+    // Execute each step in sequence
+    for (let i = 0; i < steps.length; i++) {
+      const step = steps[i];
+      const stepNumber = i + 1;
+
+      console.log(`\n========================================`);
+      console.log(`🔹 STEP ${stepNumber} of ${steps.length}`);
+      console.log(`========================================`);
+
+      // Get prompt details - handle both embedded (from chains) and referenced prompts
+      let promptText: string;
+      let promptName: string;
+      let isImageGeneration: boolean;
+
+      if (step.isEmbedded) {
+        // Embedded prompt from chain (new approach)
+        promptText = step.prompt;
+        promptName = step.description;
+
+        // Detect image generation based on model name
+        // gpt-image-1.5 is the image generation model
+        isImageGeneration = step.model === 'gpt-image-1.5';
+
+        console.log('Prompt Type: Embedded (from Chain)');
+        console.log('Step Description:', step.description);
+        console.log('Provider (Enforced):', step.provider);
+        console.log('Model (Enforced):', step.model);
+        console.log('Is Image Generation:', isImageGeneration);
+      } else {
+        // Referenced prompt (legacy approach)
+        const prompt = step.promptId;
+        if (!prompt || !prompt.details) {
+          throw new Error(`Step ${stepNumber}: Prompt details not found. Ensure prompt is populated.`);
+        }
+
+        promptText = prompt.details;
+        promptName = prompt.name;
+        isImageGeneration = !!(prompt.imageLLMProvider || prompt.imageLLMModel);
+
+        console.log('Prompt Type: Referenced');
+        console.log('Prompt Name:', prompt.name);
+        console.log('Provider Override:', step.provider || 'None (use default or prompt config)');
+        console.log('Model Override:', step.model || 'None (use default or prompt config)');
+      }
+
+      console.log('Previous Output Available:', !!previousOutput);
+      console.log('Previous Image Available:', !!previousImageUrl);
+
+      // Build params for this step, including previousOutput
+      const stepParams: SuperPromptParams = {
+        ...params,
+        previousOutput: previousOutput || '',
+      };
+
+      // Carry forward previous image URL if available and enabled for this step
+      // For embedded prompts (chains), check the carryForwardImages flag (defaults to true)
+      // For referenced prompts, always carry forward (legacy behavior)
+      const shouldCarryForwardImages = step.isEmbedded
+        ? (step.carryForwardImages !== false)
+        : true;
+
+      if (previousImageUrl && shouldCarryForwardImages) {
+        // Add previous image as a new attachment placeholder
+        // Count existing attachedImage placeholders and add next one
+        let attachmentIndex = 1;
+        while (stepParams[`attachedImage${attachmentIndex}`]) {
+          attachmentIndex++;
+        }
+        stepParams[`attachedImage${attachmentIndex}`] = previousImageUrl;
+        console.log(`Added previous image as {attachedImage${attachmentIndex}}`);
+      } else if (previousImageUrl && !shouldCarryForwardImages) {
+        console.log(`Skipping image carry-forward (disabled for this step)`);
+      }
+
+      // Compile prompt for this step
+      const compiledPrompt = compileSuperPrompt(promptText, stepParams);
+      compiledPrompts.push(compiledPrompt);
+
+      console.log('Compiled Prompt Length:', compiledPrompt.length, 'characters');
+      console.log('Compiled Prompt Preview:', compiledPrompt.substring(0, 150) + (compiledPrompt.length > 150 ? '...' : ''));
+
+      console.log('Step Type:', isImageGeneration ? 'Image Generation' : 'Text Generation');
+
+      let stepOutput = '';
+      let stepImageUrl: string | undefined;
+      let stepUsage: any;
+
+      if (isImageGeneration) {
+        // Image generation step
+        console.log('🎨 Executing image generation...');
+
+        if (step.isEmbedded) {
+          // For embedded prompts, handle image generation inline
+          console.log('🎨 Image generation with embedded prompt (gpt-image-1.5)');
+
+          // Collect available images based on carryForwardImages setting
+          const imagePlaceholders = [
+            'baseImage', 'primaryLogo', 'secondaryLogo', 'tertiaryLogo',
+            'attachedImage1', 'attachedImage2', 'attachedImage3', 'attachedImage4',
+            'attachedImage5', 'attachedImage6', 'attachedImage7', 'attachedImage8',
+            'attachedImage9', 'attachedImage10'
+          ];
+
+          let imagesToUse: string[] = [];
+
+          // Determine which images to use based on carryForwardImages setting
+          const shouldCarryForward = step.carryForwardImages !== false; // Default to true
+
+          if (shouldCarryForward) {
+            // Carry forward mode: Use ALL available images from stepParams
+            console.log('🔄 Carry Forward Images: ENABLED');
+            for (const placeholder of imagePlaceholders) {
+              if (stepParams[placeholder] && typeof stepParams[placeholder] === 'string') {
+                imagesToUse.push(placeholder);
+              }
+            }
+            console.log('Available Images to Carry Forward:', imagesToUse.length > 0 ? imagesToUse.join(', ') : 'None');
+          } else {
+            // No carry forward: Only use explicitly referenced images in the prompt
+            console.log('🔄 Carry Forward Images: DISABLED');
+            for (const placeholder of imagePlaceholders) {
+              if (compiledPrompt.includes(`{${placeholder}}`)) {
+                imagesToUse.push(placeholder);
+              }
+            }
+            console.log('Referenced Images in Prompt:', imagesToUse.length > 0 ? imagesToUse.join(', ') : 'None');
+          }
+
+          // Download images
+          const imageFiles: any[] = [];
+          for (const placeholder of imagesToUse) {
+            const imageUrl = stepParams[placeholder];
+            if (imageUrl && typeof imageUrl === 'string') {
+              try {
+                console.log(`📥 Downloading ${placeholder} from: ${imageUrl.substring(0, 100)}...`);
+                const { buffer, contentType, extension } = await downloadImageFromUrl(imageUrl);
+                const imageFile = await toFile(buffer, `${placeholder}.${extension}`, { type: contentType });
+                imageFiles.push(imageFile);
+                console.log(`✅ Downloaded: ${placeholder} (${buffer.length} bytes)`);
+              } catch (error: any) {
+                console.error(`❌ Failed to download ${placeholder}:`, error.message);
+                console.error(`   URL: ${imageUrl}`);
+              }
+            } else {
+              console.log(`⚠️  Skipping ${placeholder}: ${!imageUrl ? 'No URL available' : 'Invalid URL type'}`);
+            }
+          }
+
+          console.log(`\n📦 Total images downloaded: ${imageFiles.length} of ${imagesToUse.length}`);
+          if (imageFiles.length < imagesToUse.length) {
+            console.warn(`⚠️  Warning: Not all images were downloaded successfully`);
+          }
+
+          // Initialize OpenAI client
+          const openai = await getOpenAIClient();
+          const imageModel = 'gpt-image-1.5';
+          const size = '1024x1024';
+
+          // Generate or edit image
+          let response;
+          if (imageFiles.length > 0) {
+            console.log(`🎨 Using images.edit with ${imageFiles.length} image(s)`);
+            response = await openai.images.edit({
+              model: imageModel,
+              image: imageFiles,
+              prompt: compiledPrompt,
+              n: 1,
+              size: size
+            });
+          } else {
+            console.log('✨ Using images.generate (no images referenced)');
+            response = await openai.images.generate({
+              model: imageModel,
+              prompt: compiledPrompt,
+              n: 1,
+              size: size
+              // NOTE: quality parameter not supported by gpt-image-1.5
+            });
+          }
+
+          // Get base64 image and upload to S3
+          const base64Image = response.data?.[0]?.b64_json;
+          if (!base64Image) {
+            throw new Error('No base64 image data returned from image generation API');
+          }
+
+          const imageBuffer = Buffer.from(base64Image, 'base64');
+          stepImageUrl = await uploadBufferToS3(imageBuffer, 'image/png', 'generated-images');
+
+          console.log('✅ Image generated and uploaded:', stepImageUrl);
+        } else {
+          // For referenced prompts, use existing function
+          const imageResult = await generateImageWithPrompt(
+            promptName,
+            stepParams,
+            {
+              userId: options?.userId
+            }
+          );
+          stepImageUrl = imageResult.imageUrl;
+        }
+
+        stepOutput = `[Image generated: ${stepImageUrl}]`;
+        stepUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }; // Image gen doesn't use tokens
+
+        console.log('✅ Image generated:', stepImageUrl);
+      } else {
+        // Text generation step
+        console.log('📝 Executing text generation...');
+
+        // Determine provider and model for this step
+        let provider: LLMProvider;
+        let model: string;
+
+        if (step.isEmbedded) {
+          // For embedded prompts, use enforced provider and model from chain
+          provider = step.provider as LLMProvider;
+          model = step.model;
+        } else {
+          // For referenced prompts, allow overrides or use prompt config
+          const llmConfig = await resolveLLMConfig(promptName);
+          provider = (step.provider || llmConfig.provider) as LLMProvider;
+          model = step.model || llmConfig.model;
+        }
+
+        console.log('Using Provider:', provider);
+        console.log('Using Model:', model);
+
+        const textResult = await sendToLLM(compiledPrompt, {
+          provider,
+          model,
+          userId: options?.userId,
+          promptName: promptName
+        });
+
+        stepOutput = textResult.content;
+        stepUsage = textResult.usage;
+
+        console.log('✅ Text generated, length:', stepOutput.length, 'characters');
+      }
+
+      // Accumulate usage
+      if (stepUsage) {
+        totalUsage.prompt_tokens += stepUsage.prompt_tokens || 0;
+        totalUsage.completion_tokens += stepUsage.completion_tokens || 0;
+        totalUsage.total_tokens += stepUsage.total_tokens || 0;
+      }
+
+      // Store step result
+      stepResults.push({
+        stepNumber,
+        output: stepOutput,
+        imageUrl: stepImageUrl
+      });
+
+      // Update previousOutput and previousImageUrl for next step
+      previousOutput = stepOutput;
+      if (stepImageUrl) {
+        previousImageUrl = stepImageUrl;
+      }
+
+      console.log(`✅ Step ${stepNumber} completed\n`);
+    }
+
+    const duration = Date.now() - startTime;
+
+    console.log('\n========================================');
+    console.log('✅ CHAIN EXECUTION COMPLETE');
+    console.log('========================================');
+    console.log('Total Steps:', steps.length);
+    console.log('Final Output Length:', previousOutput.length, 'characters');
+    console.log('Final Image URL:', previousImageUrl || 'None');
+    console.log('Total Tokens:', totalUsage.total_tokens);
+    console.log('Duration:', duration, 'ms');
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('========================================\n');
+
+    return {
+      content: previousOutput,
+      imageUrl: previousImageUrl,
+      usage: totalUsage,
+      compiledPrompts,
+      stepResults
+    };
+  } catch (error: any) {
+    const duration = Date.now() - startTime;
+
+    console.log('\n========================================');
+    console.log('❌ CHAIN EXECUTION ERROR');
+    console.log('========================================');
+    console.log('Command:', commandMapping.command);
+    console.log('Error:', error.message);
+    console.log('Error Stack:', error.stack);
+    console.log('Duration:', duration, 'ms');
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('========================================\n');
+
+    throw new Error(`Chain execution failed: ${error.message}`);
   }
 }
