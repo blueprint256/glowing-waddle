@@ -32,6 +32,7 @@ import { taskAPI } from '../services/api';
 import { Task, TaskStatus, UserRole, Campaign, Project } from '../types';
 import FilterToolbar, { FilterOptions } from '../components/FilterToolbar';
 import SocialPreviewModal from '../components/SocialPreviewModal';
+import Breadcrumbs from '../components/Breadcrumbs';
 
 interface EditingCell {
   taskId: string;
@@ -325,6 +326,9 @@ export default function TasksSheet() {
 
   return (
     <Box>
+      {/* Breadcrumbs */}
+      <Breadcrumbs />
+
       <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, mb: 1 }}>
         Tasks Sheet
       </Typography>

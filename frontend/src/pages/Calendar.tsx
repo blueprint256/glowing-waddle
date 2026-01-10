@@ -31,6 +31,7 @@ import { useAuthStore } from '../store/authStore';
 import { taskAPI } from '../services/api';
 import { Task, TaskStatus, UserRole, Campaign, Project } from '../types';
 import FilterToolbar, { FilterOptions } from '../components/FilterToolbar';
+import Breadcrumbs from '../components/Breadcrumbs';
 
 const localizer = momentLocalizer(moment);
 
@@ -230,6 +231,9 @@ export default function CalendarView() {
 
   return (
     <Box>
+      {/* Breadcrumbs */}
+      <Breadcrumbs />
+
       <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, mb: 1 }}>
         Task Calendar
       </Typography>

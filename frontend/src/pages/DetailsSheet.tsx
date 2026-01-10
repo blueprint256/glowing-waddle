@@ -45,6 +45,7 @@ import ProjectFormDialog from '../components/Projects/ProjectFormDialog';
 import Pagination from '../components/Pagination';
 import FilterToolbar, { FilterOptions } from '../components/FilterToolbar';
 import SocialPreviewModal from '../components/SocialPreviewModal';
+import Breadcrumbs from '../components/Breadcrumbs';
 
 interface CampaignWithProjects extends Campaign {
   projects?: ProjectWithTasks[];
@@ -1066,6 +1067,9 @@ export default function DetailsSheet() {
 
   return (
     <Box>
+      {/* Breadcrumbs */}
+      <Breadcrumbs />
+
       <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, mb: 1 }}>
         Details Sheet
       </Typography>

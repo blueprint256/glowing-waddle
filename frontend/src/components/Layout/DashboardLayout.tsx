@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   Box,
   AppBar,
@@ -13,7 +13,8 @@ import {
   ListItemIcon,
   ListItemText,
   Divider,
-  Button
+  Button,
+  Tooltip
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -24,7 +25,8 @@ import {
   CalendarMonth as CalendarIcon,
   TableChart as TableChartIcon,
   Settings as SettingsIcon,
-  Logout as LogoutIcon
+  Logout as LogoutIcon,
+  ArrowBack as ArrowBackIcon
 } from '@mui/icons-material';
 import { useAuthStore } from '../../store/authStore';
 import { UserRole } from '../../types';
@@ -33,6 +35,7 @@ const drawerWidth = 240;
 
 export default function DashboardLayout() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout } = useAuthStore();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -44,6 +47,13 @@ export default function DashboardLayout() {
     await logout();
     navigate('/login');
   };
+
+  const handleBack = () => {
+    navigate(-1);
+  };
+
+  // Don't show back button on dashboard
+  const showBackButton = location.pathname !== '/';
 
   const menuItems = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/', roles: ['all'] },
@@ -95,11 +105,22 @@ export default function DashboardLayout() {
           >
             <MenuIcon />
           </IconButton>
+          {showBackButton && (
+            <Tooltip title="Go Back">
+              <IconButton
+                color="inherit"
+                onClick={handleBack}
+                sx={{ mr: 2, display: { xs: 'none', sm: 'inline-flex' } }}
+              >
+                <ArrowBackIcon />
+              </IconButton>
+            </Tooltip>
+          )}
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
             Campaign Management Platform
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Typography variant="body2">
+            <Typography variant="body2" sx={{ display: { xs: 'none', md: 'block' } }}>
               {user?.firstName} {user?.lastName} ({user?.role})
             </Typography>
             <Button

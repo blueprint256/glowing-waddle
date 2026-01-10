@@ -25,6 +25,7 @@ import { useAuthStore } from '../../store/authStore';
 import { campaignAPI } from '../../services/api';
 import { Campaign, UserRole, User } from '../../types';
 import Pagination from '../../components/Pagination';
+import Breadcrumbs from '../../components/Breadcrumbs';
 
 export default function CampaignsList() {
   const navigate = useNavigate();
@@ -183,6 +184,9 @@ export default function CampaignsList() {
 
   return (
     <Box>
+      {/* Breadcrumbs */}
+      <Breadcrumbs />
+
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
         <Typography variant="h4">Campaigns</Typography>
         {canCreate && (

@@ -48,6 +48,7 @@ import {
 import { useAuthStore } from '../store/authStore';
 import { UserRole } from '../types';
 import api, { promptAPI, commandMappingAPI, chainAPI } from '../services/api';
+import Breadcrumbs from '../components/Breadcrumbs';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -874,6 +875,9 @@ export default function Settings() {
   return (
     <Container maxWidth="lg">
       <Box sx={{ py: 4 }}>
+        {/* Breadcrumbs */}
+        <Breadcrumbs />
+
         <Typography variant="h4" gutterBottom>
           Settings
         </Typography>
