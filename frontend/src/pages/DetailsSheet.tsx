@@ -92,17 +92,26 @@ export default function DetailsSheet() {
     createdBy: []
   });
 
-  // Color coding constants - Soft, Delicate Pastels
-  const CAMPAIGN_COLOR = '#F0F4FF'; // Very soft blue-gray background
-  const CAMPAIGN_BORDER = '#C7D2FE'; // Soft lavender border
-  const CAMPAIGN_HOVER = '#E0E7FF'; // Subtle lavender hover
-  const PROJECT_COLOR = '#F5F9FF';  // Very light blue background
-  const PROJECT_BORDER = '#BFDBFE';  // Soft sky blue border
-  const PROJECT_HOVER = '#DBEAFE';   // Light blue hover
-  const TASK_COLOR = '#FAFBFC';      // Almost white with hint of blue
-  const TASK_HOVER = '#F3F4F6';      // Very subtle gray hover
-  const CREATOR_COLOR = '#FAF5FF';   // Very light purple
-  const CREATOR_BORDER = '#DDD6FE';  // Soft purple border
+  // Color coding constants - Sophisticated Blue-Green Gradient
+  // Using analogous color harmony with temperature progression for clear hierarchy
+
+  // Campaign: Teal/Cyan (Fresh, Energetic, Top-level importance)
+  const CAMPAIGN_COLOR = '#E0F2F1';      // Soft teal background
+  const CAMPAIGN_BORDER = '#14B8A6';     // Vibrant teal border (teal-500)
+  const CAMPAIGN_HOVER = '#CCECE8';      // Deeper teal on hover
+
+  // Project: Sky Blue (Professional, Organized, Mid-level)
+  const PROJECT_COLOR = '#E3F2FD';       // Light sky blue background
+  const PROJECT_BORDER = '#2196F3';      // Clear blue border (blue-500)
+  const PROJECT_HOVER = '#BBDEFB';       // Deeper blue on hover
+
+  // Task: Warm Neutral (Clean, Focused, Detail-level)
+  const TASK_COLOR = '#FAFAF9';          // Warm off-white background
+  const TASK_HOVER = '#F5F5F4';          // Subtle warm gray hover
+
+  // Creator Grouping: Lavender (Special, Administrative)
+  const CREATOR_COLOR = '#F3E8FF';       // Soft lavender background
+  const CREATOR_BORDER = '#A78BFA';      // Purple border (purple-400)
 
   // Group campaigns by creator for System Admins
   const groupedCampaigns = (() => {
@@ -598,27 +607,29 @@ export default function DetailsSheet() {
         onChange={handleCampaignExpand(campaign._id)}
         sx={{
           mb: 1.5,
-          borderRadius: '12px',
+          borderRadius: '14px',
           border: `1px solid ${CAMPAIGN_BORDER}`,
-          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)',
+          boxShadow: '0 2px 4px rgba(20, 184, 166, 0.12)',
           overflow: 'hidden',
-          transition: 'all 0.2s ease',
+          transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
           '&:hover': {
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
-            borderColor: '#A5B4FC'
+            boxShadow: '0 4px 12px rgba(20, 184, 166, 0.18)',
+            borderColor: '#0D9488',
+            transform: 'translateY(-1px)'
           },
           '& .MuiAccordionSummary-root': {
             backgroundColor: CAMPAIGN_COLOR,
-            borderLeft: `3px solid ${CAMPAIGN_BORDER}`,
-            minHeight: 56,
-            padding: '0 16px',
-            transition: 'background-color 0.2s ease',
+            borderLeft: `4px solid ${CAMPAIGN_BORDER}`,
+            minHeight: 58,
+            padding: '0 20px',
+            transition: 'all 0.25s ease',
             '&:hover': {
               backgroundColor: CAMPAIGN_HOVER
             }
           },
           '&.Mui-expanded': {
-            margin: '0 0 12px 0'
+            margin: '0 0 12px 0',
+            boxShadow: '0 4px 12px rgba(20, 184, 166, 0.15)'
           },
           '&:before': {
             display: 'none'
@@ -696,7 +707,7 @@ export default function DetailsSheet() {
             )}
           </Box>
         </AccordionSummary>
-        <AccordionDetails sx={{ pl: 3, pr: 2, py: 2, backgroundColor: '#FCFCFD' }}>
+        <AccordionDetails sx={{ pl: 3, pr: 2, py: 2, backgroundColor: '#F9FAFB' }}>
           {/* Create Project Button */}
           <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
             <Button
@@ -738,27 +749,29 @@ export default function DetailsSheet() {
                   onChange={handleProjectExpand(campaign._id, project._id)}
                   sx={{
                     mb: 1,
-                    borderRadius: '10px',
+                    borderRadius: '12px',
                     border: `1px solid ${PROJECT_BORDER}`,
-                    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+                    boxShadow: '0 1px 3px rgba(33, 150, 243, 0.1)',
                     overflow: 'hidden',
-                    transition: 'all 0.2s ease',
+                    transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
                     '&:hover': {
-                      boxShadow: '0 2px 6px rgba(0, 0, 0, 0.08)',
-                      borderColor: '#93C5FD'
+                      boxShadow: '0 3px 8px rgba(33, 150, 243, 0.15)',
+                      borderColor: '#1976D2',
+                      transform: 'translateY(-1px)'
                     },
                     '& .MuiAccordionSummary-root': {
                       backgroundColor: PROJECT_COLOR,
-                      borderLeft: `2px solid ${PROJECT_BORDER}`,
-                      minHeight: 48,
-                      padding: '0 12px',
-                      transition: 'background-color 0.2s ease',
+                      borderLeft: `3px solid ${PROJECT_BORDER}`,
+                      minHeight: 52,
+                      padding: '0 16px',
+                      transition: 'all 0.25s ease',
                       '&:hover': {
                         backgroundColor: PROJECT_HOVER
                       }
                     },
                     '&.Mui-expanded': {
-                      margin: '0 0 8px 0'
+                      margin: '0 0 8px 0',
+                      boxShadow: '0 3px 8px rgba(33, 150, 243, 0.12)'
                     },
                     '&:before': {
                       display: 'none'
@@ -855,25 +868,29 @@ export default function DetailsSheet() {
                       <TableContainer component={Paper} sx={{
                         mb: 1,
                         borderRadius: '10px',
-                        border: '1px solid #E5E7EB',
+                        border: '1px solid #E7E5E4',
+                        backgroundColor: TASK_COLOR,
                         boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)',
                         overflow: 'hidden',
                         transition: 'all 0.2s ease',
                         '&:hover': {
-                          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.06)',
-                          borderColor: '#D1D5DB'
+                          boxShadow: '0 2px 6px rgba(0, 0, 0, 0.06)',
+                          borderColor: '#D6D3D1'
                         }
                       }}>
                         <Table>
                           <TableHead>
-                            <TableRow sx={{ backgroundColor: '#F3F4F6' }}>
-                              <TableCell sx={{ fontWeight: 700, width: '10%' }}>Date</TableCell>
-                              <TableCell sx={{ fontWeight: 700, width: '20%' }}>Task Name</TableCell>
-                              <TableCell sx={{ fontWeight: 700, width: '12%' }}>Status</TableCell>
-                              <TableCell sx={{ fontWeight: 700, width: '8%' }}>Photos</TableCell>
-                              <TableCell sx={{ fontWeight: 700, width: '30%' }}>Description</TableCell>
-                              <TableCell sx={{ fontWeight: 700, width: '12%' }}>Last Updated</TableCell>
-                              <TableCell align="center" sx={{ fontWeight: 700, width: '8%' }}>Actions</TableCell>
+                            <TableRow sx={{
+                              backgroundColor: '#F5F5F4',
+                              borderBottom: '2px solid #E7E5E4'
+                            }}>
+                              <TableCell sx={{ fontWeight: 700, width: '10%', color: '#57534E' }}>Date</TableCell>
+                              <TableCell sx={{ fontWeight: 700, width: '20%', color: '#57534E' }}>Task Name</TableCell>
+                              <TableCell sx={{ fontWeight: 700, width: '12%', color: '#57534E' }}>Status</TableCell>
+                              <TableCell sx={{ fontWeight: 700, width: '8%', color: '#57534E' }}>Photos</TableCell>
+                              <TableCell sx={{ fontWeight: 700, width: '30%', color: '#57534E' }}>Description</TableCell>
+                              <TableCell sx={{ fontWeight: 700, width: '12%', color: '#57534E' }}>Last Updated</TableCell>
+                              <TableCell align="center" sx={{ fontWeight: 700, width: '8%', color: '#57534E' }}>Actions</TableCell>
                             </TableRow>
                           </TableHead>
                           <TableBody>
@@ -1257,7 +1274,7 @@ export default function DetailsSheet() {
                       </Typography>
                     </Box>
                   </AccordionSummary>
-                  <AccordionDetails sx={{ backgroundColor: '#FCFCFD', p: 2 }}>
+                  <AccordionDetails sx={{ backgroundColor: '#F9FAFB', p: 2 }}>
                     <Box>
                       {userCampaigns.map(renderCampaign)}
                     </Box>

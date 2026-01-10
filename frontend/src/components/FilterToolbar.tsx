@@ -208,24 +208,35 @@ const FilterToolbar: React.FC<FilterToolbarProps> = ({
     <Paper
       elevation={0}
       sx={{
-        p: 2,
+        p: 2.5,
         mb: 3,
-        backgroundColor: '#FAFBFC',
-        border: '1px solid #E5E7EB',
-        borderRadius: '12px',
-        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)'
+        backgroundColor: '#F0FDFA',
+        border: '1px solid #99F6E4',
+        borderRadius: '14px',
+        boxShadow: '0 2px 4px rgba(20, 184, 166, 0.08)',
+        transition: 'all 0.2s ease',
+        '&:hover': {
+          boxShadow: '0 3px 8px rgba(20, 184, 166, 0.12)',
+          borderColor: '#5EEAD4'
+        }
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', mb: expanded ? 2 : 0 }}>
-        <FilterListIcon sx={{ mr: 1, color: '#1976d2' }} />
-        <Box sx={{ fontWeight: 600, fontSize: '1.1rem', color: '#1976d2', flexGrow: 1 }}>
+        <FilterListIcon sx={{ mr: 1, color: '#14B8A6' }} />
+        <Box sx={{ fontWeight: 600, fontSize: '1.1rem', color: '#0F766E', flexGrow: 1 }}>
           Filters
           {hasActiveFilters() && (
             <Chip
               label={`${Object.values(filters).filter(v => v && (Array.isArray(v) ? v.length > 0 : v.length > 0)).length} active`}
               size="small"
-              color="primary"
-              sx={{ ml: 1, height: 20 }}
+              sx={{
+                ml: 1,
+                height: 22,
+                backgroundColor: '#14B8A6',
+                color: 'white',
+                fontWeight: 600,
+                fontSize: '0.75rem'
+              }}
             />
           )}
         </Box>
