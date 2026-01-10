@@ -92,13 +92,13 @@ export default function DetailsSheet() {
     createdBy: []
   });
 
-  // Color coding constants - Sophisticated Blue-Green Gradient
-  // Using analogous color harmony with temperature progression for clear hierarchy
+  // Color coding constants - Sophisticated Grey-Blue Gradient
+  // Using neutral greys with blue accents for professional hierarchy
 
-  // Campaign: Teal/Cyan (Fresh, Energetic, Top-level importance)
-  const CAMPAIGN_COLOR = '#E0F2F1';      // Soft teal background
-  const CAMPAIGN_BORDER = '#14B8A6';     // Vibrant teal border (teal-500)
-  const CAMPAIGN_HOVER = '#CCECE8';      // Deeper teal on hover
+  // Campaign: Cool Grey (Professional, Strong, Top-level importance)
+  const CAMPAIGN_COLOR = '#F8F9FA';      // Very light grey background
+  const CAMPAIGN_BORDER = '#6B7280';     // Medium grey border (gray-500)
+  const CAMPAIGN_HOVER = '#F1F3F5';      // Slightly darker grey on hover
 
   // Project: Sky Blue (Professional, Organized, Mid-level)
   const PROJECT_COLOR = '#E3F2FD';       // Light sky blue background
@@ -609,12 +609,12 @@ export default function DetailsSheet() {
           mb: 1.5,
           borderRadius: '14px',
           border: `1px solid ${CAMPAIGN_BORDER}`,
-          boxShadow: '0 2px 4px rgba(20, 184, 166, 0.12)',
+          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.08)',
           overflow: 'hidden',
           transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
           '&:hover': {
-            boxShadow: '0 4px 12px rgba(20, 184, 166, 0.18)',
-            borderColor: '#0D9488',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.12)',
+            borderColor: '#4B5563',
             transform: 'translateY(-1px)'
           },
           '& .MuiAccordionSummary-root': {
@@ -629,7 +629,7 @@ export default function DetailsSheet() {
           },
           '&.Mui-expanded': {
             margin: '0 0 12px 0',
-            boxShadow: '0 4px 12px rgba(20, 184, 166, 0.15)'
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.10)'
           },
           '&:before': {
             display: 'none'
