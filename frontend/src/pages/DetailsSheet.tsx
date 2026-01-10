@@ -92,17 +92,17 @@ export default function DetailsSheet() {
     createdBy: []
   });
 
-  // Color coding constants - Unified Blue Hierarchy (#1976d2 shades)
-  const CAMPAIGN_COLOR = '#BBDEFB'; // Deep blue background (lighter shade)
-  const CAMPAIGN_BORDER = '#1565C0'; // Darkest blue border (dark shade of #1976d2)
-  const CAMPAIGN_HOVER = '#90CAF9'; // Medium blue hover
-  const PROJECT_COLOR = '#E3F2FD';  // Light blue background
-  const PROJECT_BORDER = '#1976D2';  // Primary blue border (base color)
-  const PROJECT_HOVER = '#BBDEFB';   // Lighter blue hover
-  const TASK_COLOR = '#E3F2FD';      // Very light blue
-  const TASK_HOVER = '#BBDEFB';      // Light blue hover
-  const CREATOR_COLOR = '#E3F2FD';   // Very light blue for creator grouping
-  const CREATOR_BORDER = '#1976D2';  // Primary blue border
+  // Color coding constants - Soft, Delicate Pastels
+  const CAMPAIGN_COLOR = '#F0F4FF'; // Very soft blue-gray background
+  const CAMPAIGN_BORDER = '#C7D2FE'; // Soft lavender border
+  const CAMPAIGN_HOVER = '#E0E7FF'; // Subtle lavender hover
+  const PROJECT_COLOR = '#F5F9FF';  // Very light blue background
+  const PROJECT_BORDER = '#BFDBFE';  // Soft sky blue border
+  const PROJECT_HOVER = '#DBEAFE';   // Light blue hover
+  const TASK_COLOR = '#FAFBFC';      // Almost white with hint of blue
+  const TASK_HOVER = '#F3F4F6';      // Very subtle gray hover
+  const CREATOR_COLOR = '#FAF5FF';   // Very light purple
+  const CREATOR_BORDER = '#DDD6FE';  // Soft purple border
 
   // Group campaigns by creator for System Admins
   const groupedCampaigns = (() => {
@@ -597,31 +597,37 @@ export default function DetailsSheet() {
         expanded={expandedCampaigns.has(campaign._id)}
         onChange={handleCampaignExpand(campaign._id)}
         sx={{
-          mb: 2,
-          borderRadius: '8px',
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+          mb: 1.5,
+          borderRadius: '12px',
+          border: `1px solid ${CAMPAIGN_BORDER}`,
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)',
           overflow: 'hidden',
-          transition: 'all 0.3s ease',
+          transition: 'all 0.2s ease',
           '&:hover': {
-            boxShadow: '0 10px 15px rgba(0, 0, 0, 0.15)',
-            transform: 'scale(1.01)'
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+            borderColor: '#A5B4FC'
           },
           '& .MuiAccordionSummary-root': {
             backgroundColor: CAMPAIGN_COLOR,
-            borderLeft: `4px solid ${CAMPAIGN_BORDER}`,
+            borderLeft: `3px solid ${CAMPAIGN_BORDER}`,
+            minHeight: 56,
+            padding: '0 16px',
             transition: 'background-color 0.2s ease',
             '&:hover': {
               backgroundColor: CAMPAIGN_HOVER
             }
           },
           '&.Mui-expanded': {
-            margin: '0 0 16px 0'
+            margin: '0 0 12px 0'
+          },
+          '&:before': {
+            display: 'none'
           }
         }}
       >
         <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-          <Box sx={{ width: '100%', pr: 2 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+          <Box sx={{ width: '100%', pr: 1 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
               {editingCell?.type === 'campaign' && editingCell?.id === campaign._id && editingCell?.field === 'name' ? (
                 <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flex: 1 }}>
                   <TextField
@@ -690,7 +696,7 @@ export default function DetailsSheet() {
             )}
           </Box>
         </AccordionSummary>
-        <AccordionDetails sx={{ pl: 4, backgroundColor: '#FAFAFA' }}>
+        <AccordionDetails sx={{ pl: 3, pr: 2, py: 2, backgroundColor: '#FCFCFD' }}>
           {/* Create Project Button */}
           <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
             <Button
@@ -732,17 +738,20 @@ export default function DetailsSheet() {
                   onChange={handleProjectExpand(campaign._id, project._id)}
                   sx={{
                     mb: 1,
-                    borderRadius: '8px',
-                    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.08)',
+                    borderRadius: '10px',
+                    border: `1px solid ${PROJECT_BORDER}`,
+                    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
                     overflow: 'hidden',
-                    transition: 'all 0.3s ease',
+                    transition: 'all 0.2s ease',
                     '&:hover': {
-                      boxShadow: '0 6px 12px rgba(0, 0, 0, 0.12)',
-                      transform: 'scale(1.005)'
+                      boxShadow: '0 2px 6px rgba(0, 0, 0, 0.08)',
+                      borderColor: '#93C5FD'
                     },
                     '& .MuiAccordionSummary-root': {
                       backgroundColor: PROJECT_COLOR,
-                      borderLeft: `4px solid ${PROJECT_BORDER}`,
+                      borderLeft: `2px solid ${PROJECT_BORDER}`,
+                      minHeight: 48,
+                      padding: '0 12px',
                       transition: 'background-color 0.2s ease',
                       '&:hover': {
                         backgroundColor: PROJECT_HOVER
@@ -750,6 +759,9 @@ export default function DetailsSheet() {
                     },
                     '&.Mui-expanded': {
                       margin: '0 0 8px 0'
+                    },
+                    '&:before': {
+                      display: 'none'
                     }
                   }}
                 >
@@ -842,12 +854,14 @@ export default function DetailsSheet() {
                     ) : project.tasks && project.tasks.length > 0 ? (
                       <TableContainer component={Paper} sx={{
                         mb: 1,
-                        borderRadius: '8px',
-                        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+                        borderRadius: '10px',
+                        border: '1px solid #E5E7EB',
+                        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)',
                         overflow: 'hidden',
-                        transition: 'box-shadow 0.3s ease',
+                        transition: 'all 0.2s ease',
                         '&:hover': {
-                          boxShadow: '0 6px 12px rgba(0, 0, 0, 0.15)'
+                          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.06)',
+                          borderColor: '#D1D5DB'
                         }
                       }}>
                         <Table>
@@ -1243,7 +1257,7 @@ export default function DetailsSheet() {
                       </Typography>
                     </Box>
                   </AccordionSummary>
-                  <AccordionDetails sx={{ backgroundColor: '#FAFAFA' }}>
+                  <AccordionDetails sx={{ backgroundColor: '#FCFCFD', p: 2 }}>
                     <Box>
                       {userCampaigns.map(renderCampaign)}
                     </Box>
@@ -1252,12 +1266,14 @@ export default function DetailsSheet() {
               ))
             ) : (
               <Paper sx={{
-                p: 3,
+                p: 4,
                 textAlign: 'center',
-                borderRadius: '8px',
-                boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)'
+                borderRadius: '12px',
+                border: '1px solid #E5E7EB',
+                backgroundColor: '#FAFBFC',
+                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)'
               }}>
-                <Typography color="text.secondary">No campaigns found</Typography>
+                <Typography color="text.secondary" variant="body1">No campaigns found</Typography>
               </Paper>
             )}
           </Box>
@@ -1267,14 +1283,16 @@ export default function DetailsSheet() {
             const stats = getTaskStatistics();
             return (
               <Paper sx={{
-                p: 2,
+                p: 2.5,
                 mb: 3,
-                backgroundColor: '#F3F4F6',
-                borderRadius: '8px',
-                boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
-                transition: 'box-shadow 0.3s ease',
+                backgroundColor: '#FAFBFC',
+                border: '1px solid #E5E7EB',
+                borderRadius: '12px',
+                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)',
+                transition: 'all 0.2s ease',
                 '&:hover': {
-                  boxShadow: '0 4px 8px rgba(0, 0, 0, 0.1)'
+                  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.06)',
+                  borderColor: '#D1D5DB'
                 }
               }}>
                 <Box sx={{ display: 'flex', gap: 4, justifyContent: 'center', flexWrap: 'wrap' }}>

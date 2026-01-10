@@ -206,12 +206,14 @@ const FilterToolbar: React.FC<FilterToolbarProps> = ({
 
   return (
     <Paper
-      elevation={2}
+      elevation={0}
       sx={{
         p: 2,
         mb: 3,
-        backgroundColor: '#f8f9fa',
-        borderRadius: 2
+        backgroundColor: '#FAFBFC',
+        border: '1px solid #E5E7EB',
+        borderRadius: '12px',
+        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)'
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', mb: expanded ? 2 : 0 }}>
@@ -262,7 +264,7 @@ const FilterToolbar: React.FC<FilterToolbarProps> = ({
 
           {/* Campaign Filter */}
           {showCampaignFilter && (
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid item xs={12} sm={6} md={2.5}>
               <FormControl fullWidth size="small">
                 <InputLabel id="campaign-filter-label">Campaign</InputLabel>
                 <Select
@@ -298,7 +300,7 @@ const FilterToolbar: React.FC<FilterToolbarProps> = ({
 
           {/* Project Filter */}
           {showProjectFilter && (
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid item xs={12} sm={6} md={2.5}>
               <FormControl fullWidth size="small">
                 <InputLabel id="project-filter-label">Project</InputLabel>
                 <Select
@@ -335,7 +337,7 @@ const FilterToolbar: React.FC<FilterToolbarProps> = ({
 
           {/* Status Filter */}
           {showStatusFilter && (
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid item xs={12} sm={6} md={2}>
               <FormControl fullWidth size="small">
                 <InputLabel id="status-filter-label">Status</InputLabel>
                 <Select
@@ -364,7 +366,7 @@ const FilterToolbar: React.FC<FilterToolbarProps> = ({
 
           {/* Creator Filter (System Admin only) */}
           {showCreatorFilter && user?.role === UserRole.SYSTEM_ADMIN && (
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid item xs={12} sm={6} md={2.5}>
               <FormControl fullWidth size="small">
                 <InputLabel id="creator-filter-label">Creator</InputLabel>
                 <Select
@@ -400,11 +402,11 @@ const FilterToolbar: React.FC<FilterToolbarProps> = ({
 
           {/* Date Range Filter */}
           {showDateFilter && (
-            <>
-              <Grid item xs={12} sm={6} md={3}>
+            <Grid item xs={12} sm={12} md={2.5}>
+              <Box sx={{ display: 'flex', gap: 1 }}>
                 <TextField
                   fullWidth
-                  label="Date From"
+                  label="From"
                   type="date"
                   value={filters.dateFrom || ''}
                   onChange={handleDateFromChange}
@@ -413,11 +415,9 @@ const FilterToolbar: React.FC<FilterToolbarProps> = ({
                   }}
                   size="small"
                 />
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
                 <TextField
                   fullWidth
-                  label="Date To"
+                  label="To"
                   type="date"
                   value={filters.dateTo || ''}
                   onChange={handleDateToChange}
@@ -426,8 +426,8 @@ const FilterToolbar: React.FC<FilterToolbarProps> = ({
                   }}
                   size="small"
                 />
-              </Grid>
-            </>
+              </Box>
+            </Grid>
           )}
         </Grid>
       </Collapse>
