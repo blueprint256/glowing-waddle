@@ -58,8 +58,7 @@ export default function TaskDetail() {
     name: '',
     description: '',
     status: TaskStatus.PENDING,
-    taskDate: null as Date | null,
-    content: ''
+    taskDate: null as Date | null
   });
 
   useEffect(() => {
@@ -81,8 +80,7 @@ export default function TaskDetail() {
         name: taskData.name,
         description: taskData.description || '',
         status: taskData.status,
-        taskDate: taskData.taskDate ? new Date(taskData.taskDate) : null,
-        content: taskData.content || ''
+        taskDate: taskData.taskDate ? new Date(taskData.taskDate) : null
       });
     } catch (error: any) {
       console.error('Error loading task:', error);
@@ -275,44 +273,46 @@ export default function TaskDetail() {
 
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
-      <Box>
+      <Box sx={{ px: { xs: 1, sm: 2, md: 0 } }}>
         {/* Breadcrumb Navigation */}
-        <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Box sx={{ mb: { xs: 1.5, sm: 2 }, display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2 }, flexWrap: 'wrap' }}>
           <IconButton
             onClick={() => navigate(-1)}
             sx={{
               backgroundColor: 'primary.main',
               color: 'white',
               '&:hover': { backgroundColor: 'primary.dark' },
-              width: 40,
-              height: 40
+              width: { xs: 36, sm: 40 },
+              height: { xs: 36, sm: 40 }
             }}
           >
-            <ArrowBackIcon />
+            <ArrowBackIcon fontSize={window.innerWidth < 600 ? 'small' : 'medium'} />
           </IconButton>
-          <Breadcrumbs aria-label="breadcrumb">
+          <Breadcrumbs aria-label="breadcrumb" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
             <Link
               underline="hover"
-              sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}
+              sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', fontSize: { xs: '0.75rem', sm: '0.875rem' } }}
               color="inherit"
               onClick={() => navigate('/')}
             >
-              <HomeIcon sx={{ mr: 0.5 }} fontSize="inherit" />
+              <HomeIcon sx={{ mr: 0.5, fontSize: { xs: '1rem', sm: '1.25rem' } }} />
               Home
             </Link>
             <Link
               underline="hover"
-              sx={{ cursor: 'pointer' }}
+              sx={{ cursor: 'pointer', fontSize: { xs: '0.75rem', sm: '0.875rem' } }}
               color="inherit"
               onClick={() => navigate('/details-sheet')}
             >
               Details Sheet
             </Link>
-            <Typography color="text.primary">{task?.name || 'Task Details'}</Typography>
+            <Typography color="text.primary" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+              {task?.name && task.name.length > 30 ? `${task.name.substring(0, 30)}...` : (task?.name || 'Task Details')}
+            </Typography>
           </Breadcrumbs>
         </Box>
 
-        <Paper sx={{ p: 3, mb: 3 }}>
+        <Paper sx={{ p: { xs: 2, sm: 2.5, md: 3 }, mb: { xs: 2, sm: 3 } }}>
           {/* Task Details Form - Always Editable */}
           <Box>
             <TextField
@@ -347,14 +347,15 @@ export default function TaskDetail() {
               {refining ? 'Refining...' : 'Refine Description with AI'}
             </Button>
 
-            <Grid container spacing={2} sx={{ mb: 2 }}>
-              <Grid item xs={12} md={6}>
+            <Grid container spacing={{ xs: 1.5, sm: 2 }} sx={{ mb: 3 }}>
+              <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
                   select
                   label="Status"
                   value={editForm.status}
                   onChange={(e) => setEditForm({ ...editForm, status: e.target.value as TaskStatus })}
+                  size={window.innerWidth < 600 ? 'small' : 'medium'}
                 >
                   {Object.values(TaskStatus).map((status) => (
                     <MenuItem key={status} value={status}>
@@ -363,27 +364,20 @@ export default function TaskDetail() {
                   ))}
                 </TextField>
               </Grid>
-              <Grid item xs={12} md={6}>
+              <Grid item xs={12} sm={6}>
                 <DatePicker
                   label="Task Date"
                   value={editForm.taskDate}
                   onChange={(date) => setEditForm({ ...editForm, taskDate: date })}
-                  slotProps={{ textField: { fullWidth: true } }}
+                  slotProps={{
+                    textField: {
+                      fullWidth: true,
+                      size: window.innerWidth < 600 ? 'small' : 'medium'
+                    }
+                  }}
                 />
               </Grid>
             </Grid>
-
-            <TextField
-              fullWidth
-              label="Content"
-              value={editForm.content}
-              onChange={(e) => setEditForm({ ...editForm, content: e.target.value })}
-              margin="normal"
-              multiline
-              rows={4}
-              variant="outlined"
-              sx={{ mb: 3 }}
-            />
 
             {/* Designed Image Section */}
             <Box sx={{ mt: 3, mb: 3 }}>
@@ -499,24 +493,51 @@ export default function TaskDetail() {
             </Box>
 
             {/* Action Buttons */}
-            <Box sx={{ mt: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <Box sx={{
+              mt: 3,
+              display: 'flex',
+              gap: { xs: 1.5, sm: 2 },
+              flexWrap: 'wrap',
+              flexDirection: { xs: 'column', sm: 'row' }
+            }}>
               <Button
                 variant="contained"
                 onClick={handleUpdateTask}
-                sx={{ backgroundColor: '#10B981', '&:hover': { backgroundColor: '#059669' } }}
+                fullWidth={window.innerWidth < 600}
+                sx={{
+                  backgroundColor: '#10B981',
+                  '&:hover': { backgroundColor: '#059669' },
+                  fontSize: { xs: '0.875rem', sm: '1rem' },
+                  py: { xs: 1, sm: 0.75 }
+                }}
               >
                 Save Changes
               </Button>
               <Button
                 variant="contained"
-                startIcon={<VisibilityIcon />}
+                startIcon={<VisibilityIcon fontSize={window.innerWidth < 600 ? 'small' : 'medium'} />}
                 onClick={() => setPreviewOpen(true)}
                 disabled={!editForm.name && !task.designedImage}
-                sx={{ backgroundColor: '#1DA1F2', '&:hover': { backgroundColor: '#1A91DA' } }}
+                fullWidth={window.innerWidth < 600}
+                sx={{
+                  backgroundColor: '#1DA1F2',
+                  '&:hover': { backgroundColor: '#1A91DA' },
+                  fontSize: { xs: '0.875rem', sm: '1rem' },
+                  py: { xs: 1, sm: 0.75 }
+                }}
               >
                 Preview on Social Media
               </Button>
-              <Button variant="outlined" color="error" onClick={handleDeleteTask}>
+              <Button
+                variant="outlined"
+                color="error"
+                onClick={handleDeleteTask}
+                fullWidth={window.innerWidth < 600}
+                sx={{
+                  fontSize: { xs: '0.875rem', sm: '1rem' },
+                  py: { xs: 1, sm: 0.75 }
+                }}
+              >
                 Delete Task
               </Button>
             </Box>

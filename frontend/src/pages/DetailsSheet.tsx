@@ -350,6 +350,25 @@ export default function DetailsSheet() {
     return count;
   };
 
+  // Calculate total task statistics across all campaigns
+  const getTaskStatistics = () => {
+    let allTasks: Task[] = [];
+    campaigns.forEach(campaign => {
+      campaign.projects?.forEach(project => {
+        if (project.tasks) {
+          allTasks = [...allTasks, ...project.tasks];
+        }
+      });
+    });
+
+    return {
+      pending: allTasks.filter(t => t.status === TaskStatus.PENDING).length,
+      inProgress: allTasks.filter(t => t.status === TaskStatus.IN_PROGRESS).length,
+      completed: allTasks.filter(t => t.status === TaskStatus.COMPLETED).length,
+      total: allTasks.length
+    };
+  };
+
   // Inline editing functions
   const startEditing = (type: 'campaign' | 'project' | 'task', id: string, field: string, currentValue: string) => {
     setEditingCell({ type, id, field });
@@ -451,6 +470,19 @@ export default function DetailsSheet() {
     } catch (error: any) {
       console.error('Error updating task status:', error);
       alert(error.response?.data?.message || 'Failed to update task status');
+    }
+  };
+
+  const getStatusColor = (status: TaskStatus) => {
+    switch (status) {
+      case TaskStatus.PENDING:
+        return '#F59E0B';
+      case TaskStatus.IN_PROGRESS:
+        return '#3B82F6';
+      case TaskStatus.COMPLETED:
+        return '#10B981';
+      default:
+        return '#6B7280';
     }
   };
 
@@ -809,39 +841,40 @@ export default function DetailsSheet() {
                       </Box>
                     ) : project.tasks && project.tasks.length > 0 ? (
                       <TableContainer component={Paper} sx={{
-                        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+                        mb: 1,
                         borderRadius: '8px',
+                        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
                         overflow: 'hidden',
                         transition: 'box-shadow 0.3s ease',
                         '&:hover': {
                           boxShadow: '0 6px 12px rgba(0, 0, 0, 0.15)'
                         }
                       }}>
-                        <Table size="small">
+                        <Table>
                           <TableHead>
-                            <TableRow sx={{ backgroundColor: TASK_COLOR }}>
-                              <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
-                              <TableCell sx={{ fontWeight: 600 }}>Task Name</TableCell>
-                              <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-                              <TableCell sx={{ fontWeight: 600 }}>Photos</TableCell>
-                              <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
-                              <TableCell sx={{ fontWeight: 600 }}>Last Updated</TableCell>
-                              <TableCell align="right" sx={{ fontWeight: 600 }}>Actions</TableCell>
+                            <TableRow sx={{ backgroundColor: '#F3F4F6' }}>
+                              <TableCell sx={{ fontWeight: 700, width: '10%' }}>Date</TableCell>
+                              <TableCell sx={{ fontWeight: 700, width: '20%' }}>Task Name</TableCell>
+                              <TableCell sx={{ fontWeight: 700, width: '12%' }}>Status</TableCell>
+                              <TableCell sx={{ fontWeight: 700, width: '8%' }}>Photos</TableCell>
+                              <TableCell sx={{ fontWeight: 700, width: '30%' }}>Description</TableCell>
+                              <TableCell sx={{ fontWeight: 700, width: '12%' }}>Last Updated</TableCell>
+                              <TableCell align="center" sx={{ fontWeight: 700, width: '8%' }}>Actions</TableCell>
                             </TableRow>
                           </TableHead>
                           <TableBody>
-                            {project.tasks.map((task) => {
+                            {project.tasks.map((task, index) => {
                               const photoCount = getPhotoCount(task);
 
                               return (
                                 <TableRow
                                   key={task._id}
-                                  hover
                                   sx={{
+                                    backgroundColor: index % 2 === 0 ? '#FFFFFF' : '#F9FAFB',
                                     transition: 'all 0.2s ease',
                                     '&:last-child td, &:last-child th': { border: 0 },
                                     '&:hover': {
-                                      backgroundColor: TASK_HOVER,
+                                      backgroundColor: '#F3F4F6',
                                       transform: 'scale(1.002)',
                                       boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)'
                                     }
@@ -896,7 +929,24 @@ export default function DetailsSheet() {
                                       <Select
                                         value={task.status}
                                         onChange={(e) => handleTaskStatusChange(task._id, e.target.value as TaskStatus)}
-                                        sx={{ fontSize: '0.875rem' }}
+                                        sx={{
+                                          backgroundColor: getStatusColor(task.status),
+                                          color: 'white',
+                                          fontWeight: 600,
+                                          fontSize: '0.75rem',
+                                          borderRadius: '4px',
+                                          transition: 'all 0.2s ease',
+                                          '&:hover': {
+                                            boxShadow: '0 2px 4px rgba(0, 0, 0, 0.15)',
+                                            transform: 'scale(0.98)'
+                                          },
+                                          '& .MuiOutlinedInput-notchedOutline': {
+                                            border: 'none'
+                                          },
+                                          '& .MuiSvgIcon-root': {
+                                            color: 'white'
+                                          }
+                                        }}
                                       >
                                         <MenuItem value={TaskStatus.PENDING}>Pending</MenuItem>
                                         <MenuItem value={TaskStatus.IN_PROGRESS}>In Progress</MenuItem>
@@ -1211,6 +1261,59 @@ export default function DetailsSheet() {
               </Paper>
             )}
           </Box>
+
+          {/* Summary Statistics */}
+          {campaigns.length > 0 && (() => {
+            const stats = getTaskStatistics();
+            return (
+              <Paper sx={{
+                p: 2,
+                mb: 3,
+                backgroundColor: '#F3F4F6',
+                borderRadius: '8px',
+                boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
+                transition: 'box-shadow 0.3s ease',
+                '&:hover': {
+                  boxShadow: '0 4px 8px rgba(0, 0, 0, 0.1)'
+                }
+              }}>
+                <Box sx={{ display: 'flex', gap: 4, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <Box sx={{ textAlign: 'center' }}>
+                    <Typography variant="h5" sx={{ fontWeight: 700, color: '#F59E0B' }}>
+                      {stats.pending}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Pending
+                    </Typography>
+                  </Box>
+                  <Box sx={{ textAlign: 'center' }}>
+                    <Typography variant="h5" sx={{ fontWeight: 700, color: '#3B82F6' }}>
+                      {stats.inProgress}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      In Progress
+                    </Typography>
+                  </Box>
+                  <Box sx={{ textAlign: 'center' }}>
+                    <Typography variant="h5" sx={{ fontWeight: 700, color: '#10B981' }}>
+                      {stats.completed}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Completed
+                    </Typography>
+                  </Box>
+                  <Box sx={{ textAlign: 'center' }}>
+                    <Typography variant="h5" sx={{ fontWeight: 700, color: '#6B7280' }}>
+                      {stats.total}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Total Tasks
+                    </Typography>
+                  </Box>
+                </Box>
+              </Paper>
+            );
+          })()}
 
           <Pagination
             currentPage={page}

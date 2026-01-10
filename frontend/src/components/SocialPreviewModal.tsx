@@ -25,6 +25,10 @@ import {
   Repeat as RetweetIcon,
   ThumbUpOutlined as ThumbUpIcon,
   Share as ShareIcon,
+  WhatsApp as WhatsAppIcon,
+  Phone as PhoneIcon,
+  Videocam as VideocamIcon,
+  Info as InfoIcon,
 } from '@mui/icons-material';
 
 interface SocialPreviewModalProps {
@@ -611,6 +615,285 @@ const SocialPreviewModal: React.FC<SocialPreviewModalProps> = ({
     </Paper>
   );
 
+  // WhatsApp Channel Preview
+  const WhatsAppChannelPreview = () => (
+    <Paper
+      elevation={3}
+      sx={{
+        maxWidth: 400,
+        margin: '0 auto',
+        backgroundColor: '#fff',
+        borderRadius: 2,
+        overflow: 'hidden',
+      }}
+    >
+      {/* Channel Header */}
+      <Box
+        sx={{
+          p: 1.5,
+          backgroundColor: '#075E54',
+          color: 'white',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+        }}
+      >
+        <Avatar sx={{ width: 40, height: 40, backgroundColor: '#128C7E' }}>C</Avatar>
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="subtitle2" fontWeight="bold">
+            Your Channel
+          </Typography>
+          <Typography variant="caption" sx={{ opacity: 0.9 }}>
+            Channel
+          </Typography>
+        </Box>
+        <IconButton size="small" sx={{ color: 'white' }}>
+          <InfoIcon fontSize="small" />
+        </IconButton>
+      </Box>
+
+      {/* Channel Post */}
+      <Box sx={{ p: 2, backgroundColor: '#ECE5DD' }}>
+        <Box
+          sx={{
+            backgroundColor: '#fff',
+            borderRadius: 2,
+            p: 1.5,
+            position: 'relative',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+            '&::after': {
+              content: '""',
+              position: 'absolute',
+              bottom: -8,
+              left: 16,
+              width: 0,
+              height: 0,
+              borderStyle: 'solid',
+              borderWidth: '8px 8px 0 0',
+              borderColor: '#fff transparent transparent transparent',
+            },
+          }}
+        >
+          {/* Image */}
+          {task.designedImage && (
+            <Box
+              sx={{
+                width: '100%',
+                maxHeight: 300,
+                borderRadius: 1,
+                overflow: 'hidden',
+                mb: 1,
+              }}
+            >
+              <img
+                src={task.designedImage}
+                alt={task.name}
+                style={{
+                  width: '100%',
+                  maxHeight: '300px',
+                  objectFit: 'cover',
+                }}
+              />
+            </Box>
+          )}
+
+          {/* Caption */}
+          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mb: 1 }}>
+            {formatCaption()}
+          </Typography>
+
+          {/* Timestamp */}
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 0.5 }}>
+            <Typography variant="caption" color="text.secondary">
+              {task.taskDate ? new Date(task.taskDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now'}
+            </Typography>
+          </Box>
+        </Box>
+
+        {/* Channel Info */}
+        <Box sx={{ mt: 1.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <WhatsAppIcon sx={{ fontSize: 16, color: '#128C7E' }} />
+          <Typography variant="caption" color="text.secondary">
+            Channel post • {task.taskDate ? new Date(task.taskDate).toLocaleDateString() : 'Today'}
+          </Typography>
+        </Box>
+      </Box>
+    </Paper>
+  );
+
+  // WhatsApp Status Preview
+  const WhatsAppStatusPreview = () => (
+    <Paper
+      elevation={3}
+      sx={{
+        maxWidth: 350,
+        margin: '0 auto',
+        backgroundColor: '#000',
+        borderRadius: 2,
+        overflow: 'hidden',
+        aspectRatio: '9 / 16',
+        position: 'relative',
+      }}
+    >
+      {/* Status Header */}
+      <Box
+        sx={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          background: 'linear-gradient(180deg, rgba(0,0,0,0.7) 0%, transparent 100%)',
+          p: 1.5,
+          zIndex: 10,
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Avatar sx={{ width: 28, height: 28, backgroundColor: '#128C7E', border: '2px solid #25D366' }}>
+            U
+          </Avatar>
+          <Box sx={{ flex: 1 }}>
+            <Typography variant="caption" sx={{ color: '#fff', fontWeight: 'bold', display: 'block' }}>
+              Your Status
+            </Typography>
+            <Typography variant="caption" sx={{ color: '#fff', opacity: 0.7, fontSize: '0.7rem' }}>
+              Just now
+            </Typography>
+          </Box>
+          <IconButton size="small" sx={{ color: 'white' }}>
+            <MoreIcon fontSize="small" />
+          </IconButton>
+        </Box>
+
+        {/* Status Progress Bar */}
+        <Box
+          sx={{
+            width: '100%',
+            height: 2,
+            backgroundColor: 'rgba(255,255,255,0.3)',
+            borderRadius: 1,
+            mt: 1,
+          }}
+        >
+          <Box
+            sx={{
+              width: '40%',
+              height: '100%',
+              backgroundColor: '#fff',
+              borderRadius: 1,
+            }}
+          />
+        </Box>
+      </Box>
+
+      {/* Status Image */}
+      <Box
+        sx={{
+          width: '100%',
+          height: '100%',
+          backgroundColor: '#1a1a1a',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        {task.designedImage ? (
+          <img
+            src={task.designedImage}
+            alt={task.name}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'contain',
+            }}
+          />
+        ) : (
+          <Typography variant="body2" sx={{ color: '#666' }}>
+            No image
+          </Typography>
+        )}
+      </Box>
+
+      {/* Status Caption */}
+      {(task.name || task.description) && (
+        <Box
+          sx={{
+            position: 'absolute',
+            bottom: 80,
+            left: 16,
+            right: 16,
+            backgroundColor: 'rgba(0,0,0,0.7)',
+            borderRadius: 1,
+            p: 1.5,
+          }}
+        >
+          <Typography variant="body2" sx={{ color: '#fff', whiteSpace: 'pre-wrap' }}>
+            {formatCaption().substring(0, 200)}
+            {formatCaption().length > 200 && '...'}
+          </Typography>
+        </Box>
+      )}
+
+      {/* Status Actions */}
+      <Box
+        sx={{
+          position: 'absolute',
+          bottom: 16,
+          left: 0,
+          right: 0,
+          display: 'flex',
+          justifyContent: 'center',
+          gap: 4,
+          px: 4,
+        }}
+      >
+        <IconButton
+          sx={{
+            backgroundColor: 'rgba(255,255,255,0.2)',
+            color: 'white',
+            '&:hover': { backgroundColor: 'rgba(255,255,255,0.3)' },
+          }}
+        >
+          <PhoneIcon />
+        </IconButton>
+        <IconButton
+          sx={{
+            backgroundColor: 'rgba(255,255,255,0.2)',
+            color: 'white',
+            '&:hover': { backgroundColor: 'rgba(255,255,255,0.3)' },
+          }}
+        >
+          <VideocamIcon />
+        </IconButton>
+        <Box
+          sx={{
+            flex: 1,
+            border: '1px solid rgba(255,255,255,0.5)',
+            borderRadius: 20,
+            px: 2,
+            py: 1,
+            backgroundColor: 'rgba(0,0,0,0.3)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Typography variant="caption" sx={{ color: '#fff' }}>
+            Reply
+          </Typography>
+        </Box>
+        <IconButton
+          sx={{
+            backgroundColor: 'rgba(255,255,255,0.2)',
+            color: 'white',
+            '&:hover': { backgroundColor: 'rgba(255,255,255,0.3)' },
+          }}
+        >
+          <ShareIcon />
+        </IconButton>
+      </Box>
+    </Paper>
+  );
+
   return (
     <Dialog
       open={open}
@@ -671,6 +954,8 @@ const SocialPreviewModal: React.FC<SocialPreviewModalProps> = ({
             <Tab label="Facebook" />
             <Tab label="Twitter/X" />
             <Tab label="LinkedIn" />
+            <Tab label="WhatsApp Channel" />
+            <Tab label="WhatsApp Status" />
           </Tabs>
         </Box>
 
@@ -689,6 +974,12 @@ const SocialPreviewModal: React.FC<SocialPreviewModalProps> = ({
           </TabPanel>
           <TabPanel value={activeTab} index={4}>
             <LinkedInPreview />
+          </TabPanel>
+          <TabPanel value={activeTab} index={5}>
+            <WhatsAppChannelPreview />
+          </TabPanel>
+          <TabPanel value={activeTab} index={6}>
+            <WhatsAppStatusPreview />
           </TabPanel>
         </Box>
       </DialogContent>
