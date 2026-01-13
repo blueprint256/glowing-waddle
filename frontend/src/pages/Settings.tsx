@@ -99,8 +99,12 @@ export default function Settings() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [canvaConnected, setCanvaConnected] = useState(false);
   const [canvaConnectedAt, setCanvaConnectedAt] = useState<Date | null>(null);
+  const [twitterConnected, setTwitterConnected] = useState(false);
+  const [twitterConnectedAt, setTwitterConnectedAt] = useState<Date | null>(null);
+  const [linkedinConnected, setLinkedinConnected] = useState(false);
+  const [linkedinConnectedAt, setLinkedinConnectedAt] = useState<Date | null>(null);
   const [loading, setLoading] = useState(true);
-  const [disconnecting, setDisconnecting] = useState(false);
+  const [disconnecting, setDisconnecting] = useState<{[key: string]: boolean}>({});
   const [companyInfoLoading, setCompanyInfoLoading] = useState(false);
   const [companyInfoSaving, setCompanyInfoSaving] = useState(false);
   const [companyInfo, setCompanyInfo] = useState({
@@ -187,14 +191,18 @@ export default function Settings() {
     const integration = searchParams.get('integration');
     const status = searchParams.get('status');
 
-    if (integration === 'canva' && status) {
+    if (integration && status) {
+      const integrationTab = user?.role === UserRole.HYBRID ? 2 : 1;
+
       if (status === 'success') {
-        setMessage({ type: 'success', text: 'Canva integration connected successfully!' });
-        setActiveTab(2); // Switch to Integrations tab
+        const platformName = integration.charAt(0).toUpperCase() + integration.slice(1);
+        setMessage({ type: 'success', text: `${platformName} integration connected successfully!` });
+        setActiveTab(integrationTab); // Switch to Integrations tab
         fetchIntegrationStatus();
       } else {
-        setMessage({ type: 'error', text: 'Failed to connect Canva integration. Please try again.' });
-        setActiveTab(2);
+        const platformName = integration.charAt(0).toUpperCase() + integration.slice(1);
+        setMessage({ type: 'error', text: `Failed to connect ${platformName} integration. Please try again.` });
+        setActiveTab(integrationTab);
       }
     } else {
       fetchIntegrationStatus();
@@ -315,9 +323,26 @@ export default function Settings() {
       setLoading(true);
       const response = await api.get('/integrations/status');
       if (response.data.success) {
+        // Canva integration
         setCanvaConnected(response.data.integrations.canva.connected);
         if (response.data.integrations.canva.connectedAt) {
           setCanvaConnectedAt(new Date(response.data.integrations.canva.connectedAt));
+        }
+
+        // Twitter integration
+        if (response.data.integrations.twitter) {
+          setTwitterConnected(response.data.integrations.twitter.connected);
+          if (response.data.integrations.twitter.connectedAt) {
+            setTwitterConnectedAt(new Date(response.data.integrations.twitter.connectedAt));
+          }
+        }
+
+        // LinkedIn integration
+        if (response.data.integrations.linkedin) {
+          setLinkedinConnected(response.data.integrations.linkedin.connected);
+          if (response.data.integrations.linkedin.connectedAt) {
+            setLinkedinConnectedAt(new Date(response.data.integrations.linkedin.connectedAt));
+          }
         }
 
         // Fetch LLM provider statuses for System Admins
@@ -355,7 +380,7 @@ export default function Settings() {
 
   const handleDisconnectCanva = async () => {
     try {
-      setDisconnecting(true);
+      setDisconnecting(prev => ({ ...prev, canva: true }));
       const response = await api.post('/integrations/canva/disconnect');
       if (response.data.success) {
         setCanvaConnected(false);
@@ -365,7 +390,49 @@ export default function Settings() {
     } catch (error) {
       setMessage({ type: 'error', text: 'Failed to disconnect Canva integration. Please try again.' });
     } finally {
-      setDisconnecting(false);
+      setDisconnecting(prev => ({ ...prev, canva: false }));
+    }
+  };
+
+  const handleConnectTwitter = () => {
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+    window.location.href = `${apiUrl}/integrations/twitter`;
+  };
+
+  const handleDisconnectTwitter = async () => {
+    try {
+      setDisconnecting(prev => ({ ...prev, twitter: true }));
+      const response = await api.post('/integrations/twitter/disconnect');
+      if (response.data.success) {
+        setTwitterConnected(false);
+        setTwitterConnectedAt(null);
+        setMessage({ type: 'success', text: 'Twitter integration disconnected successfully.' });
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Failed to disconnect Twitter integration. Please try again.' });
+    } finally {
+      setDisconnecting(prev => ({ ...prev, twitter: false }));
+    }
+  };
+
+  const handleConnectLinkedin = () => {
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+    window.location.href = `${apiUrl}/integrations/linkedin`;
+  };
+
+  const handleDisconnectLinkedin = async () => {
+    try {
+      setDisconnecting(prev => ({ ...prev, linkedin: true }));
+      const response = await api.post('/integrations/linkedin/disconnect');
+      if (response.data.success) {
+        setLinkedinConnected(false);
+        setLinkedinConnectedAt(null);
+        setMessage({ type: 'success', text: 'LinkedIn integration disconnected successfully.' });
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Failed to disconnect LinkedIn integration. Please try again.' });
+    } finally {
+      setDisconnecting(prev => ({ ...prev, linkedin: false }));
     }
   };
 
@@ -1276,17 +1343,31 @@ export default function Settings() {
             ) : (
               <>
                 {/* Canva Integration */}
-                <Card sx={{ mb: 2 }}>
-                  <CardContent>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <Typography variant="h6">Canva</Typography>
+                <Card sx={{
+                  mb: 2,
+                  borderRadius: { xs: '8px', sm: '12px' },
+                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)'
+                }}>
+                  <CardContent sx={{ p: { xs: 2, sm: 2.5 } }}>
+                    <Box sx={{
+                      display: 'flex',
+                      flexDirection: { xs: 'column', sm: 'row' },
+                      alignItems: { xs: 'flex-start', sm: 'center' },
+                      justifyContent: 'space-between',
+                      gap: { xs: 1.5, sm: 2 },
+                      mb: 2
+                    }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+                        <Typography variant="h6" sx={{ fontSize: { xs: '1.125rem', sm: '1.25rem' } }}>
+                          Canva
+                        </Typography>
                         {canvaConnected ? (
                           <Chip
                             icon={<CheckCircle />}
                             label="Connected"
                             color="success"
                             size="small"
+                            sx={{ fontSize: { xs: '0.75rem', sm: '0.8125rem' } }}
                           />
                         ) : (
                           <Chip
@@ -1294,32 +1375,42 @@ export default function Settings() {
                             label="Not Connected"
                             color="default"
                             size="small"
+                            sx={{ fontSize: { xs: '0.75rem', sm: '0.8125rem' } }}
                           />
                         )}
                       </Box>
                     </Box>
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.875rem', sm: '0.875rem' } }}>
                       Connect your Canva account to import designs and images directly into your tasks.
                       This integration allows you to browse and use your Canva designs within the campaign
                       management platform.
                     </Typography>
                     {canvaConnected && canvaConnectedAt && (
-                      <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ mt: 1, display: 'block', fontSize: { xs: '0.6875rem', sm: '0.75rem' } }}
+                      >
                         Connected on {canvaConnectedAt.toLocaleDateString()} at{' '}
                         {canvaConnectedAt.toLocaleTimeString()}
                       </Typography>
                     )}
                   </CardContent>
                   <Divider />
-                  <CardActions>
+                  <CardActions sx={{ p: { xs: 1.5, sm: 2 } }}>
                     {canvaConnected ? (
                       <Button
                         size="small"
                         color="error"
                         onClick={handleDisconnectCanva}
-                        disabled={disconnecting}
+                        disabled={disconnecting.canva}
+                        fullWidth={isMobile}
+                        sx={{
+                          minHeight: { xs: '44px', sm: 'auto' },
+                          fontSize: { xs: '0.875rem', sm: '0.875rem' }
+                        }}
                       >
-                        {disconnecting ? 'Disconnecting...' : 'Disconnect'}
+                        {disconnecting.canva ? 'Disconnecting...' : 'Disconnect'}
                       </Button>
                     ) : (
                       <Button
@@ -1327,8 +1418,189 @@ export default function Settings() {
                         variant="contained"
                         startIcon={<LinkIcon />}
                         onClick={handleConnectCanva}
+                        fullWidth={isMobile}
+                        sx={{
+                          minHeight: { xs: '44px', sm: 'auto' },
+                          fontSize: { xs: '0.875rem', sm: '0.875rem' }
+                        }}
                       >
                         Connect Canva
+                      </Button>
+                    )}
+                  </CardActions>
+                </Card>
+
+                {/* Twitter Integration */}
+                <Card sx={{
+                  mb: 2,
+                  borderRadius: { xs: '8px', sm: '12px' },
+                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)'
+                }}>
+                  <CardContent sx={{ p: { xs: 2, sm: 2.5 } }}>
+                    <Box sx={{
+                      display: 'flex',
+                      flexDirection: { xs: 'column', sm: 'row' },
+                      alignItems: { xs: 'flex-start', sm: 'center' },
+                      justifyContent: 'space-between',
+                      gap: { xs: 1.5, sm: 2 },
+                      mb: 2
+                    }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+                        <Typography variant="h6" sx={{ fontSize: { xs: '1.125rem', sm: '1.25rem' } }}>
+                          Twitter (X)
+                        </Typography>
+                        {twitterConnected ? (
+                          <Chip
+                            icon={<CheckCircle />}
+                            label="Connected"
+                            color="success"
+                            size="small"
+                            sx={{ fontSize: { xs: '0.75rem', sm: '0.8125rem' } }}
+                          />
+                        ) : (
+                          <Chip
+                            icon={<Cancel />}
+                            label="Not Connected"
+                            color="default"
+                            size="small"
+                            sx={{ fontSize: { xs: '0.75rem', sm: '0.8125rem' } }}
+                          />
+                        )}
+                      </Box>
+                    </Box>
+                    <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.875rem', sm: '0.875rem' } }}>
+                      Connect your Twitter account to manage and publish content directly to your Twitter profile.
+                      This integration enables you to streamline your social media workflow and maintain consistent
+                      brand presence on Twitter.
+                    </Typography>
+                    {twitterConnected && twitterConnectedAt && (
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ mt: 1, display: 'block', fontSize: { xs: '0.6875rem', sm: '0.75rem' } }}
+                      >
+                        Connected on {twitterConnectedAt.toLocaleDateString()} at{' '}
+                        {twitterConnectedAt.toLocaleTimeString()}
+                      </Typography>
+                    )}
+                  </CardContent>
+                  <Divider />
+                  <CardActions sx={{ p: { xs: 1.5, sm: 2 } }}>
+                    {twitterConnected ? (
+                      <Button
+                        size="small"
+                        color="error"
+                        onClick={handleDisconnectTwitter}
+                        disabled={disconnecting.twitter}
+                        fullWidth={isMobile}
+                        sx={{
+                          minHeight: { xs: '44px', sm: 'auto' },
+                          fontSize: { xs: '0.875rem', sm: '0.875rem' }
+                        }}
+                      >
+                        {disconnecting.twitter ? 'Disconnecting...' : 'Disconnect'}
+                      </Button>
+                    ) : (
+                      <Button
+                        size="small"
+                        variant="contained"
+                        startIcon={<LinkIcon />}
+                        onClick={handleConnectTwitter}
+                        fullWidth={isMobile}
+                        sx={{
+                          minHeight: { xs: '44px', sm: 'auto' },
+                          fontSize: { xs: '0.875rem', sm: '0.875rem' }
+                        }}
+                      >
+                        Connect Twitter
+                      </Button>
+                    )}
+                  </CardActions>
+                </Card>
+
+                {/* LinkedIn Integration */}
+                <Card sx={{
+                  mb: 2,
+                  borderRadius: { xs: '8px', sm: '12px' },
+                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)'
+                }}>
+                  <CardContent sx={{ p: { xs: 2, sm: 2.5 } }}>
+                    <Box sx={{
+                      display: 'flex',
+                      flexDirection: { xs: 'column', sm: 'row' },
+                      alignItems: { xs: 'flex-start', sm: 'center' },
+                      justifyContent: 'space-between',
+                      gap: { xs: 1.5, sm: 2 },
+                      mb: 2
+                    }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+                        <Typography variant="h6" sx={{ fontSize: { xs: '1.125rem', sm: '1.25rem' } }}>
+                          LinkedIn
+                        </Typography>
+                        {linkedinConnected ? (
+                          <Chip
+                            icon={<CheckCircle />}
+                            label="Connected"
+                            color="success"
+                            size="small"
+                            sx={{ fontSize: { xs: '0.75rem', sm: '0.8125rem' } }}
+                          />
+                        ) : (
+                          <Chip
+                            icon={<Cancel />}
+                            label="Not Connected"
+                            color="default"
+                            size="small"
+                            sx={{ fontSize: { xs: '0.75rem', sm: '0.8125rem' } }}
+                          />
+                        )}
+                      </Box>
+                    </Box>
+                    <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.875rem', sm: '0.875rem' } }}>
+                      Connect your LinkedIn account to manage and publish professional content directly to your LinkedIn profile
+                      or company page. This integration helps you maintain consistent professional presence and engage with
+                      your network effectively.
+                    </Typography>
+                    {linkedinConnected && linkedinConnectedAt && (
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ mt: 1, display: 'block', fontSize: { xs: '0.6875rem', sm: '0.75rem' } }}
+                      >
+                        Connected on {linkedinConnectedAt.toLocaleDateString()} at{' '}
+                        {linkedinConnectedAt.toLocaleTimeString()}
+                      </Typography>
+                    )}
+                  </CardContent>
+                  <Divider />
+                  <CardActions sx={{ p: { xs: 1.5, sm: 2 } }}>
+                    {linkedinConnected ? (
+                      <Button
+                        size="small"
+                        color="error"
+                        onClick={handleDisconnectLinkedin}
+                        disabled={disconnecting.linkedin}
+                        fullWidth={isMobile}
+                        sx={{
+                          minHeight: { xs: '44px', sm: 'auto' },
+                          fontSize: { xs: '0.875rem', sm: '0.875rem' }
+                        }}
+                      >
+                        {disconnecting.linkedin ? 'Disconnecting...' : 'Disconnect'}
+                      </Button>
+                    ) : (
+                      <Button
+                        size="small"
+                        variant="contained"
+                        startIcon={<LinkIcon />}
+                        onClick={handleConnectLinkedin}
+                        fullWidth={isMobile}
+                        sx={{
+                          minHeight: { xs: '44px', sm: 'auto' },
+                          fontSize: { xs: '0.875rem', sm: '0.875rem' }
+                        }}
+                      >
+                        Connect LinkedIn
                       </Button>
                     )}
                   </CardActions>
