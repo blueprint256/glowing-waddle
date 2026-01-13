@@ -31,7 +31,8 @@
     "openai": "^6.15.0",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
-    "passport-local": "^1.0.0"
+    "passport-local": "^1.0.0",
+    "twitter-api-v2": "^1.28.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

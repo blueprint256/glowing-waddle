@@ -22,6 +22,12 @@ export interface IAppConfig extends Document {
   geminiKeyUpdatedAt?: Date;
   geminiKeyUpdatedBy?: mongoose.Types.ObjectId;
 
+  // Twitter (X) OAuth configuration (Admin-managed)
+  twitterClientId?: string;
+  twitterClientSecret?: string;
+  twitterConfigUpdatedAt?: Date;
+  twitterConfigUpdatedBy?: mongoose.Types.ObjectId;
+
   // Default LLM configuration (for text generation)
   defaultLLMProvider?: string; // 'openai' | 'anthropic' | 'grok' | 'gemini'
   defaultLLMModel?: string;
@@ -95,6 +101,23 @@ const appConfigSchema = new Schema<IAppConfig>(
       ref: 'User'
     },
 
+    // Twitter (X) OAuth configuration (Admin-managed)
+    twitterClientId: {
+      type: String,
+      select: false
+    },
+    twitterClientSecret: {
+      type: String,
+      select: false
+    },
+    twitterConfigUpdatedAt: {
+      type: Date
+    },
+    twitterConfigUpdatedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User'
+    },
+
     // Default LLM configuration (for text generation)
     defaultLLMProvider: {
       type: String,
@@ -151,7 +174,7 @@ interface IAppConfigModel extends mongoose.Model<IAppConfig> {
 
 // Static method to get or create the singleton config
 appConfigSchema.statics.getConfig = async function (): Promise<IAppConfig> {
-  let config = await this.findOne().select('+openAIApiKey +anthropicApiKey +grokApiKey +geminiApiKey');
+  let config = await this.findOne().select('+openAIApiKey +anthropicApiKey +grokApiKey +geminiApiKey +twitterClientId +twitterClientSecret');
   if (!config) {
     config = await this.create({});
   }

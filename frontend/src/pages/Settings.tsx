@@ -186,6 +186,13 @@ export default function Settings() {
   });
   const [chainSaving, setChainSaving] = useState(false);
 
+  // Twitter OAuth configuration state (System Admin only)
+  const [twitterOAuthConfigured, setTwitterOAuthConfigured] = useState(false);
+  const [twitterClientId, setTwitterClientId] = useState('');
+  const [twitterClientSecret, setTwitterClientSecret] = useState('');
+  const [showTwitterClientSecret, setShowTwitterClientSecret] = useState(false);
+  const [savingTwitterConfig, setSavingTwitterConfig] = useState(false);
+
   useEffect(() => {
     // Check for integration callback status
     const integration = searchParams.get('integration');
@@ -219,6 +226,7 @@ export default function Settings() {
       fetchChains();
       fetchCommandMappings();
       fetchDefaultLLMConfig();
+      fetchTwitterOAuthStatus();
     }
   }, [searchParams, user]);
 
@@ -433,6 +441,69 @@ export default function Settings() {
       setMessage({ type: 'error', text: 'Failed to disconnect LinkedIn integration. Please try again.' });
     } finally {
       setDisconnecting(prev => ({ ...prev, linkedin: false }));
+    }
+  };
+
+  // Twitter OAuth configuration functions (Admin only)
+  const fetchTwitterOAuthStatus = async () => {
+    try {
+      const response = await api.get('/integrations/twitter/config/status');
+      if (response.data.success) {
+        setTwitterOAuthConfigured(response.data.configured);
+      }
+    } catch (error) {
+      console.error('Error fetching Twitter OAuth status:', error);
+    }
+  };
+
+  const handleSaveTwitterOAuthConfig = async () => {
+    try {
+      setSavingTwitterConfig(true);
+      const response = await api.patch('/integrations/twitter/config', {
+        clientId: twitterClientId,
+        clientSecret: twitterClientSecret
+      });
+
+      if (response.data.success) {
+        setMessage({ type: 'success', text: 'Twitter OAuth credentials saved successfully!' });
+        setTwitterOAuthConfigured(true);
+        setTwitterClientId('');
+        setTwitterClientSecret('');
+        setShowTwitterClientSecret(false);
+        fetchTwitterOAuthStatus();
+      }
+    } catch (error: any) {
+      console.error('Error saving Twitter OAuth config:', error);
+      setMessage({
+        type: 'error',
+        text: error.response?.data?.message || 'Failed to save Twitter OAuth credentials'
+      });
+    } finally {
+      setSavingTwitterConfig(false);
+    }
+  };
+
+  const handleRemoveTwitterOAuthConfig = async () => {
+    if (!confirm('Are you sure you want to remove the Twitter OAuth configuration? This will disconnect all users\' Twitter accounts.')) {
+      return;
+    }
+
+    try {
+      setSavingTwitterConfig(true);
+      const response = await api.delete('/integrations/twitter/config');
+
+      if (response.data.success) {
+        setMessage({ type: 'success', text: 'Twitter OAuth credentials removed successfully.' });
+        setTwitterOAuthConfigured(false);
+        setTwitterClientId('');
+        setTwitterClientSecret('');
+        fetchTwitterOAuthStatus();
+      }
+    } catch (error: any) {
+      console.error('Error removing Twitter OAuth config:', error);
+      setMessage({ type: 'error', text: 'Failed to remove Twitter OAuth credentials' });
+    } finally {
+      setSavingTwitterConfig(false);
     }
   };
 
@@ -1605,6 +1676,134 @@ export default function Settings() {
                     )}
                   </CardActions>
                 </Card>
+
+                {/* Twitter OAuth Configuration (System Admin only) */}
+                {user?.role === UserRole.SYSTEM_ADMIN && (
+                  <Card sx={{
+                    mb: 2,
+                    borderRadius: { xs: '8px', sm: '12px' },
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+                    border: '2px solid #1DA1F2'
+                  }}>
+                    <CardContent sx={{ p: { xs: 2, sm: 2.5 } }}>
+                      <Box sx={{
+                        display: 'flex',
+                        flexDirection: { xs: 'column', sm: 'row' },
+                        alignItems: { xs: 'flex-start', sm: 'center' },
+                        justifyContent: 'space-between',
+                        gap: { xs: 1.5, sm: 2 },
+                        mb: 2
+                      }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+                          <Typography variant="h6" sx={{ fontSize: { xs: '1.125rem', sm: '1.25rem' }, color: '#1DA1F2' }}>
+                            Twitter (X) OAuth Configuration
+                          </Typography>
+                          {twitterOAuthConfigured ? (
+                            <Chip
+                              icon={<CheckCircleOutline />}
+                              label="Configured"
+                              color="success"
+                              size="small"
+                              sx={{ fontSize: { xs: '0.75rem', sm: '0.8125rem' } }}
+                            />
+                          ) : (
+                            <Chip
+                              icon={<WarningAmber />}
+                              label="Not Configured"
+                              color="warning"
+                              size="small"
+                              sx={{ fontSize: { xs: '0.75rem', sm: '0.8125rem' } }}
+                            />
+                          )}
+                        </Box>
+                      </Box>
+
+                      <Alert severity="info" sx={{ mb: 2, fontSize: { xs: '0.875rem', sm: '0.875rem' } }}>
+                        <strong>Admin Configuration:</strong> Set up Twitter OAuth credentials here once. Regular users will then be able to connect their own Twitter accounts to post tweets.
+                      </Alert>
+
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: { xs: '0.875rem', sm: '0.875rem' } }}>
+                        Configure Twitter Developer App OAuth 2.0 credentials. Users will authenticate via OAuth with PKCE to grant permission to post on their behalf.
+                      </Typography>
+
+                      <TextField
+                        fullWidth
+                        label="Twitter Client ID"
+                        value={twitterClientId}
+                        onChange={(e) => setTwitterClientId(e.target.value)}
+                        placeholder={twitterOAuthConfigured ? 'Enter new Client ID to update' : 'Enter your Twitter Client ID'}
+                        helperText={twitterOAuthConfigured ? 'Current credentials are saved. Enter new values to update.' : 'Get this from your Twitter Developer Portal'}
+                        margin="normal"
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            fontSize: { xs: '0.875rem', sm: '1rem' }
+                          }
+                        }}
+                      />
+
+                      <TextField
+                        fullWidth
+                        type={showTwitterClientSecret ? 'text' : 'password'}
+                        label="Twitter Client Secret"
+                        value={twitterClientSecret}
+                        onChange={(e) => setTwitterClientSecret(e.target.value)}
+                        placeholder={twitterOAuthConfigured ? 'Enter new Client Secret to update' : 'Enter your Twitter Client Secret'}
+                        helperText={twitterOAuthConfigured ? 'Enter a new secret to update' : 'Keep this secret secure - never share it'}
+                        margin="normal"
+                        InputProps={{
+                          endAdornment: (
+                            <IconButton
+                              onClick={() => setShowTwitterClientSecret(!showTwitterClientSecret)}
+                              edge="end"
+                              size="small"
+                            >
+                              {showTwitterClientSecret ? <VisibilityOff /> : <Visibility />}
+                            </IconButton>
+                          )
+                        }}
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            fontSize: { xs: '0.875rem', sm: '1rem' }
+                          }
+                        }}
+                      />
+                    </CardContent>
+                    <Divider />
+                    <CardActions sx={{ p: { xs: 1.5, sm: 2 }, gap: 1, flexDirection: { xs: 'column', sm: 'row' } }}>
+                      <Button
+                        variant="contained"
+                        onClick={handleSaveTwitterOAuthConfig}
+                        disabled={savingTwitterConfig || !twitterClientId.trim() || !twitterClientSecret.trim()}
+                        fullWidth={isMobile}
+                        sx={{
+                          minHeight: { xs: '44px', sm: 'auto' },
+                          fontSize: { xs: '0.875rem', sm: '0.875rem' },
+                          backgroundColor: '#1DA1F2',
+                          '&:hover': {
+                            backgroundColor: '#1A8CD8'
+                          }
+                        }}
+                      >
+                        {savingTwitterConfig ? 'Saving...' : 'Save OAuth Credentials'}
+                      </Button>
+                      {twitterOAuthConfigured && (
+                        <Button
+                          size="small"
+                          color="error"
+                          onClick={handleRemoveTwitterOAuthConfig}
+                          disabled={savingTwitterConfig}
+                          fullWidth={isMobile}
+                          sx={{
+                            minHeight: { xs: '44px', sm: 'auto' },
+                            fontSize: { xs: '0.875rem', sm: '0.875rem' }
+                          }}
+                        >
+                          Remove OAuth Configuration
+                        </Button>
+                      )}
+                    </CardActions>
+                  </Card>
+                )}
 
                 {/* OpenAI Integration (System Admin only) */}
                 {user?.role === UserRole.SYSTEM_ADMIN && (

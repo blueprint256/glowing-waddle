@@ -6,6 +6,8 @@ import { AppConfig } from '../models/AppConfig';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { TwitterApi } from 'twitter-api-v2';
+import crypto from 'crypto';
 
 const router = express.Router();
 
@@ -177,6 +179,15 @@ router.get('/status', isAuthenticated, async (req: Request, res: Response) => {
         canva: {
           connected: user.integrations?.canva?.connected || false,
           connectedAt: user.integrations?.canva?.connectedAt
+        },
+        twitter: {
+          connected: user.integrations?.twitter?.connected || false,
+          connectedAt: user.integrations?.twitter?.connectedAt,
+          username: user.integrations?.twitter?.username
+        },
+        linkedin: {
+          connected: user.integrations?.linkedin?.connected || false,
+          connectedAt: user.integrations?.linkedin?.connectedAt
         },
         ...(req.user?.role === UserRole.SYSTEM_ADMIN && llmProviders)
       }
@@ -1025,6 +1036,443 @@ router.patch('/image-llm/default', isAuthenticated, isSystemAdmin, async (req: R
     res.status(500).json({
       success: false,
       message: 'Failed to save default Image LLM configuration'
+    });
+  }
+});
+
+// ===========================
+// TWITTER (X) OAUTH ROUTES
+// ===========================
+
+/**
+ * @route   PATCH /api/integrations/twitter/config
+ * @desc    Save Twitter OAuth Client ID and Secret (Admin only)
+ * @access  Private (System Admin)
+ */
+router.patch('/twitter/config', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
+  try {
+    const { clientId, clientSecret } = req.body;
+
+    if (!clientId || typeof clientId !== 'string' || clientId.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Twitter Client ID is required'
+      });
+    }
+
+    if (!clientSecret || typeof clientSecret !== 'string' || clientSecret.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Twitter Client Secret is required'
+      });
+    }
+
+    const config = await AppConfig.getConfig();
+
+    // Encrypt and save the credentials
+    config.twitterClientId = config.encryptApiKey(clientId.trim());
+    config.twitterClientSecret = config.encryptApiKey(clientSecret.trim());
+    config.twitterConfigUpdatedAt = new Date();
+    config.twitterConfigUpdatedBy = req.user!._id;
+
+    await config.save();
+
+    console.log(`Twitter OAuth config updated by: ${req.user!.email}`);
+
+    res.json({
+      success: true,
+      message: 'Twitter OAuth credentials saved successfully',
+      configured: true,
+      updatedAt: config.twitterConfigUpdatedAt
+    });
+  } catch (error: any) {
+    console.error('Twitter config save error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to save Twitter OAuth credentials'
+    });
+  }
+});
+
+/**
+ * @route   GET /api/integrations/twitter/config/status
+ * @desc    Get Twitter OAuth configuration status (Admin only)
+ * @access  Private (System Admin)
+ */
+router.get('/twitter/config/status', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
+  try {
+    const config = await AppConfig.getConfig();
+
+    res.json({
+      success: true,
+      configured: !!(config.twitterClientId && config.twitterClientSecret),
+      updatedAt: config.twitterConfigUpdatedAt,
+      updatedBy: config.twitterConfigUpdatedBy
+    });
+  } catch (error: any) {
+    console.error('Twitter config status error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get Twitter OAuth status'
+    });
+  }
+});
+
+/**
+ * @route   DELETE /api/integrations/twitter/config
+ * @desc    Remove Twitter OAuth configuration (Admin only)
+ * @access  Private (System Admin)
+ */
+router.delete('/twitter/config', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
+  try {
+    const config = await AppConfig.getConfig();
+
+    config.twitterClientId = undefined;
+    config.twitterClientSecret = undefined;
+    config.twitterConfigUpdatedAt = new Date();
+    config.twitterConfigUpdatedBy = req.user!._id;
+
+    await config.save();
+
+    console.log(`Twitter OAuth config removed by: ${req.user!.email}`);
+
+    res.json({
+      success: true,
+      message: 'Twitter OAuth credentials removed successfully',
+      configured: false
+    });
+  } catch (error: any) {
+    console.error('Twitter config removal error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to remove Twitter OAuth credentials'
+    });
+  }
+});
+
+/**
+ * @route   GET /api/integrations/twitter
+ * @desc    Initiate Twitter OAuth 2.0 flow with PKCE (User context)
+ * @access  Private
+ */
+router.get('/twitter', isAuthenticated, async (req: Request, res: Response) => {
+  try {
+    const config = await AppConfig.getConfig();
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+
+    // Check if admin has configured Twitter OAuth
+    if (!config.twitterClientId || !config.twitterClientSecret) {
+      console.error('Twitter OAuth not configured by admin');
+      return res.redirect(`${frontendUrl}/settings?integration=twitter&status=error&message=not_configured`);
+    }
+
+    // Decrypt credentials
+    const clientId = config.decryptApiKey(config.twitterClientId);
+
+    // Generate PKCE code verifier and challenge
+    const codeVerifier = crypto.randomBytes(32).toString('base64url');
+    const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
+
+    // Store code verifier in session or temporary storage (you'll need to retrieve it in callback)
+    // For simplicity, we'll encode it in the state parameter (in production, use Redis or session store)
+    const state = Buffer.from(JSON.stringify({
+      userId: req.user!._id.toString(),
+      codeVerifier: codeVerifier
+    })).toString('base64url');
+
+    const redirectUri = process.env.TWITTER_CALLBACK_URL || 'http://localhost:5000/api/integrations/twitter/callback';
+
+    // Twitter OAuth 2.0 authorization URL with PKCE
+    const authUrl = `https://twitter.com/i/oauth2/authorize?` +
+      `response_type=code` +
+      `&client_id=${encodeURIComponent(clientId)}` +
+      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+      `&scope=${encodeURIComponent('tweet.read tweet.write users.read offline.access')}` +
+      `&state=${state}` +
+      `&code_challenge=${codeChallenge}` +
+      `&code_challenge_method=S256`;
+
+    console.log('Twitter OAuth initiated by user:', req.user?.email);
+    res.redirect(authUrl);
+  } catch (error: any) {
+    console.error('Twitter OAuth initiation error:', error);
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    res.redirect(`${frontendUrl}/settings?integration=twitter&status=error&message=server_error`);
+  }
+});
+
+/**
+ * @route   GET /api/integrations/twitter/callback
+ * @desc    Twitter OAuth callback
+ * @access  Public
+ */
+router.get('/twitter/callback', async (req: Request, res: Response) => {
+  const { code, state, error: oauthError } = req.query;
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+
+  console.log('Twitter callback received:', { code: !!code, state: !!state, error: oauthError });
+
+  if (oauthError) {
+    console.error('Twitter OAuth error:', oauthError);
+    return res.redirect(`${frontendUrl}/settings?integration=twitter&status=error&message=${oauthError}`);
+  }
+
+  if (!code || !state) {
+    console.error('Missing code or state in callback');
+    return res.redirect(`${frontendUrl}/settings?integration=twitter&status=error&message=missing_params`);
+  }
+
+  try {
+    // Decode state to get userId and codeVerifier
+    const stateData = JSON.parse(Buffer.from(state as string, 'base64url').toString());
+    const { userId, codeVerifier } = stateData;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      console.error('User not found for ID:', userId);
+      return res.redirect(`${frontendUrl}/settings?integration=twitter&status=error&message=user_not_found`);
+    }
+
+    const config = await AppConfig.getConfig();
+    if (!config.twitterClientId || !config.twitterClientSecret) {
+      console.error('Twitter OAuth not configured');
+      return res.redirect(`${frontendUrl}/settings?integration=twitter&status=error&message=not_configured`);
+    }
+
+    // Decrypt credentials
+    const clientId = config.decryptApiKey(config.twitterClientId);
+    const clientSecret = config.decryptApiKey(config.twitterClientSecret);
+
+    // Exchange authorization code for access token
+    const redirectUri = process.env.TWITTER_CALLBACK_URL || 'http://localhost:5000/api/integrations/twitter/callback';
+
+    const tokenResponse = await fetch('https://api.twitter.com/2/oauth2/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`
+      },
+      body: new URLSearchParams({
+        code: code as string,
+        grant_type: 'authorization_code',
+        client_id: clientId,
+        redirect_uri: redirectUri,
+        code_verifier: codeVerifier
+      })
+    });
+
+    if (!tokenResponse.ok) {
+      const errorData = await tokenResponse.json().catch(() => ({})) as any;
+      console.error('Twitter token exchange error:', errorData);
+      return res.redirect(`${frontendUrl}/settings?integration=twitter&status=error&message=token_exchange_failed`);
+    }
+
+    const tokenData = await tokenResponse.json() as any;
+    const { access_token, refresh_token, expires_in } = tokenData;
+
+    // Get user info from Twitter
+    const userInfoResponse = await fetch('https://api.twitter.com/2/users/me', {
+      headers: {
+        'Authorization': `Bearer ${access_token}`
+      }
+    });
+
+    let twitterUsername = '';
+    let twitterUserId = '';
+    if (userInfoResponse.ok) {
+      const userInfo = await userInfoResponse.json() as any;
+      twitterUsername = userInfo.data?.username || '';
+      twitterUserId = userInfo.data?.id || '';
+    }
+
+    // Calculate expiration date
+    const expiresAt = new Date(Date.now() + (expires_in * 1000));
+
+    // Update user's Twitter integration
+    if (!user.integrations) {
+      user.integrations = {};
+    }
+    user.integrations.twitter = {
+      accessToken: access_token,
+      refreshToken: refresh_token,
+      expiresAt: expiresAt,
+      connected: true,
+      connectedAt: new Date(),
+      username: twitterUsername,
+      userId: twitterUserId
+    };
+
+    await user.save();
+
+    console.log('Twitter integration saved successfully for:', user.email);
+    res.redirect(`${frontendUrl}/settings?integration=twitter&status=success`);
+  } catch (error: any) {
+    console.error('Twitter callback error:', error);
+    res.redirect(`${frontendUrl}/settings?integration=twitter&status=error&message=server_error`);
+  }
+});
+
+/**
+ * @route   POST /api/integrations/twitter/disconnect
+ * @desc    Disconnect Twitter integration
+ * @access  Private
+ */
+router.post('/twitter/disconnect', isAuthenticated, async (req: Request, res: Response) => {
+  try {
+    const user = await User.findById(req.user?._id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    if (user.integrations?.twitter) {
+      user.integrations.twitter = {
+        connected: false
+      };
+      await user.save();
+    }
+
+    res.json({
+      success: true,
+      message: 'Twitter integration disconnected'
+    });
+  } catch (error) {
+    console.error('Twitter disconnect error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to disconnect Twitter integration'
+    });
+  }
+});
+
+/**
+ * @route   POST /api/integrations/twitter/post
+ * @desc    Post a tweet to user's Twitter account
+ * @access  Private
+ */
+router.post('/twitter/post', isAuthenticated, async (req: Request, res: Response) => {
+  try {
+    const { text } = req.body;
+
+    if (!text || typeof text !== 'string' || text.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tweet text is required'
+      });
+    }
+
+    if (text.length > 280) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tweet text cannot exceed 280 characters'
+      });
+    }
+
+    const user = await User.findById(req.user?._id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    if (!user.integrations?.twitter?.connected || !user.integrations.twitter.accessToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'Twitter account not connected. Please connect your Twitter account first.'
+      });
+    }
+
+    // Check if token is expired and refresh if needed
+    const now = new Date();
+    if (user.integrations.twitter.expiresAt && user.integrations.twitter.expiresAt < now) {
+      // Token expired, refresh it
+      const config = await AppConfig.getConfig();
+      if (!config.twitterClientId || !config.twitterClientSecret) {
+        return res.status(500).json({
+          success: false,
+          message: 'Twitter OAuth not configured'
+        });
+      }
+
+      const clientId = config.decryptApiKey(config.twitterClientId);
+      const clientSecret = config.decryptApiKey(config.twitterClientSecret);
+
+      try {
+        const refreshResponse = await fetch('https://api.twitter.com/2/oauth2/token', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Authorization': `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`
+          },
+          body: new URLSearchParams({
+            refresh_token: user.integrations.twitter.refreshToken!,
+            grant_type: 'refresh_token',
+            client_id: clientId
+          })
+        });
+
+        if (!refreshResponse.ok) {
+          throw new Error('Token refresh failed');
+        }
+
+        const refreshData = await refreshResponse.json() as any;
+        user.integrations.twitter.accessToken = refreshData.access_token;
+        if (refreshData.refresh_token) {
+          user.integrations.twitter.refreshToken = refreshData.refresh_token;
+        }
+        user.integrations.twitter.expiresAt = new Date(Date.now() + (refreshData.expires_in * 1000));
+        await user.save();
+      } catch (refreshError) {
+        console.error('Twitter token refresh error:', refreshError);
+        return res.status(401).json({
+          success: false,
+          message: 'Twitter authentication expired. Please reconnect your account.'
+        });
+      }
+    }
+
+    // Post the tweet using Twitter API v2
+    const tweetResponse = await fetch('https://api.twitter.com/2/tweets', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${user.integrations.twitter.accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        text: text.trim()
+      })
+    });
+
+    if (!tweetResponse.ok) {
+      const errorData = await tweetResponse.json().catch(() => ({})) as any;
+      console.error('Twitter post error:', errorData);
+      return res.status(tweetResponse.status).json({
+        success: false,
+        message: errorData.detail || errorData.title || 'Failed to post tweet',
+        error: errorData
+      });
+    }
+
+    const tweetData = await tweetResponse.json() as any;
+
+    console.log(`Tweet posted successfully by ${user.email}:`, tweetData.data?.id);
+
+    res.json({
+      success: true,
+      message: 'Tweet posted successfully',
+      tweetId: tweetData.data?.id,
+      tweetUrl: `https://twitter.com/${user.integrations.twitter.username}/status/${tweetData.data?.id}`
+    });
+  } catch (error: any) {
+    console.error('Twitter post error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to post tweet',
+      error: error.message
     });
   }
 });

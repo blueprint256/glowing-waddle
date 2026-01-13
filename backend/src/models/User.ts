@@ -37,6 +37,23 @@ export interface IUser extends Document {
       connected: boolean;
       connectedAt?: Date;
     };
+    twitter?: {
+      accessToken?: string;
+      refreshToken?: string;
+      expiresAt?: Date;
+      connected: boolean;
+      connectedAt?: Date;
+      username?: string;
+      userId?: string;
+    };
+    linkedin?: {
+      accessToken?: string;
+      refreshToken?: string;
+      expiresAt?: Date;
+      connected: boolean;
+      connectedAt?: Date;
+      profileId?: string;
+    };
   };
   createdAt: Date;
   updatedAt: Date;
@@ -110,6 +127,23 @@ const userSchema = new Schema<IUser>(
         expiresAt: Date,
         connected: { type: Boolean, default: false },
         connectedAt: Date
+      },
+      twitter: {
+        accessToken: String,
+        refreshToken: String,
+        expiresAt: Date,
+        connected: { type: Boolean, default: false },
+        connectedAt: Date,
+        username: String,
+        userId: String
+      },
+      linkedin: {
+        accessToken: String,
+        refreshToken: String,
+        expiresAt: Date,
+        connected: { type: Boolean, default: false },
+        connectedAt: Date,
+        profileId: String
       }
     }
   },
