@@ -23,7 +23,9 @@ import {
   TextField,
   MenuItem,
   Select,
-  FormControl
+  FormControl,
+  useMediaQuery,
+  useTheme
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
@@ -65,6 +67,9 @@ interface EditingCell {
 export default function DetailsSheet() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md')); // <960px
+  const isSmallMobile = useMediaQuery(theme.breakpoints.down('sm')); // <600px
   const [campaigns, setCampaigns] = useState<CampaignWithProjects[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -607,7 +612,7 @@ export default function DetailsSheet() {
         onChange={handleCampaignExpand(campaign._id)}
         sx={{
           mb: 1.5,
-          borderRadius: '14px',
+          borderRadius: { xs: '10px', sm: '14px' },
           border: `1px solid ${CAMPAIGN_BORDER}`,
           boxShadow: '0 2px 4px rgba(0, 0, 0, 0.08)',
           overflow: 'hidden',
@@ -619,9 +624,9 @@ export default function DetailsSheet() {
           },
           '& .MuiAccordionSummary-root': {
             backgroundColor: CAMPAIGN_COLOR,
-            borderLeft: `4px solid ${CAMPAIGN_BORDER}`,
-            minHeight: 58,
-            padding: '0 20px',
+            borderLeft: { xs: `3px solid ${CAMPAIGN_BORDER}`, sm: `4px solid ${CAMPAIGN_BORDER}` },
+            minHeight: { xs: 52, sm: 58 },
+            padding: { xs: '0 12px', sm: '0 20px' },
             transition: 'all 0.25s ease',
             '&:hover': {
               backgroundColor: CAMPAIGN_HOVER
@@ -637,10 +642,17 @@ export default function DetailsSheet() {
         }}
       >
         <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-          <Box sx={{ width: '100%', pr: 1 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+          <Box sx={{ width: '100%', pr: { xs: 0.5, sm: 1 } }}>
+            <Box sx={{
+              display: 'flex',
+              flexDirection: { xs: 'column', sm: 'row' },
+              justifyContent: 'space-between',
+              alignItems: { xs: 'flex-start', sm: 'center' },
+              gap: { xs: 1, sm: 0 },
+              mb: 0.5
+            }}>
               {editingCell?.type === 'campaign' && editingCell?.id === campaign._id && editingCell?.field === 'name' ? (
-                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flex: 1 }}>
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flex: 1, width: '100%' }}>
                   <TextField
                     inputRef={editInputRef}
                     value={editValue}
@@ -653,32 +665,57 @@ export default function DetailsSheet() {
                     onClick={(e) => e.stopPropagation()}
                     sx={{ flex: 1 }}
                   />
-                  <IconButton size="small" onClick={(e) => { e.stopPropagation(); saveEdit(); }} color="primary">
+                  <IconButton
+                    size="small"
+                    onClick={(e) => { e.stopPropagation(); saveEdit(); }}
+                    color="primary"
+                    sx={{ minWidth: '44px', minHeight: '44px' }}
+                  >
                     <CheckIcon fontSize="small" />
                   </IconButton>
-                  <IconButton size="small" onClick={(e) => { e.stopPropagation(); cancelEditing(); }}>
+                  <IconButton
+                    size="small"
+                    onClick={(e) => { e.stopPropagation(); cancelEditing(); }}
+                    sx={{ minWidth: '44px', minHeight: '44px' }}
+                  >
                     <CloseIcon fontSize="small" />
                   </IconButton>
                 </Box>
               ) : (
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="h6" sx={{ fontWeight: 600 }}>{campaign.name}</Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                  <Typography
+                    variant="h6"
+                    sx={{
+                      fontWeight: 600,
+                      fontSize: { xs: '1rem', sm: '1.25rem' }
+                    }}
+                  >
+                    {campaign.name}
+                  </Typography>
                   <IconButton
                     size="small"
                     onClick={(e) => {
                       e.stopPropagation();
                       startEditing('campaign', campaign._id, 'name', campaign.name);
                     }}
+                    sx={{ minWidth: '44px', minHeight: '44px' }}
                   >
                     <EditIcon fontSize="small" />
                   </IconButton>
                 </Box>
               )}
-              <FormControl size="small" sx={{ minWidth: 120 }} onClick={(e) => e.stopPropagation()}>
+              <FormControl
+                size="small"
+                sx={{ minWidth: { xs: '100%', sm: 120 } }}
+                onClick={(e) => e.stopPropagation()}
+              >
                 <Select
                   value={campaign.status}
                   onChange={(e) => handleCampaignStatusChange(campaign._id, e.target.value as CampaignStatus)}
-                  sx={{ fontSize: '0.875rem' }}
+                  sx={{
+                    fontSize: { xs: '0.8125rem', sm: '0.875rem' },
+                    minHeight: { xs: '44px', sm: 'auto' }
+                  }}
                 >
                   <MenuItem value={CampaignStatus.DRAFT}>Draft</MenuItem>
                   <MenuItem value={CampaignStatus.ACTIVE}>Active</MenuItem>
@@ -707,7 +744,7 @@ export default function DetailsSheet() {
             )}
           </Box>
         </AccordionSummary>
-        <AccordionDetails sx={{ pl: 3, pr: 2, py: 2, backgroundColor: '#F9FAFB' }}>
+        <AccordionDetails sx={{ pl: { xs: 2, sm: 3 }, pr: { xs: 1.5, sm: 2 }, py: 2, backgroundColor: '#F9FAFB' }}>
           {/* Create Project Button */}
           <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
             <Button
@@ -715,9 +752,12 @@ export default function DetailsSheet() {
               size="small"
               startIcon={<AddIcon />}
               onClick={() => handleOpenCreateProjectModal(campaign._id)}
+              fullWidth={isSmallMobile}
               sx={{
                 backgroundColor: PROJECT_BORDER,
                 borderRadius: '4px',
+                minHeight: { xs: '44px', sm: 'auto' },
+                fontSize: { xs: '0.8125rem', sm: '0.875rem' },
                 transition: 'all 0.2s ease',
                 boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
                 '&:hover': {
@@ -749,7 +789,7 @@ export default function DetailsSheet() {
                   onChange={handleProjectExpand(campaign._id, project._id)}
                   sx={{
                     mb: 1,
-                    borderRadius: '12px',
+                    borderRadius: { xs: '8px', sm: '12px' },
                     border: `1px solid ${PROJECT_BORDER}`,
                     boxShadow: '0 1px 3px rgba(33, 150, 243, 0.1)',
                     overflow: 'hidden',
@@ -761,9 +801,9 @@ export default function DetailsSheet() {
                     },
                     '& .MuiAccordionSummary-root': {
                       backgroundColor: PROJECT_COLOR,
-                      borderLeft: `3px solid ${PROJECT_BORDER}`,
-                      minHeight: 52,
-                      padding: '0 16px',
+                      borderLeft: { xs: `2px solid ${PROJECT_BORDER}`, sm: `3px solid ${PROJECT_BORDER}` },
+                      minHeight: { xs: 48, sm: 52 },
+                      padding: { xs: '0 10px', sm: '0 16px' },
                       transition: 'all 0.25s ease',
                       '&:hover': {
                         backgroundColor: PROJECT_HOVER
@@ -779,9 +819,16 @@ export default function DetailsSheet() {
                   }}
                 >
                   <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                    <Box sx={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Box sx={{
+                      width: '100%',
+                      display: 'flex',
+                      flexDirection: { xs: 'column', sm: 'row' },
+                      justifyContent: 'space-between',
+                      alignItems: { xs: 'flex-start', sm: 'center' },
+                      gap: { xs: 1, sm: 0 }
+                    }}>
                       {editingCell?.type === 'project' && editingCell?.id === project._id && editingCell?.field === 'name' ? (
-                        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flex: 1 }}>
+                        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flex: 1, width: '100%' }}>
                           <TextField
                             inputRef={editInputRef}
                             value={editValue}
@@ -794,37 +841,60 @@ export default function DetailsSheet() {
                             onClick={(e) => e.stopPropagation()}
                             sx={{ flex: 1 }}
                           />
-                          <IconButton size="small" onClick={(e) => { e.stopPropagation(); saveEdit(); }} color="primary">
+                          <IconButton
+                            size="small"
+                            onClick={(e) => { e.stopPropagation(); saveEdit(); }}
+                            color="primary"
+                            sx={{ minWidth: '44px', minHeight: '44px' }}
+                          >
                             <CheckIcon fontSize="small" />
                           </IconButton>
-                          <IconButton size="small" onClick={(e) => { e.stopPropagation(); cancelEditing(); }}>
+                          <IconButton
+                            size="small"
+                            onClick={(e) => { e.stopPropagation(); cancelEditing(); }}
+                            sx={{ minWidth: '44px', minHeight: '44px' }}
+                          >
                             <CloseIcon fontSize="small" />
                           </IconButton>
                         </Box>
                       ) : (
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
-                          <Typography variant="subtitle1" fontWeight={600}>{project.name}</Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1, flexWrap: 'wrap' }}>
+                          <Typography
+                            variant="subtitle1"
+                            fontWeight={600}
+                            sx={{ fontSize: { xs: '0.9375rem', sm: '1rem' } }}
+                          >
+                            {project.name}
+                          </Typography>
                           <IconButton
                             size="small"
                             onClick={(e) => {
                               e.stopPropagation();
                               startEditing('project', project._id, 'name', project.name);
                             }}
+                            sx={{ minWidth: '44px', minHeight: '44px' }}
                           >
                             <EditIcon fontSize="small" />
                           </IconButton>
                           {expandedProjects.has(project._id) && (
-                            <Typography variant="caption" color="text.secondary">
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.75rem', sm: '0.75rem' } }}>
                               {completed} / {total} tasks completed
                             </Typography>
                           )}
                         </Box>
                       )}
-                      <FormControl size="small" sx={{ minWidth: 120 }} onClick={(e) => e.stopPropagation()}>
+                      <FormControl
+                        size="small"
+                        sx={{ minWidth: { xs: '100%', sm: 120 } }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <Select
                           value={project.status}
                           onChange={(e) => handleProjectStatusChange(project._id, e.target.value as ProjectStatus)}
-                          sx={{ fontSize: '0.875rem' }}
+                          sx={{
+                            fontSize: { xs: '0.8125rem', sm: '0.875rem' },
+                            minHeight: { xs: '44px', sm: 'auto' }
+                          }}
                         >
                           <MenuItem value={ProjectStatus.PLANNING}>Planning</MenuItem>
                           <MenuItem value={ProjectStatus.IN_PROGRESS}>In Progress</MenuItem>
@@ -835,16 +905,19 @@ export default function DetailsSheet() {
                       </FormControl>
                     </Box>
                   </AccordionSummary>
-                  <AccordionDetails sx={{ backgroundColor: '#F5F5F5' }}>
+                  <AccordionDetails sx={{ backgroundColor: '#F5F5F5', px: { xs: 1, sm: 2 }, py: 2 }}>
                     <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
                       <Button
                         variant="contained"
                         size="small"
                         startIcon={<AddIcon />}
                         onClick={() => handleOpenCreateTaskModal(project._id, campaign._id)}
+                        fullWidth={isSmallMobile}
                         sx={{
                           backgroundColor: '#6366F1',
                           borderRadius: '4px',
+                          minHeight: { xs: '44px', sm: 'auto' },
+                          fontSize: { xs: '0.8125rem', sm: '0.875rem' },
                           transition: 'all 0.2s ease',
                           boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
                           '&:hover': {
@@ -867,30 +940,31 @@ export default function DetailsSheet() {
                     ) : project.tasks && project.tasks.length > 0 ? (
                       <TableContainer component={Paper} sx={{
                         mb: 1,
-                        borderRadius: '10px',
+                        borderRadius: { xs: '6px', sm: '10px' },
                         border: '1px solid #E7E5E4',
                         backgroundColor: TASK_COLOR,
                         boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)',
-                        overflow: 'hidden',
+                        overflow: { xs: 'auto', md: 'hidden' },
+                        overflowX: { xs: 'auto', md: 'hidden' },
                         transition: 'all 0.2s ease',
                         '&:hover': {
                           boxShadow: '0 2px 6px rgba(0, 0, 0, 0.06)',
                           borderColor: '#D6D3D1'
                         }
                       }}>
-                        <Table>
+                        <Table sx={{ minWidth: { xs: 900, md: 'auto' } }}>
                           <TableHead>
                             <TableRow sx={{
                               backgroundColor: '#F5F5F4',
                               borderBottom: '2px solid #E7E5E4'
                             }}>
-                              <TableCell sx={{ fontWeight: 700, width: '10%', color: '#57534E' }}>Date</TableCell>
-                              <TableCell sx={{ fontWeight: 700, width: '20%', color: '#57534E' }}>Task Name</TableCell>
-                              <TableCell sx={{ fontWeight: 700, width: '12%', color: '#57534E' }}>Status</TableCell>
-                              <TableCell sx={{ fontWeight: 700, width: '8%', color: '#57534E' }}>Photos</TableCell>
-                              <TableCell sx={{ fontWeight: 700, width: '30%', color: '#57534E' }}>Description</TableCell>
-                              <TableCell sx={{ fontWeight: 700, width: '12%', color: '#57534E' }}>Last Updated</TableCell>
-                              <TableCell align="center" sx={{ fontWeight: 700, width: '8%', color: '#57534E' }}>Actions</TableCell>
+                              <TableCell sx={{ fontWeight: 700, width: '10%', color: '#57534E', fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>Date</TableCell>
+                              <TableCell sx={{ fontWeight: 700, width: '20%', color: '#57534E', fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>Task Name</TableCell>
+                              <TableCell sx={{ fontWeight: 700, width: '12%', color: '#57534E', fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>Status</TableCell>
+                              <TableCell sx={{ fontWeight: 700, width: '8%', color: '#57534E', fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>Photos</TableCell>
+                              <TableCell sx={{ fontWeight: 700, width: '30%', color: '#57534E', fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>Description</TableCell>
+                              <TableCell sx={{ fontWeight: 700, width: '12%', color: '#57534E', fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>Last Updated</TableCell>
+                              <TableCell align="center" sx={{ fontWeight: 700, width: '8%', color: '#57534E', fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>Actions</TableCell>
                             </TableRow>
                           </TableHead>
                           <TableBody>
@@ -911,7 +985,7 @@ export default function DetailsSheet() {
                                     }
                                   }}
                                 >
-                                  <TableCell>{formatDate(task.taskDate)}</TableCell>
+                                  <TableCell sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>{formatDate(task.taskDate)}</TableCell>
                                   <TableCell>
                                     {editingCell?.type === 'task' && editingCell?.id === task._id && editingCell?.field === 'name' ? (
                                       <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
@@ -926,10 +1000,19 @@ export default function DetailsSheet() {
                                           size="small"
                                           fullWidth
                                         />
-                                        <IconButton size="small" onClick={saveEdit} color="primary">
+                                        <IconButton
+                                          size="small"
+                                          onClick={saveEdit}
+                                          color="primary"
+                                          sx={{ minWidth: '44px', minHeight: '44px' }}
+                                        >
                                           <CheckIcon fontSize="small" />
                                         </IconButton>
-                                        <IconButton size="small" onClick={cancelEditing}>
+                                        <IconButton
+                                          size="small"
+                                          onClick={cancelEditing}
+                                          sx={{ minWidth: '44px', minHeight: '44px' }}
+                                        >
                                           <CloseIcon fontSize="small" />
                                         </IconButton>
                                       </Box>
@@ -940,6 +1023,7 @@ export default function DetailsSheet() {
                                           sx={{
                                             cursor: 'pointer',
                                             color: 'primary.main',
+                                            fontSize: { xs: '0.75rem', sm: '0.875rem' },
                                             '&:hover': { textDecoration: 'underline' }
                                           }}
                                           onClick={() => navigate(`/tasks/${task._id}`)}
@@ -949,6 +1033,7 @@ export default function DetailsSheet() {
                                         <IconButton
                                           size="small"
                                           onClick={() => startEditing('task', task._id, 'name', task.name)}
+                                          sx={{ minWidth: '44px', minHeight: '44px' }}
                                         >
                                           <EditIcon fontSize="small" />
                                         </IconButton>
@@ -964,8 +1049,9 @@ export default function DetailsSheet() {
                                           backgroundColor: getStatusColor(task.status),
                                           color: 'white',
                                           fontWeight: 600,
-                                          fontSize: '0.75rem',
+                                          fontSize: { xs: '0.6875rem', sm: '0.75rem' },
                                           borderRadius: '4px',
+                                          minHeight: { xs: '44px', sm: 'auto' },
                                           transition: 'all 0.2s ease',
                                           '&:hover': {
                                             boxShadow: '0 2px 4px rgba(0, 0, 0, 0.15)',
@@ -998,6 +1084,7 @@ export default function DetailsSheet() {
                                           size="small"
                                           onClick={() => handlePhotoUpload(task._id, campaign._id, project._id)}
                                           color="primary"
+                                          sx={{ minWidth: '44px', minHeight: '44px' }}
                                         >
                                           <UploadIcon fontSize="small" />
                                         </IconButton>
@@ -1020,7 +1107,11 @@ export default function DetailsSheet() {
                                       <Typography
                                         variant="body2"
                                         noWrap
-                                        sx={{ maxWidth: 200, flex: 1 }}
+                                        sx={{
+                                          maxWidth: 200,
+                                          flex: 1,
+                                          fontSize: { xs: '0.75rem', sm: '0.875rem' }
+                                        }}
                                       >
                                         {task.description || '-'}
                                       </Typography>
@@ -1031,14 +1122,19 @@ export default function DetailsSheet() {
                                           e.stopPropagation();
                                           setEditDescriptionTask(task);
                                         }}
-                                        sx={{ opacity: 0, transition: 'opacity 0.2s' }}
+                                        sx={{
+                                          opacity: 0,
+                                          transition: 'opacity 0.2s',
+                                          minWidth: '44px',
+                                          minHeight: '44px'
+                                        }}
                                       >
                                         <EditIcon fontSize="small" />
                                       </IconButton>
                                     </Box>
                                   </TableCell>
                                   <TableCell>
-                                    <Typography variant="caption" color="text.secondary">
+                                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6875rem', sm: '0.75rem' } }}>
                                       {formatDate(task.updatedAt)}
                                     </Typography>
                                   </TableCell>
@@ -1050,6 +1146,7 @@ export default function DetailsSheet() {
                                           color="primary"
                                           onClick={() => setPreviewTask(task)}
                                           disabled={!task.name && !task.designedImage}
+                                          sx={{ minWidth: '44px', minHeight: '44px' }}
                                         >
                                           <VisibilityIcon fontSize="small" />
                                         </IconButton>
@@ -1059,6 +1156,7 @@ export default function DetailsSheet() {
                                           size="small"
                                           color="error"
                                           onClick={() => handleDeleteTask(task._id, campaign._id, project._id)}
+                                          sx={{ minWidth: '44px', minHeight: '44px' }}
                                         >
                                           <DeleteIcon fontSize="small" />
                                         </IconButton>
@@ -1073,13 +1171,14 @@ export default function DetailsSheet() {
                       </TableContainer>
                     ) : (
                       <Paper sx={{
-                        py: 3,
+                        py: { xs: 2, sm: 3 },
+                        px: { xs: 2, sm: 0 },
                         textAlign: 'center',
                         backgroundColor: '#FAFAFA',
                         borderRadius: '8px',
                         boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)'
                       }}>
-                        <Typography variant="body2" color="text.secondary">
+                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.875rem', sm: '0.875rem' } }}>
                           No tasks assigned to this project yet.
                         </Typography>
                         <Button
@@ -1087,11 +1186,14 @@ export default function DetailsSheet() {
                           size="small"
                           startIcon={<AddIcon />}
                           onClick={() => handleOpenCreateTaskModal(project._id, campaign._id)}
+                          fullWidth={isSmallMobile}
                           sx={{
                             mt: 2,
+                            minHeight: { xs: '44px', sm: 'auto' },
                             borderRadius: '4px',
                             borderColor: '#6366F1',
                             color: '#6366F1',
+                            fontSize: { xs: '0.8125rem', sm: '0.875rem' },
                             transition: 'all 0.2s ease',
                             '&:hover': {
                               borderColor: '#4F46E5',
@@ -1113,13 +1215,14 @@ export default function DetailsSheet() {
             })
           ) : (
             <Paper sx={{
-              py: 3,
+              py: { xs: 2, sm: 3 },
+              px: { xs: 2, sm: 0 },
               textAlign: 'center',
               backgroundColor: '#FAFAFA',
               borderRadius: '8px',
               boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)'
             }}>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.875rem', sm: '0.875rem' } }}>
                 No projects in this campaign yet.
               </Typography>
             </Paper>
@@ -1146,11 +1249,24 @@ export default function DetailsSheet() {
   }
 
   return (
-    <Box>
-      <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, mb: 1 }}>
+    <Box sx={{ px: { xs: 1, sm: 2, md: 0 } }}>
+      <Typography
+        variant="h4"
+        gutterBottom
+        sx={{
+          fontWeight: 600,
+          mb: 1,
+          fontSize: { xs: '1.5rem', sm: '2rem', md: '2.125rem' }
+        }}
+      >
         Details Sheet
       </Typography>
-      <Typography variant="body2" color="text.secondary" paragraph>
+      <Typography
+        variant="body2"
+        color="text.secondary"
+        paragraph
+        sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}
+      >
         Hierarchical view of all campaigns, projects, and tasks with inline editing and comprehensive filtering
       </Typography>
 
@@ -1171,15 +1287,17 @@ export default function DetailsSheet() {
       <Box sx={{ mb: 3, display: 'flex', justifyContent: 'flex-start' }}>
         <Button
           variant="contained"
-          size="large"
+          size={isMobile ? 'medium' : 'large'}
           startIcon={<AddIcon />}
           onClick={() => setCreateCampaignModalOpen(true)}
+          fullWidth={isSmallMobile}
           sx={{
             backgroundColor: CAMPAIGN_BORDER,
-            fontSize: '1rem',
+            fontSize: { xs: '0.875rem', sm: '1rem' },
             fontWeight: 600,
-            px: 3,
-            py: 1.5,
+            px: { xs: 2, sm: 3 },
+            py: { xs: 1.25, sm: 1.5 },
+            minHeight: { xs: '44px', sm: 'auto' },
             borderRadius: '4px',
             boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
             transition: 'all 0.2s ease',
@@ -1300,11 +1418,11 @@ export default function DetailsSheet() {
             const stats = getTaskStatistics();
             return (
               <Paper sx={{
-                p: 2.5,
+                p: { xs: 2, sm: 2.5 },
                 mb: 3,
                 backgroundColor: '#FAFBFC',
                 border: '1px solid #E5E7EB',
-                borderRadius: '12px',
+                borderRadius: { xs: '8px', sm: '12px' },
                 boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)',
                 transition: 'all 0.2s ease',
                 '&:hover': {
@@ -1312,36 +1430,41 @@ export default function DetailsSheet() {
                   borderColor: '#D1D5DB'
                 }
               }}>
-                <Box sx={{ display: 'flex', gap: 4, justifyContent: 'center', flexWrap: 'wrap' }}>
+                <Box sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, 1fr)' },
+                  gap: { xs: 2, sm: 4 },
+                  justifyItems: 'center'
+                }}>
                   <Box sx={{ textAlign: 'center' }}>
-                    <Typography variant="h5" sx={{ fontWeight: 700, color: '#F59E0B' }}>
+                    <Typography variant="h5" sx={{ fontWeight: 700, color: '#F59E0B', fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>
                       {stats.pending}
                     </Typography>
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
                       Pending
                     </Typography>
                   </Box>
                   <Box sx={{ textAlign: 'center' }}>
-                    <Typography variant="h5" sx={{ fontWeight: 700, color: '#3B82F6' }}>
+                    <Typography variant="h5" sx={{ fontWeight: 700, color: '#3B82F6', fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>
                       {stats.inProgress}
                     </Typography>
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
                       In Progress
                     </Typography>
                   </Box>
                   <Box sx={{ textAlign: 'center' }}>
-                    <Typography variant="h5" sx={{ fontWeight: 700, color: '#10B981' }}>
+                    <Typography variant="h5" sx={{ fontWeight: 700, color: '#10B981', fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>
                       {stats.completed}
                     </Typography>
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
                       Completed
                     </Typography>
                   </Box>
                   <Box sx={{ textAlign: 'center' }}>
-                    <Typography variant="h5" sx={{ fontWeight: 700, color: '#6B7280' }}>
+                    <Typography variant="h5" sx={{ fontWeight: 700, color: '#6B7280', fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>
                       {stats.total}
                     </Typography>
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
                       Total Tasks
                     </Typography>
                   </Box>

@@ -30,7 +30,9 @@ import {
   IconButton,
   Tooltip,
   FormControlLabel,
-  Switch
+  Switch,
+  useMediaQuery,
+  useTheme
 } from '@mui/material';
 import {
   CheckCircle,
@@ -66,7 +68,7 @@ function TabPanel(props: TabPanelProps) {
       aria-labelledby={`settings-tab-${index}`}
       {...other}
     >
-      {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
+      {value === index && <Box sx={{ p: { xs: 2, sm: 3 } }}>{children}</Box>}
     </div>
   );
 }
@@ -91,6 +93,8 @@ const LLM_MODELS: Record<string, string[]> = {
 export default function Settings() {
   const [searchParams] = useSearchParams();
   const { user } = useAuthStore();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm')); // <600px
   const [activeTab, setActiveTab] = useState(0);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [canvaConnected, setCanvaConnected] = useState(false);
@@ -872,25 +876,61 @@ export default function Settings() {
   };
 
   return (
-    <Container maxWidth="lg">
-      <Box sx={{ py: 4 }}>
-        <Typography variant="h4" gutterBottom>
+    <Container maxWidth="lg" sx={{ px: { xs: 1, sm: 2, md: 3 } }}>
+      <Box sx={{ py: { xs: 2, sm: 3, md: 4 } }}>
+        <Typography
+          variant="h4"
+          gutterBottom
+          sx={{
+            fontSize: { xs: '1.5rem', sm: '2rem', md: '2.125rem' },
+            fontWeight: 600
+          }}
+        >
           Settings
         </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{
+            mb: 3,
+            fontSize: { xs: '0.875rem', sm: '1rem' }
+          }}
+        >
           Manage your account settings and integrations
         </Typography>
 
         {message && (
-          <Alert severity={message.type} sx={{ mb: 3 }} onClose={() => setMessage(null)}>
+          <Alert
+            severity={message.type}
+            sx={{
+              mb: 3,
+              fontSize: { xs: '0.875rem', sm: '1rem' }
+            }}
+            onClose={() => setMessage(null)}
+          >
             {message.text}
           </Alert>
         )}
 
-        <Paper>
-          <Tabs value={activeTab} onChange={handleTabChange} aria-label="settings tabs">
+        <Paper sx={{ borderRadius: { xs: '8px', sm: '12px' } }}>
+          <Tabs
+            value={activeTab}
+            onChange={handleTabChange}
+            aria-label="settings tabs"
+            variant={isMobile ? 'scrollable' : 'standard'}
+            scrollButtons={isMobile ? 'auto' : false}
+            allowScrollButtonsMobile
+            sx={{
+              '& .MuiTab-root': {
+                fontSize: { xs: '0.8125rem', sm: '0.875rem' },
+                minHeight: { xs: '48px', sm: '48px' },
+                minWidth: { xs: 'auto', sm: 90 },
+                px: { xs: 1.5, sm: 2 }
+              }
+            }}
+          >
             <Tab label="Profile" />
-            {user?.role === UserRole.HYBRID && <Tab label="Company Information" />}
+            {user?.role === UserRole.HYBRID && <Tab label="Company Info" />}
             <Tab label="Integrations" />
             {user?.role === UserRole.SYSTEM_ADMIN && <Tab label="LLM Settings" />}
             {user?.role === UserRole.SYSTEM_ADMIN && <Tab label="Prompts" />}

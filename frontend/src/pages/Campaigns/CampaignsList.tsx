@@ -18,7 +18,9 @@ import {
   AccordionSummary,
   AccordionDetails,
   CircularProgress,
-  Tooltip
+  Tooltip,
+  useMediaQuery,
+  useTheme
 } from '@mui/material';
 import { Add as AddIcon, ExpandMore as ExpandMoreIcon } from '@mui/icons-material';
 import { useAuthStore } from '../../store/authStore';
@@ -29,6 +31,8 @@ import Pagination from '../../components/Pagination';
 export default function CampaignsList() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm')); // <600px
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -95,17 +99,32 @@ export default function CampaignsList() {
 
   // Render a single campaign card
   const renderCampaignCard = (campaign: Campaign) => (
-    <Grid item xs={12} md={6} lg={4} key={campaign._id}>
+    <Grid item xs={12} sm={6} md={6} lg={4} key={campaign._id}>
       <Card
         sx={{
           height: '100%',
           display: 'flex',
           flexDirection: 'column',
-          minHeight: '280px'
+          minHeight: { xs: '240px', sm: '280px' },
+          borderRadius: { xs: '8px', sm: '12px' },
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+          transition: 'all 0.2s ease',
+          '&:hover': {
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.12)',
+            transform: 'translateY(-2px)'
+          }
         }}
       >
-        <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
-          <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
+        <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', p: { xs: 2, sm: 2.5 } }}>
+          <Typography
+            variant="h6"
+            gutterBottom
+            sx={{
+              mb: 2,
+              fontSize: { xs: '1.125rem', sm: '1.25rem' },
+              fontWeight: 600
+            }}
+          >
             {campaign.name}
           </Typography>
 
@@ -115,7 +134,13 @@ export default function CampaignsList() {
               <Typography
                 variant="caption"
                 color="text.secondary"
-                sx={{ fontWeight: 600, textTransform: 'uppercase', display: 'block', mb: 0.5 }}
+                sx={{
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  display: 'block',
+                  mb: 0.5,
+                  fontSize: { xs: '0.6875rem', sm: '0.75rem' }
+                }}
               >
                 Core Messages / Theme
               </Typography>
@@ -129,7 +154,8 @@ export default function CampaignsList() {
                     WebkitBoxOrient: 'vertical',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
-                    lineHeight: 1.4
+                    lineHeight: 1.4,
+                    fontSize: { xs: '0.875rem', sm: '0.875rem' }
                   }}
                 >
                   {campaign.coreMessages}
@@ -151,7 +177,8 @@ export default function CampaignsList() {
                     WebkitBoxOrient: 'vertical',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
-                    lineHeight: 1.4
+                    lineHeight: 1.4,
+                    fontSize: { xs: '0.8125rem', sm: '0.875rem' }
                   }}
                 >
                   {campaign.description}
@@ -161,11 +188,23 @@ export default function CampaignsList() {
           )}
 
           <Box sx={{ mt: 'auto' }}>
-            <Chip label={campaign.status} size="small" color="primary" />
+            <Chip
+              label={campaign.status}
+              size="small"
+              color="primary"
+              sx={{ fontSize: { xs: '0.75rem', sm: '0.8125rem' } }}
+            />
           </Box>
         </CardContent>
-        <CardActions>
-          <Button size="small" onClick={() => navigate(`/campaigns/${campaign._id}`)}>
+        <CardActions sx={{ p: { xs: 1.5, sm: 2 } }}>
+          <Button
+            size="small"
+            onClick={() => navigate(`/campaigns/${campaign._id}`)}
+            sx={{
+              minHeight: { xs: '40px', sm: 'auto' },
+              fontSize: { xs: '0.8125rem', sm: '0.875rem' }
+            }}
+          >
             View Details
           </Button>
         </CardActions>
@@ -182,11 +221,35 @@ export default function CampaignsList() {
   }
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-        <Typography variant="h4">Campaigns</Typography>
+    <Box sx={{ px: { xs: 1, sm: 2, md: 0 } }}>
+      <Box sx={{
+        display: 'flex',
+        flexDirection: { xs: 'column', sm: 'row' },
+        justifyContent: 'space-between',
+        alignItems: { xs: 'flex-start', sm: 'center' },
+        gap: { xs: 2, sm: 0 },
+        mb: 3
+      }}>
+        <Typography
+          variant="h4"
+          sx={{
+            fontSize: { xs: '1.5rem', sm: '2rem', md: '2.125rem' },
+            fontWeight: 600
+          }}
+        >
+          Campaigns
+        </Typography>
         {canCreate && (
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setOpen(true)}>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setOpen(true)}
+            fullWidth={isMobile}
+            sx={{
+              minHeight: { xs: '44px', sm: 'auto' },
+              fontSize: { xs: '0.875rem', sm: '0.875rem' }
+            }}
+          >
             New Campaign
           </Button>
         )}
@@ -195,11 +258,15 @@ export default function CampaignsList() {
       {/* Hybrid Users: Flat list of their own campaigns */}
       {user?.role === UserRole.HYBRID && (
         <>
-          <Grid container spacing={3}>
+          <Grid container spacing={{ xs: 2, sm: 3 }}>
             {campaigns.map(renderCampaignCard)}
             {campaigns.length === 0 && (
               <Grid item xs={12}>
-                <Typography align="center" color="text.secondary">
+                <Typography
+                  align="center"
+                  color="text.secondary"
+                  sx={{ fontSize: { xs: '0.875rem', sm: '1rem' }, py: 4 }}
+                >
                   No campaigns found
                 </Typography>
               </Grid>
@@ -222,31 +289,68 @@ export default function CampaignsList() {
           <Box>
             {groupedCampaigns && Object.keys(groupedCampaigns).length > 0 ? (
               Object.entries(groupedCampaigns).map(([key, { user: creator, campaigns: userCampaigns }]) => (
-                <Accordion key={key} defaultExpanded={false} sx={{ mb: 2 }}>
-                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
-                      <Typography variant="h6">
+                <Accordion
+                  key={key}
+                  defaultExpanded={false}
+                  sx={{
+                    mb: 2,
+                    borderRadius: { xs: '8px', sm: '12px' },
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+                    '&:before': { display: 'none' },
+                    transition: 'all 0.2s ease',
+                    '&:hover': {
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.12)'
+                    }
+                  }}
+                >
+                  <AccordionSummary
+                    expandIcon={<ExpandMoreIcon />}
+                    sx={{ px: { xs: 2, sm: 3 } }}
+                  >
+                    <Box sx={{
+                      display: 'flex',
+                      flexDirection: { xs: 'column', sm: 'row' },
+                      alignItems: { xs: 'flex-start', sm: 'center' },
+                      gap: { xs: 1, sm: 2 },
+                      width: '100%'
+                    }}>
+                      <Typography
+                        variant="h6"
+                        sx={{ fontSize: { xs: '1rem', sm: '1.25rem' } }}
+                      >
                         Campaigns by {creator.firstName} {creator.lastName}
                       </Typography>
                       <Chip
                         label={`${userCampaigns.length} campaign${userCampaigns.length !== 1 ? 's' : ''}`}
                         size="small"
                         color="primary"
+                        sx={{ fontSize: { xs: '0.75rem', sm: '0.8125rem' } }}
                       />
-                      <Typography variant="body2" color="text.secondary" sx={{ ml: 'auto' }}>
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{
+                          ml: { xs: 0, sm: 'auto' },
+                          fontSize: { xs: '0.8125rem', sm: '0.875rem' }
+                        }}
+                      >
                         {creator.email}
                       </Typography>
                     </Box>
                   </AccordionSummary>
-                  <AccordionDetails>
-                    <Grid container spacing={3}>
+                  <AccordionDetails sx={{ p: { xs: 2, sm: 3 } }}>
+                    <Grid container spacing={{ xs: 2, sm: 3 }}>
                       {userCampaigns.map(renderCampaignCard)}
                     </Grid>
                   </AccordionDetails>
                 </Accordion>
               ))
             ) : (
-              <Typography align="center" color="text.secondary">
+              <Typography
+                align="center"
+                color="text.secondary"
+                sx={{ fontSize: { xs: '0.875rem', sm: '1rem' }, py: 4 }}
+              >
                 No campaigns found
               </Typography>
             )}
@@ -262,8 +366,22 @@ export default function CampaignsList() {
         </>
       )}
 
-      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Create New Campaign</DialogTitle>
+      <Dialog
+        open={open}
+        onClose={() => setOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        fullScreen={isMobile}
+        PaperProps={{
+          sx: {
+            borderRadius: { xs: 0, sm: '12px' },
+            m: { xs: 0, sm: 2 }
+          }
+        }}
+      >
+        <DialogTitle sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>
+          Create New Campaign
+        </DialogTitle>
         <DialogContent>
           <TextField
             fullWidth
@@ -272,6 +390,11 @@ export default function CampaignsList() {
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
             margin="normal"
             required
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                fontSize: { xs: '0.875rem', sm: '1rem' }
+              }
+            }}
           />
           <TextField
             fullWidth
@@ -281,11 +404,31 @@ export default function CampaignsList() {
             margin="normal"
             multiline
             rows={3}
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                fontSize: { xs: '0.875rem', sm: '1rem' }
+              }
+            }}
           />
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={handleCreate} variant="contained">
+        <DialogActions sx={{ p: { xs: 2, sm: 2.5 }, gap: 1 }}>
+          <Button
+            onClick={() => setOpen(false)}
+            sx={{
+              minHeight: { xs: '44px', sm: 'auto' },
+              fontSize: { xs: '0.875rem', sm: '0.875rem' }
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleCreate}
+            variant="contained"
+            sx={{
+              minHeight: { xs: '44px', sm: 'auto' },
+              fontSize: { xs: '0.875rem', sm: '0.875rem' }
+            }}
+          >
             Create
           </Button>
         </DialogActions>

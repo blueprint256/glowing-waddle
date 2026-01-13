@@ -16,7 +16,13 @@ import {
   MenuItem,
   FormControl,
   IconButton,
-  Tooltip
+  Tooltip,
+  Card,
+  CardContent,
+  Chip,
+  Stack,
+  useMediaQuery,
+  useTheme
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -40,6 +46,10 @@ interface EditingCell {
 
 export default function TasksSheet() {
   const { user } = useAuthStore();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md')); // <960px
+  const isTablet = useMediaQuery(theme.breakpoints.between('sm', 'md')); // 600-960px
+
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -307,6 +317,178 @@ export default function TasksSheet() {
     );
   };
 
+  // Mobile Card Renderer
+  const renderMobileCard = (task: Task, index: number) => {
+    const photoCount = getPhotoCount(task);
+
+    return (
+      <Card
+        key={task._id}
+        sx={{
+          mb: 2,
+          borderRadius: '12px',
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+          transition: 'all 0.2s ease',
+          '&:hover': {
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.12)',
+            transform: 'translateY(-2px)'
+          }
+        }}
+      >
+        <CardContent sx={{ p: { xs: 2, sm: 2.5 } }}>
+          {/* Task Name */}
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+              Task Name
+            </Typography>
+            <Typography variant="h6" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' }, fontWeight: 600 }}>
+              {task.name}
+            </Typography>
+          </Box>
+
+          {/* Campaign & Project */}
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 2 }}>
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                Campaign
+              </Typography>
+              <Chip
+                label={getCampaignName(task)}
+                size="small"
+                color="primary"
+                variant="outlined"
+                sx={{ maxWidth: '100%' }}
+              />
+            </Box>
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                Project
+              </Typography>
+              <Chip
+                label={getProjectName(task)}
+                size="small"
+                variant="outlined"
+                sx={{ maxWidth: '100%' }}
+              />
+            </Box>
+          </Stack>
+
+          {/* Status */}
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+              Status
+            </Typography>
+            <FormControl fullWidth size="small">
+              <Select
+                value={task.status}
+                onChange={(e) => handleStatusChange(task._id, e.target.value as TaskStatus)}
+                sx={{
+                  backgroundColor: getStatusColor(task.status),
+                  color: 'white',
+                  fontWeight: 600,
+                  fontSize: '0.875rem',
+                  borderRadius: '8px',
+                  minHeight: '44px', // Touch-friendly
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    border: 'none'
+                  },
+                  '& .MuiSvgIcon-root': {
+                    color: 'white'
+                  }
+                }}
+              >
+                {Object.values(TaskStatus).map((status) => (
+                  <MenuItem key={status} value={status}>
+                    {status}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+
+          {/* Date */}
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+              Date
+            </Typography>
+            <TextField
+              type="date"
+              value={task.taskDate ? new Date(task.taskDate).toISOString().split('T')[0] : ''}
+              onChange={(e) => handleDateChange(task._id, e.target.value)}
+              fullWidth
+              size="small"
+              InputProps={{
+                startAdornment: <CalendarIcon sx={{ mr: 1, fontSize: '1.25rem', color: 'text.secondary' }} />
+              }}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: '8px',
+                  minHeight: '44px' // Touch-friendly
+                }
+              }}
+            />
+          </Box>
+
+          {/* Description */}
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+              Description
+            </Typography>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.primary',
+                cursor: 'pointer',
+                '&:hover': { color: 'primary.main' }
+              }}
+              onClick={() => setEditDescriptionTask(task)}
+            >
+              {task.description || 'No description'}
+            </Typography>
+          </Box>
+
+          {/* Actions */}
+          <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+            <Tooltip title="Upload Photo">
+              <IconButton
+                onClick={() => handlePhotoUpload(task._id)}
+                color="primary"
+                sx={{
+                  minWidth: '44px',
+                  minHeight: '44px',
+                  border: '1px solid',
+                  borderColor: 'divider'
+                }}
+              >
+                <UploadIcon />
+                {photoCount > 0 && (
+                  <Typography variant="caption" sx={{ ml: 0.5 }}>
+                    {photoCount}
+                  </Typography>
+                )}
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Preview on Social Media">
+              <IconButton
+                onClick={() => setPreviewTask(task)}
+                disabled={!task.name && !task.designedImage}
+                color="primary"
+                sx={{
+                  minWidth: '44px',
+                  minHeight: '44px',
+                  border: '1px solid',
+                  borderColor: 'divider'
+                }}
+              >
+                <VisibilityIcon />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+        </CardContent>
+      </Card>
+    );
+  };
+
   if (loading && tasks.length === 0) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
@@ -324,11 +506,24 @@ export default function TasksSheet() {
   }
 
   return (
-    <Box>
-      <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, mb: 1 }}>
+    <Box sx={{ px: { xs: 1, sm: 2, md: 0 } }}>
+      <Typography
+        variant="h4"
+        gutterBottom
+        sx={{
+          fontWeight: 600,
+          mb: 1,
+          fontSize: { xs: '1.5rem', sm: '2rem', md: '2.125rem' }
+        }}
+      >
         Tasks Sheet
       </Typography>
-      <Typography variant="body2" color="text.secondary" paragraph>
+      <Typography
+        variant="body2"
+        color="text.secondary"
+        paragraph
+        sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}
+      >
         Flat view of all tasks with inline editing and advanced filtering
       </Typography>
 
@@ -345,25 +540,31 @@ export default function TasksSheet() {
         placeholder="Search tasks by name or description..."
       />
 
-      {/* Tasks Table */}
+      {/* Tasks View - Cards on Mobile, Table on Desktop */}
       {tasks.length === 0 ? (
         <Paper sx={{
-          p: 4,
+          p: { xs: 3, sm: 4 },
           textAlign: 'center',
-          borderRadius: '8px',
+          borderRadius: '12px',
           boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)'
         }}>
-          <Typography color="text.secondary" variant="h6">
+          <Typography color="text.secondary" variant="h6" sx={{ fontSize: { xs: '1.125rem', sm: '1.25rem' } }}>
             No tasks found
           </Typography>
-          <Typography color="text.secondary" variant="body2" sx={{ mt: 1 }}>
+          <Typography color="text.secondary" variant="body2" sx={{ mt: 1, fontSize: { xs: '0.875rem', sm: '1rem' } }}>
             Try adjusting your filters or create a new task from the Details Sheet
           </Typography>
         </Paper>
       ) : (
         <>
-          {/* Flat Table View */}
-          <TableContainer component={Paper} sx={{
+          {/* Mobile Card View */}
+          {isMobile ? (
+            <Box sx={{ mb: 3 }}>
+              {tasks.map((task, index) => renderMobileCard(task, index))}
+            </Box>
+          ) : (
+            /* Desktop Table View */
+            <TableContainer component={Paper} sx={{
             mb: 3,
             borderRadius: '8px',
             boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
