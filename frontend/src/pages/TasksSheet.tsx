@@ -736,6 +736,7 @@ export default function TasksSheet() {
               </TableBody>
             </Table>
           </TableContainer>
+          )}
 
           {/* Social Preview Modal (Read-only) */}
           {previewTask && (
