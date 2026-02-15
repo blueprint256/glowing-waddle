@@ -36,3 +36,7 @@ coverage/
 # Production
 .vercel
 .netlify
+-e 
+# Environment files
+*.env
+*.env.*
