@@ -221,6 +221,93 @@ Open http://localhost:3000 in your browser.
 
 ---
 
+## Docker Deployment
+
+### Prerequisites
+- Docker 20.10+
+- Docker Compose v2+
+
+### Quick Start with Docker Compose
+
+1. **Copy the environment example file:**
+   ```bash
+   cp .env.example .env
+   ```
+
+2. **Configure your environment variables in `.env`:**
+   ```env
+   # Required
+   MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/database_name
+   SESSION_SECRET=your-super-secret-session-key
+   
+   # Optional
+   FRONTEND_URL=http://localhost:3000
+   VITE_API_URL=http://localhost:5000/api
+   ```
+
+3. **Build and run the containers:**
+   ```bash
+   docker compose up -d --build
+   ```
+
+4. **Access the application:**
+   - Frontend: http://localhost:3000
+   - Backend API: http://localhost:5000
+
+### Building Individual Images
+
+**Backend:**
+```bash
+cd backend
+docker build -t campaign-backend .
+docker run -p 5000:5000 \
+  -e NODE_ENV=production \
+  -e MONGODB_URI=your_mongodb_uri \
+  -e SESSION_SECRET=your_secret \
+  campaign-backend
+```
+
+**Frontend:**
+```bash
+cd frontend
+docker build -t campaign-frontend .
+docker run -p 3000:80 \
+  -e VITE_API_URL=http://your-backend-url:5000/api \
+  campaign-frontend
+```
+
+### Environment Variables Reference
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `NODE_ENV` | No | production | Node environment |
+| `PORT` | No | 5000 | Backend port |
+| `MONGODB_URI` | **Yes** | - | MongoDB connection string |
+| `SESSION_SECRET` | **Yes** | - | Session encryption secret |
+| `FRONTEND_URL` | No | http://localhost:3000 | CORS allowed origin |
+| `VITE_API_URL` | No | /api | API URL for frontend |
+| `GOOGLE_CLIENT_ID` | No | - | Google OAuth client ID |
+| `GOOGLE_CLIENT_SECRET` | No | - | Google OAuth client secret |
+| `AWS_ACCESS_KEY_ID` | No | - | AWS S3 access key |
+| `AWS_SECRET_ACCESS_KEY` | No | - | AWS S3 secret key |
+| `AWS_REGION` | No | us-east-1 | AWS region |
+| `AWS_S3_BUCKET` | No | - | S3 bucket name |
+
+### Docker Health Checks
+
+Both containers include health checks:
+- **Backend:** `GET /health` on port 5000
+- **Frontend:** `GET /health` on port 80
+
+### Production Tips
+
+1. **Use Docker secrets** for sensitive environment variables
+2. **Set up a reverse proxy** (nginx, traefik) for HTTPS termination
+3. **Use Docker volumes** for any persistent data
+4. **Configure proper logging** with Docker logging drivers
+
+---
+
 ## Demo Workflow
 
 ### Scenario: Creating a Campaign End-to-End
