@@ -1,6 +1,16 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || '/api';
+// Support runtime env injection for Docker, fallback to Vite build-time env
+const getApiUrl = (): string => {
+  // Check for runtime environment (Docker)
+  if (typeof window !== 'undefined' && (window as any).__ENV__?.VITE_API_URL) {
+    return (window as any).__ENV__.VITE_API_URL;
+  }
+  // Fallback to Vite build-time environment
+  return import.meta.env.VITE_API_URL || '/api';
+};
+
+const API_URL = getApiUrl();
 
 const api = axios.create({
   baseURL: API_URL,
