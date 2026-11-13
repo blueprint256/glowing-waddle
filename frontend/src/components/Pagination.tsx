@@ -93,15 +93,15 @@ export default function Pagination({
           sx={{
             minWidth: '40px',
             height: '40px',
-            borderColor: '#2563EB',
-            color: '#2563EB',
+            borderColor: 'var(--border-strong)',
+            color: 'var(--text-strong)',
             '&:hover': {
-              borderColor: '#1D4ED8',
-              backgroundColor: '#EFF6FF'
+              borderColor: 'var(--text-muted)',
+              backgroundColor: 'var(--bg-hover)'
             },
             '&.Mui-disabled': {
-              borderColor: '#E5E7EB',
-              color: '#9CA3AF'
+              borderColor: 'var(--border)',
+              color: 'var(--text-faint)'
             }
           }}
         >
@@ -117,15 +117,15 @@ export default function Pagination({
           sx={{
             minWidth: '40px',
             height: '40px',
-            borderColor: '#2563EB',
-            color: '#2563EB',
+            borderColor: 'var(--border-strong)',
+            color: 'var(--text-strong)',
             '&:hover': {
-              borderColor: '#1D4ED8',
-              backgroundColor: '#EFF6FF'
+              borderColor: 'var(--text-muted)',
+              backgroundColor: 'var(--bg-hover)'
             },
             '&.Mui-disabled': {
-              borderColor: '#E5E7EB',
-              color: '#9CA3AF'
+              borderColor: 'var(--border)',
+              color: 'var(--text-faint)'
             }
           }}
         >
@@ -157,13 +157,13 @@ export default function Pagination({
               sx={{
                 minWidth: '40px',
                 height: '40px',
-                borderColor: isActive ? '#2563EB' : '#E5E7EB',
-                backgroundColor: isActive ? '#2563EB' : 'transparent',
-                color: isActive ? '#FFFFFF' : '#2563EB',
+                borderColor: isActive ? 'var(--primary-bg)' : 'var(--border)',
+                backgroundColor: isActive ? 'var(--primary-bg)' : 'transparent',
+                color: isActive ? 'var(--primary-fg)' : 'var(--text-strong)',
                 fontWeight: isActive ? 600 : 400,
                 '&:hover': {
-                  borderColor: '#1D4ED8',
-                  backgroundColor: isActive ? '#1D4ED8' : '#EFF6FF'
+                  borderColor: 'var(--text-muted)',
+                  backgroundColor: isActive ? 'var(--primary-bg-hover)' : 'var(--bg-hover)'
                 }
               }}
             >
@@ -181,15 +181,15 @@ export default function Pagination({
           sx={{
             minWidth: '40px',
             height: '40px',
-            borderColor: '#2563EB',
-            color: '#2563EB',
+            borderColor: 'var(--border-strong)',
+            color: 'var(--text-strong)',
             '&:hover': {
-              borderColor: '#1D4ED8',
-              backgroundColor: '#EFF6FF'
+              borderColor: 'var(--text-muted)',
+              backgroundColor: 'var(--bg-hover)'
             },
             '&.Mui-disabled': {
-              borderColor: '#E5E7EB',
-              color: '#9CA3AF'
+              borderColor: 'var(--border)',
+              color: 'var(--text-faint)'
             }
           }}
         >
@@ -205,15 +205,15 @@ export default function Pagination({
           sx={{
             minWidth: '40px',
             height: '40px',
-            borderColor: '#2563EB',
-            color: '#2563EB',
+            borderColor: 'var(--border-strong)',
+            color: 'var(--text-strong)',
             '&:hover': {
-              borderColor: '#1D4ED8',
-              backgroundColor: '#EFF6FF'
+              borderColor: 'var(--text-muted)',
+              backgroundColor: 'var(--bg-hover)'
             },
             '&.Mui-disabled': {
-              borderColor: '#E5E7EB',
-              color: '#9CA3AF'
+              borderColor: 'var(--border)',
+              color: 'var(--text-faint)'
             }
           }}
         >

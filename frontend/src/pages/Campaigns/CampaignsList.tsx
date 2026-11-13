@@ -176,7 +176,7 @@ export default function CampaignsList() {
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
-        <CircularProgress sx={{ color: '#2563EB' }} />
+        <CircularProgress sx={{ color: 'var(--text-muted)' }} />
       </Box>
     );
   }

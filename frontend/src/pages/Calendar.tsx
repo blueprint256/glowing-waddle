@@ -133,13 +133,13 @@ export default function CalendarView() {
 
     switch (task.status) {
       case TaskStatus.PENDING:
-        backgroundColor = '#F59E0B'; // Orange
+        backgroundColor = '#fd7e14'; // Orange
         break;
       case TaskStatus.IN_PROGRESS:
-        backgroundColor = '#3B82F6'; // Blue
+        backgroundColor = '#228be6'; // Blue
         break;
       case TaskStatus.COMPLETED:
-        backgroundColor = '#10B981'; // Green
+        backgroundColor = '#40c057'; // Green
         break;
     }
 
@@ -257,7 +257,7 @@ export default function CalendarView() {
           exclusive
           onChange={handleViewChange}
           size="small"
-          sx={{ backgroundColor: 'white' }}
+          sx={{ backgroundColor: 'var(--bg-raised)' }}
         >
           <ToggleButton value="month" aria-label="month view">
             <CalendarMonthIcon sx={{ mr: 1 }} />
@@ -274,17 +274,17 @@ export default function CalendarView() {
           <Chip
             label="Pending"
             size="small"
-            sx={{ backgroundColor: '#F59E0B', color: 'white', fontWeight: 600 }}
+            sx={{ backgroundColor: '#fd7e14', color: 'white', fontWeight: 600 }}
           />
           <Chip
             label="In Progress"
             size="small"
-            sx={{ backgroundColor: '#3B82F6', color: 'white', fontWeight: 600 }}
+            sx={{ backgroundColor: '#228be6', color: 'white', fontWeight: 600 }}
           />
           <Chip
             label="Completed"
             size="small"
-            sx={{ backgroundColor: '#10B981', color: 'white', fontWeight: 600 }}
+            sx={{ backgroundColor: '#40c057', color: 'white', fontWeight: 600 }}
           />
         </Box>
       </Box>
@@ -325,10 +325,10 @@ export default function CalendarView() {
                 ml: 2,
                 backgroundColor:
                   selectedEvent.status === TaskStatus.PENDING
-                    ? '#F59E0B'
+                    ? '#fd7e14'
                     : selectedEvent.status === TaskStatus.IN_PROGRESS
-                    ? '#3B82F6'
-                    : '#10B981',
+                    ? '#228be6'
+                    : '#40c057',
                 color: 'white',
                 fontWeight: 600
               }}
@@ -398,7 +398,7 @@ export default function CalendarView() {
                 }}
               />
 
-              <Box sx={{ mt: 2, p: 2, backgroundColor: '#f5f5f5', borderRadius: 1 }}>
+              <Box sx={{ mt: 2, p: 2, backgroundColor: 'var(--bg-subtle)', borderRadius: 1 }}>
                 <Typography variant="body2" color="text.secondary">
                   <strong>Campaign:</strong> {getCampaignName(editedTask)}
                 </Typography>

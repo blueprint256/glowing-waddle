@@ -4,7 +4,21 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
     <title>Campaign Management Platform</title>
+    <!-- Apply the saved theme before first paint to avoid a light/dark flash. -->
+    <script>
+      (function () {
+        try {
+          var m = localStorage.getItem('bp-theme');
+          if (m !== 'dark' && m !== 'light') {
+            m = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+          }
+          document.documentElement.setAttribute('data-theme', m);
+          document.documentElement.style.colorScheme = m;
+        } catch (e) { document.documentElement.setAttribute('data-theme', 'dark'); }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
