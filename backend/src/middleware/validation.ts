@@ -31,7 +31,7 @@ export const validateUserCreation = [
   body('lastName').trim().notEmpty().withMessage('Last name is required'),
   body('role').isIn(['system_admin', 'hybrid'])
     .withMessage('Invalid role'),
-  body('accessMode').optional().isIn(['both', 'part_one', 'part_two'])
+  body('accessMode').optional().isIn(['part_one', 'part_two'])
     .withMessage('Invalid access mode'),
   handleValidationErrors
 ];
@@ -41,7 +41,7 @@ export const validateUserUpdate = [
   body('firstName').optional().trim().notEmpty(),
   body('lastName').optional().trim().notEmpty(),
   body('role').optional().isIn(['system_admin', 'hybrid']),
-  body('accessMode').optional().isIn(['both', 'part_one', 'part_two'])
+  body('accessMode').optional().isIn(['part_one', 'part_two'])
     .withMessage('Invalid access mode'),
   handleValidationErrors
 ];

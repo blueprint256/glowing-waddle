@@ -7,28 +7,26 @@ export enum UserRole {
 }
 
 /**
- * Which part(s) of the platform a user may use. Set by a System Admin.
- *  - part_one: the full campaign suite (campaigns, projects, tasks, calendar, sheets, AI tools)
- *  - part_two: the Content Hub (hub projects, slots, uploads, poster versions)
- *  - both:     no restriction (default, so existing users keep working unchanged)
- * System Admins always have access to both parts regardless of this value.
+ * Which part of the platform a user is on. Set by a System Admin (later: driven by plan/subscription).
+ *
+ * Both parts are the SAME app with the same data and screens (campaigns, projects, tasks, calendar,
+ * sheets, archives, Canva import, manual uploads, social previews). The only difference is how content is made:
+ *  - part_one: the user may generate content with our backend AI routing (default)
+ *  - part_two: AI generation is switched off. Content arrives manually or through connectors
+ *              (e.g. an MCP server letting ChatGPT/Claude work with the app's API on the user's behalf).
+ * System Admins always keep AI access (they configure it).
+ *
+ * Legacy value 'both' (from an earlier iteration) is read as part_one.
  */
 export enum AccessMode {
-  BOTH = 'both',
   PART_ONE = 'part_one',
   PART_TWO = 'part_two'
 }
 
-export type AppPart = AccessMode.PART_ONE | AccessMode.PART_TWO;
-
-/** True when the user may use the given part of the platform. */
-export function hasPartAccess(
-  user: { role: UserRole; accessMode?: AccessMode },
-  part: AppPart
-): boolean {
+/** True when the user may use backend AI generation. */
+export function canUseAI(user: { role: UserRole; accessMode?: string }): boolean {
   if (user.role === UserRole.SYSTEM_ADMIN) return true;
-  const mode = user.accessMode ?? AccessMode.BOTH;
-  return mode === AccessMode.BOTH || mode === part;
+  return user.accessMode !== AccessMode.PART_TWO;
 }
 
 export interface IUser extends Document {
@@ -114,7 +112,7 @@ const userSchema = new Schema<IUser>(
     accessMode: {
       type: String,
       enum: Object.values(AccessMode),
-      default: AccessMode.BOTH
+      default: AccessMode.PART_ONE
     },
     isActive: {
       type: Boolean,

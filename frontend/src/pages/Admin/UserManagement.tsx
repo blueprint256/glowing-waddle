@@ -38,7 +38,7 @@ export default function UserManagement() {
     firstName: '',
     lastName: '',
     role: UserRole.HYBRID,
-    accessMode: AccessMode.BOTH
+    accessMode: AccessMode.PART_ONE
   });
 
   useEffect(() => {
@@ -73,7 +73,7 @@ export default function UserManagement() {
         firstName: '',
         lastName: '',
         role: UserRole.HYBRID,
-        accessMode: AccessMode.BOTH
+        accessMode: AccessMode.PART_ONE
       });
       loadUsers();
     } catch (error: any) {
@@ -105,7 +105,7 @@ export default function UserManagement() {
               <TableCell>Name</TableCell>
               <TableCell>Email</TableCell>
               <TableCell>Role</TableCell>
-              <TableCell>Access</TableCell>
+              <TableCell>Part</TableCell>
               <TableCell>Status</TableCell>
             </TableRow>
           </TableHead>
@@ -126,8 +126,8 @@ export default function UserManagement() {
                 </TableCell>
                 <TableCell>
                   {user.role === UserRole.SYSTEM_ADMIN
-                    ? 'Both parts'
-                    : ACCESS_MODE_LABELS[user.accessMode ?? AccessMode.BOTH]}
+                    ? 'AI generation (admin)'
+                    : ACCESS_MODE_LABELS[user.accessMode ?? AccessMode.PART_ONE]}
                 </TableCell>
                 <TableCell>
                   <Chip
@@ -205,10 +205,10 @@ export default function UserManagement() {
           <TextField
             fullWidth
             select
-            label="Access"
+            label="Part"
             value={formData.accessMode}
             onChange={(e) => setFormData({ ...formData, accessMode: e.target.value as AccessMode })}
-            helperText="System Admins always have access to both parts"
+            helperText="Same app and data for both. Part two has AI generation switched off. System Admins always keep AI."
             margin="normal"
           >
             {Object.values(AccessMode).map((mode) => (

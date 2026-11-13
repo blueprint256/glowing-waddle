@@ -4,28 +4,25 @@ export enum UserRole {
   HYBRID = 'hybrid'
 }
 
-/** Which part of the platform a user may use (set by a System Admin). */
+/**
+ * Which part of the platform a user is on (set by a System Admin).
+ * Same app and data for both; Part two simply has AI generation switched off.
+ */
 export enum AccessMode {
-  BOTH = 'both',
-  PART_ONE = 'part_one', // full campaign suite
-  PART_TWO = 'part_two' // Content Hub
+  PART_ONE = 'part_one',
+  PART_TWO = 'part_two'
 }
 
 export const ACCESS_MODE_LABELS: Record<AccessMode, string> = {
-  [AccessMode.BOTH]: 'Both parts',
-  [AccessMode.PART_ONE]: 'Part one only (campaign suite)',
-  [AccessMode.PART_TWO]: 'Part two only (Content Hub)'
+  [AccessMode.PART_ONE]: 'Part one — AI generation enabled',
+  [AccessMode.PART_TWO]: 'Part two — manual & connectors (AI generation off)'
 };
 
-/** Same rule as the API: System Admins always have both parts. */
-export function hasPartAccess(
-  user: { role: UserRole; accessMode?: AccessMode } | null | undefined,
-  part: AccessMode.PART_ONE | AccessMode.PART_TWO
-): boolean {
+/** Same rule as the API: System Admins always keep AI access. */
+export function canUseAI(user: { role: UserRole; accessMode?: AccessMode | string } | null | undefined): boolean {
   if (!user) return false;
   if (user.role === UserRole.SYSTEM_ADMIN) return true;
-  const mode = user.accessMode ?? AccessMode.BOTH;
-  return mode === AccessMode.BOTH || mode === part;
+  return user.accessMode !== AccessMode.PART_TWO;
 }
 
 export interface CompanyInfo {

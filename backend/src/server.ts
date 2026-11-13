@@ -26,15 +26,7 @@ import promptRoutes from './routes/prompt.routes';
 import llmRoutes from './routes/llm.routes';
 import commandMappingRoutes from './routes/commandMapping.routes';
 import chainRoutes from './routes/chain.routes';
-import { requirePartOne, requirePartTwo } from './middleware/access';
-import { isAuthenticated } from './middleware/auth';
-
-// Content Hub routes
-import slotRoutes from './routes/slot.routes';
-import uploadRoutes from './routes/upload.routes';
-import versionRoutes from './routes/version.routes';
-import hubProjectRoutes from './routes/hubProject.routes';
-import hubAssetRoutes from './routes/hubAsset.routes';
+import { requireAI } from './middleware/access';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -98,27 +90,46 @@ app.use(
 app.use(passport.initialize());
 app.use(passport.session());
 
+// ---------------------------------------------------------------------------
+// AI generation guard (Part one = allowed, Part two = blocked).
+// Everything that spends our AI routing is listed here, in one place, so it is easy to audit.
+// All other endpoints behave identically for both parts.
+// ---------------------------------------------------------------------------
+app.use(
+  [
+    '/api/llm',
+    '/api/prompts',
+    '/api/command-mappings',
+    '/api/chains',
+    // provider API keys / default model configuration
+    '/api/integrations/openai',
+    '/api/integrations/anthropic',
+    '/api/integrations/grok',
+    '/api/integrations/gemini',
+    '/api/integrations/llm',
+    '/api/integrations/image-llm'
+  ],
+  requireAI
+);
+app.post('/api/campaigns/:id/generate', requireAI);
+app.post('/api/campaigns/:id/generate-tasks', requireAI);
+app.post('/api/tasks/:id/generate-poster', requireAI);
+app.post('/api/tasks/:id/refine-description', requireAI);
+app.patch('/api/tasks/:id/adopt-poster', requireAI);
+
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
-// Part one (full campaign suite). A System Admin can restrict a user to the Content Hub only,
-// in which case every request below answers 403 ACCESS_RESTRICTED for that user.
-app.use('/api/campaigns', requirePartOne, campaignRoutes);
-app.use('/api/projects', requirePartOne, projectRoutes);
-app.use('/api/tasks', requirePartOne, taskRoutes);
-app.use('/api/comments', requirePartOne, commentRoutes);
-app.use('/api/assets', requirePartOne, assetRoutes);
-app.use('/api/integrations', requirePartOne, integrationsRoutes);
-app.use('/api/prompts', requirePartOne, promptRoutes);
-app.use('/api/llm', requirePartOne, llmRoutes);
-app.use('/api/command-mappings', requirePartOne, commandMappingRoutes);
-app.use('/api/chains', requirePartOne, chainRoutes);
-
-// Part two (Content Hub), everything namespaced under /api/hub.
-// The guest upload endpoint is public by design (its one-time token is the credential),
-// so it is mounted before the authenticated + access-gated hub routes.
-app.use('/api/hub', uploadRoutes);
-app.use('/api/hub', isAuthenticated, requirePartTwo, hubProjectRoutes, slotRoutes, versionRoutes, hubAssetRoutes);
+app.use('/api/campaigns', campaignRoutes);
+app.use('/api/projects', projectRoutes);
+app.use('/api/tasks', taskRoutes);
+app.use('/api/comments', commentRoutes);
+app.use('/api/assets', assetRoutes);
+app.use('/api/integrations', integrationsRoutes);
+app.use('/api/prompts', promptRoutes);
+app.use('/api/llm', llmRoutes);
+app.use('/api/command-mappings', commandMappingRoutes);
+app.use('/api/chains', chainRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response) => {

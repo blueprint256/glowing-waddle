@@ -55,10 +55,6 @@ A full-stack collaborative campaign management and content production platform w
 - **Tasks Sheet**: Comprehensive task overview and management
 - **Settings**: User preferences and third-party integrations
 
-## Part two: Content Hub
-
-A second part of the platform for image slots, one-time upload links and versioned, server-rendered posters. A System Admin can restrict each user to Part one, Part two, or both. See [docs/CONTENT_HUB.md](docs/CONTENT_HUB.md).
-
 ## Architecture Overview
 
 ### Tech Stack
@@ -535,3 +531,7 @@ For questions or issues, please create an issue in the repository or contact the
 ---
 
 **Built with ❤️ using Node.js, React, MongoDB, and TypeScript**
+
+## Access modes (Part one / Part two)
+
+A System Admin assigns each user Part one (AI generation enabled) or Part two (AI generation off; manual upload, Canva import and, later, connectors). The app and data are identical. See [docs/ACCESS_MODES.md](docs/ACCESS_MODES.md).

@@ -24,7 +24,7 @@ import {
 } from '@mui/material';
 import { Add as AddIcon, AutoAwesome as AiIcon, Close as CloseIcon, ContentCopy as CopyIcon, CheckCircle as CheckIcon } from '@mui/icons-material';
 import { campaignAPI, projectAPI, llmAPI } from '../../services/api';
-import { Campaign, Project, UserRole } from '../../types';
+import { Campaign, Project, UserRole, canUseAI } from '../../types';
 import { useAuthStore } from '../../store/authStore';
 import ProjectFormDialog from '../../components/Projects/ProjectFormDialog';
 
@@ -32,6 +32,8 @@ export default function CampaignDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuthStore();
+  // Part two users have AI generation switched off; everything else is identical.
+  const aiEnabled = canUseAI(user);
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -242,7 +244,7 @@ export default function CampaignDetail() {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
         <Typography variant="h5">Projects</Typography>
         <Stack direction="row" spacing={2}>
-          {isSystemAdmin() && (
+          {aiEnabled && isSystemAdmin() && (
             <Button
               variant="outlined"
               startIcon={<AiIcon />}
@@ -253,7 +255,7 @@ export default function CampaignDetail() {
               {isGenerating ? 'Generating...' : 'Generate with AI'}
             </Button>
           )}
-          {user?.role === UserRole.HYBRID && canCreateProject() && (
+          {aiEnabled && user?.role === UserRole.HYBRID && canCreateProject() && (
             <Button
               variant="outlined"
               startIcon={<AiIcon />}

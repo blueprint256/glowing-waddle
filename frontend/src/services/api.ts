@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-export const API_URL = import.meta.env.VITE_API_URL || '/api';
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 const api = axios.create({
   baseURL: API_URL,
@@ -212,47 +212,6 @@ export const chainAPI = {
     }>
   }) => api.patch(`/chains/${id}`, data),
   delete: (id: string) => api.delete(`/chains/${id}`)
-};
-
-// Content Hub API (Part two) — everything lives under /api/hub
-export interface PosterLayerImage { type: 'image'; assetId: string; x: number; y: number; width: number; height: number }
-export interface PosterLayerText { type: 'text'; text: string; font?: string; fontSize?: number; color?: string; x: number; y: number }
-export interface StructuredPoster { width: number; height: number; background?: string; layers: Array<PosterLayerImage | PosterLayerText> }
-
-/** Signed-in image URL for a hub asset (redirects to a short-lived storage URL). */
-export const hubAssetUrl = (assetId: string) => `${API_URL}/hub/assets/${assetId}/content`;
-
-export const contentHubAPI = {
-  // projects
-  listProjects: () => api.get('/hub/projects'),
-  createProject: (data: { name: string; description?: string }) => api.post('/hub/projects', data),
-  getProject: (projectId: string) => api.get(`/hub/projects/${projectId}`),
-  updateProject: (projectId: string, data: { name?: string; description?: string }) =>
-    api.put(`/hub/projects/${projectId}`, data),
-  // slots
-  listSlots: (projectId: string) => api.get(`/hub/projects/${projectId}/slots`),
-  getSlot: (projectId: string, slotId: string) => api.get(`/hub/projects/${projectId}/slots/${slotId}`),
-  createSlot: (projectId: string, data: { name: string }) => api.post(`/hub/projects/${projectId}/slots`, data),
-  deleteSlot: (projectId: string, slotId: string) => api.delete(`/hub/projects/${projectId}/slots/${slotId}`),
-  requestUpload: (projectId: string, slotId: string) =>
-    api.post(`/hub/projects/${projectId}/slots/${slotId}/request-upload`),
-  // versions
-  listVersions: (projectId: string) => api.get(`/hub/projects/${projectId}/versions`),
-  createVersion: (projectId: string, data: { structuredData: StructuredPoster }) =>
-    api.post(`/hub/projects/${projectId}/versions`, data),
-  getVersion: (projectId: string, number: number) => api.get(`/hub/projects/${projectId}/versions/${number}`),
-  // assets
-  getAsset: (assetId: string) => api.get(`/hub/assets/${assetId}`)
-};
-
-// Public guest upload (no login): the one-time token in the link is the credential.
-export const hubUploadAPI = {
-  info: (token: string) => api.get('/hub/upload/info', { params: { token } }),
-  upload: (token: string, file: File) => {
-    const form = new FormData();
-    form.append('file', file);
-    return api.post('/hub/upload', form, { params: { token }, headers: { 'Content-Type': 'multipart/form-data' } });
-  }
 };
 
 export default api;

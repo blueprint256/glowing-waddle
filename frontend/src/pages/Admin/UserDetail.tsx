@@ -27,7 +27,7 @@ export default function UserDetail() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [accessMode, setAccessMode] = useState<AccessMode>(AccessMode.BOTH);
+  const [accessMode, setAccessMode] = useState<AccessMode>(AccessMode.PART_ONE);
   const [savingAccess, setSavingAccess] = useState(false);
   const [accessMessage, setAccessMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -44,7 +44,7 @@ export default function UserDetail() {
       const res = await userAPI.getById(id!);
       if (res.data && res.data.user) {
         setUser(res.data.user);
-        setAccessMode(res.data.user.accessMode ?? AccessMode.BOTH);
+        setAccessMode(res.data.user.accessMode === AccessMode.PART_TWO ? AccessMode.PART_TWO : AccessMode.PART_ONE);
       }
     } catch (error: any) {
       console.error('Error loading user:', error);
@@ -60,7 +60,7 @@ export default function UserDetail() {
       setAccessMessage(null);
       await userAPI.update(id!, { accessMode });
       setUser((u) => (u ? { ...u, accessMode } : u));
-      setAccessMessage({ type: 'success', text: 'Access updated. It applies the next time the user loads the app.' });
+      setAccessMessage({ type: 'success', text: 'Part updated. It applies the next time the user loads the app.' });
     } catch (e: any) {
       setAccessMessage({ type: 'error', text: e.response?.data?.message || 'Failed to update access' });
     } finally {
@@ -144,17 +144,17 @@ export default function UserDetail() {
             <Card variant="outlined">
               <CardContent>
                 <Typography variant="h6" gutterBottom color="primary">
-                  Platform Access
+                  Platform Part
                 </Typography>
                 {user.role === UserRole.SYSTEM_ADMIN ? (
                   <Typography variant="body2" color="text.secondary">
-                    System Admins always have access to both parts.
+                    System Admins always keep AI generation enabled.
                   </Typography>
                 ) : (
                   <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start', flexWrap: 'wrap', mt: 1 }}>
                     <TextField
                       select
-                      label="Allowed parts"
+                      label="Part"
                       value={accessMode}
                       onChange={(e) => setAccessMode(e.target.value as AccessMode)}
                       sx={{ minWidth: 280 }}
@@ -168,7 +168,7 @@ export default function UserDetail() {
                     <Button
                       variant="contained"
                       onClick={saveAccess}
-                      disabled={savingAccess || accessMode === (user.accessMode ?? AccessMode.BOTH)}
+                      disabled={savingAccess || accessMode === (user.accessMode === AccessMode.PART_TWO ? AccessMode.PART_TWO : AccessMode.PART_ONE)}
                     >
                       Save
                     </Button>
