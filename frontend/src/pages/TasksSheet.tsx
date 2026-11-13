@@ -205,13 +205,13 @@ export default function TasksSheet() {
   const getStatusColor = (status: TaskStatus) => {
     switch (status) {
       case TaskStatus.PENDING:
-        return '#F59E0B';
+        return '#fd7e14';
       case TaskStatus.IN_PROGRESS:
-        return '#3B82F6';
+        return '#228be6';
       case TaskStatus.COMPLETED:
-        return '#10B981';
+        return '#40c057';
       default:
-        return '#6B7280';
+        return '#868e96';
     }
   };
 
@@ -375,7 +375,7 @@ export default function TasksSheet() {
           }}>
             <Table>
               <TableHead>
-                <TableRow sx={{ backgroundColor: '#F3F4F6' }}>
+                <TableRow sx={{ backgroundColor: 'var(--bg-subtle)' }}>
                   <TableCell sx={{ fontWeight: 700, width: '15%' }}>Task Name</TableCell>
                   <TableCell sx={{ fontWeight: 700, width: '12%' }}>Campaign</TableCell>
                   <TableCell sx={{ fontWeight: 700, width: '12%' }}>Project</TableCell>
@@ -391,10 +391,10 @@ export default function TasksSheet() {
                   <TableRow
                     key={task._id}
                     sx={{
-                      backgroundColor: index % 2 === 0 ? '#FFFFFF' : '#F9FAFB',
+                      backgroundColor: index % 2 === 0 ? 'transparent' : 'var(--bg-subtle)',
                       transition: 'all 0.2s ease',
                       '&:hover': {
-                        backgroundColor: '#F3F4F6',
+                        backgroundColor: 'var(--bg-subtle)',
                         transform: 'scale(1.002)',
                         boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)'
                       }
@@ -560,7 +560,7 @@ export default function TasksSheet() {
           {/* Summary Statistics */}
           <Paper sx={{
             p: 2,
-            backgroundColor: '#F3F4F6',
+            backgroundColor: 'var(--bg-subtle)',
             borderRadius: '8px',
             boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
             transition: 'box-shadow 0.3s ease',
@@ -570,7 +570,7 @@ export default function TasksSheet() {
           }}>
             <Box sx={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
               <Box sx={{ textAlign: 'center' }}>
-                <Typography variant="h5" sx={{ fontWeight: 700, color: '#F59E0B' }}>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: '#fd7e14' }}>
                   {tasks.filter((t) => t.status === TaskStatus.PENDING).length}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -578,7 +578,7 @@ export default function TasksSheet() {
                 </Typography>
               </Box>
               <Box sx={{ textAlign: 'center' }}>
-                <Typography variant="h5" sx={{ fontWeight: 700, color: '#3B82F6' }}>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: '#228be6' }}>
                   {tasks.filter((t) => t.status === TaskStatus.IN_PROGRESS).length}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -586,7 +586,7 @@ export default function TasksSheet() {
                 </Typography>
               </Box>
               <Box sx={{ textAlign: 'center' }}>
-                <Typography variant="h5" sx={{ fontWeight: 700, color: '#10B981' }}>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: '#40c057' }}>
                   {tasks.filter((t) => t.status === TaskStatus.COMPLETED).length}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -594,7 +594,7 @@ export default function TasksSheet() {
                 </Typography>
               </Box>
               <Box sx={{ textAlign: 'center' }}>
-                <Typography variant="h5" sx={{ fontWeight: 700, color: '#6B7280' }}>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: '#868e96' }}>
                   {tasks.length}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">

@@ -1,20 +1,6 @@
-import { useState } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
-import {
-  Box,
-  AppBar,
-  Toolbar,
-  Typography,
-  IconButton,
-  Drawer,
-  List,
-  ListItem,
-  ListItemButton,
-  ListItemIcon,
-  ListItemText,
-  Divider,
-  Button
-} from '@mui/material';
+import { useState, type ReactNode } from 'react';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Avatar, Box, Drawer, IconButton, Tooltip, Typography } from '@mui/material';
 import {
   Menu as MenuIcon,
   Dashboard as DashboardIcon,
@@ -24,20 +10,58 @@ import {
   CalendarMonth as CalendarIcon,
   TableChart as TableChartIcon,
   Settings as SettingsIcon,
-  Logout as LogoutIcon
+  Logout as LogoutIcon,
+  DarkMode as DarkModeIcon,
+  LightMode as LightModeIcon
 } from '@mui/icons-material';
 import { useAuthStore } from '../../store/authStore';
+import { useThemeStore } from '../../store/themeStore';
 import { UserRole } from '../../types';
 
-const drawerWidth = 240;
+/** Accent names map to --accent-<name>-bg / -fg in styles/tokens.css. */
+type Accent = 'green' | 'blue' | 'purple' | 'wine' | 'violet' | 'amber';
 
-export default function DashboardLayout() {
+interface NavItem {
+  text: string;
+  icon: ReactNode;
+  path: string;
+  accent?: Accent;
+  roles: Array<'all' | UserRole>;
+  /** Extra path prefixes that should keep this item highlighted (detail pages). */
+  also?: string[];
+}
+
+const NAV: NavItem[] = [
+  { text: 'Dashboard', icon: <DashboardIcon />, path: '/', accent: 'green', roles: ['all'] },
+  { text: 'Campaigns', icon: <CampaignIcon />, path: '/campaigns', accent: 'violet', roles: ['all'], also: ['/projects/', '/tasks/'] },
+  { text: 'Details Sheet', icon: <ListAltIcon />, path: '/details-sheet', accent: 'blue', roles: ['all'] },
+  { text: 'Calendar', icon: <CalendarIcon />, path: '/calendar', accent: 'purple', roles: ['all'] },
+  { text: 'Tasks Sheet', icon: <TableChartIcon />, path: '/tasks-sheet', accent: 'amber', roles: ['all'] },
+  { text: 'Settings', icon: <SettingsIcon />, path: '/settings', roles: ['all'] },
+  { text: 'Users', icon: <PeopleIcon />, path: '/admin/users', accent: 'wine', roles: [UserRole.SYSTEM_ADMIN] }
+];
+
+function isActive(item: NavItem, pathname: string) {
+  if (item.path === '/') return pathname === '/';
+  return (
+    pathname === item.path ||
+    pathname.startsWith(item.path + '/') ||
+    (item.also ?? []).some((p) => pathname.startsWith(p))
+  );
+}
+
+function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const { user, logout } = useAuthStore();
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const { mode, toggle } = useThemeStore();
 
-  const handleDrawerToggle = () => {
-    setMobileOpen(!mobileOpen);
+  const items = NAV.filter((i) => i.roles.includes('all') || (user && i.roles.includes(user.role)));
+  const initials = `${user?.firstName?.[0] ?? ''}${user?.lastName?.[0] ?? ''}`.toUpperCase() || 'U';
+
+  const go = (path: string) => {
+    navigate(path);
+    onNavigate?.();
   };
 
   const handleLogout = async () => {
@@ -45,113 +69,132 @@ export default function DashboardLayout() {
     navigate('/login');
   };
 
-  const menuItems = [
-    { text: 'Dashboard', icon: <DashboardIcon />, path: '/', roles: ['all'] },
-    { text: 'Campaigns', icon: <CampaignIcon />, path: '/campaigns', roles: ['all'] },
-    { text: 'Details Sheet', icon: <ListAltIcon />, path: '/details-sheet', roles: ['all'] },
-    { text: 'Calendar', icon: <CalendarIcon />, path: '/calendar', roles: ['all'] },
-    { text: 'Tasks Sheet', icon: <TableChartIcon />, path: '/tasks-sheet', roles: ['all'] },
-    { text: 'Settings', icon: <SettingsIcon />, path: '/settings', roles: ['all'] },
-    { text: 'Users', icon: <PeopleIcon />, path: '/admin/users', roles: [UserRole.SYSTEM_ADMIN] }
-  ];
-
-  const filteredMenuItems = menuItems.filter(
-    (item) => item.roles.includes('all') || (user && item.roles.includes(user.role))
-  );
-
-  const drawer = (
-    <Box>
-      <Toolbar>
-        <Typography variant="h6" noWrap>
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', p: '12px 8px', gap: 0.5 }}>
+      {/* Workspace header */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 0.75, mb: 1.5 }}>
+        <Box
+          sx={{
+            width: 24, height: 24, borderRadius: '6px', display: 'grid', placeItems: 'center',
+            bgcolor: 'var(--primary-bg)', color: 'var(--primary-fg)', fontSize: 12, fontWeight: 700
+          }}
+        >
+          B
+        </Box>
+        <Typography noWrap sx={{ fontSize: 14, fontWeight: 600, color: 'var(--text-strong)' }}>
           Campaign Mgmt
         </Typography>
-      </Toolbar>
-      <Divider />
-      <List>
-        {filteredMenuItems.map((item) => (
-          <ListItem key={item.text} disablePadding>
-            <ListItemButton onClick={() => navigate(item.path)}>
-              <ListItemIcon>{item.icon}</ListItemIcon>
-              <ListItemText primary={item.text} />
-            </ListItemButton>
-          </ListItem>
-        ))}
-      </List>
-    </Box>
-  );
-
-  return (
-    <Box sx={{ display: 'flex' }}>
-      <AppBar
-        position="fixed"
-        sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}
-      >
-        <Toolbar>
-          <IconButton
-            color="inherit"
-            edge="start"
-            onClick={handleDrawerToggle}
-            sx={{ mr: 2, display: { sm: 'none' } }}
-          >
-            <MenuIcon />
-          </IconButton>
-          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-            Campaign Management Platform
-          </Typography>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Typography variant="body2">
-              {user?.firstName} {user?.lastName} ({user?.role})
-            </Typography>
-            <Button
-              color="inherit"
-              startIcon={<LogoutIcon />}
-              onClick={handleLogout}
-            >
-              Logout
-            </Button>
-          </Box>
-        </Toolbar>
-      </AppBar>
-
-      <Box
-        component="nav"
-        sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}
-      >
-        <Drawer
-          variant="temporary"
-          open={mobileOpen}
-          onClose={handleDrawerToggle}
-          ModalProps={{ keepMounted: true }}
-          sx={{
-            display: { xs: 'block', sm: 'none' },
-            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth }
-          }}
-        >
-          {drawer}
-        </Drawer>
-        <Drawer
-          variant="permanent"
-          sx={{
-            display: { xs: 'none', sm: 'block' },
-            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth }
-          }}
-          open
-        >
-          {drawer}
-        </Drawer>
       </Box>
 
+      {/* Navigation */}
+      <Box component="nav" aria-label="Main" sx={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1, overflowY: 'auto' }}>
+        {items.map((item) => {
+          const active = isActive(item, pathname);
+          return (
+            <Box
+              key={item.path}
+              component="button"
+              type="button"
+              onClick={() => go(item.path)}
+              aria-current={active ? 'page' : undefined}
+              sx={{
+                all: 'unset', boxSizing: 'border-box', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: '10px',
+                height: 'var(--h-nav)', px: '8px', borderRadius: 'var(--r-nav)',
+                fontSize: 'var(--fs-sm)', fontWeight: 500,
+                color: active ? 'var(--text-nav-active)' : 'var(--text-nav)',
+                bgcolor: active ? 'var(--bg-hover)' : 'transparent',
+                transition: 'background-color var(--t-fast), color var(--t-fast)',
+                '&:hover': { bgcolor: 'var(--bg-hover)', color: 'var(--text-nav-active)' },
+                '&:focus-visible': { outline: '2px solid var(--border-strong)' }
+              }}
+            >
+              <Box
+                sx={{
+                  width: 20, height: 20, borderRadius: 'var(--r-nav)', display: 'grid', placeItems: 'center', flex: '0 0 auto',
+                  bgcolor: item.accent ? `var(--accent-${item.accent}-bg)` : 'transparent',
+                  color: item.accent ? `var(--accent-${item.accent}-fg)` : 'inherit',
+                  '& svg': { fontSize: 14 }
+                }}
+              >
+                {item.icon}
+              </Box>
+              <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {item.text}
+              </Box>
+            </Box>
+          );
+        })}
+      </Box>
+
+      {/* Footer: user + theme + logout */}
       <Box
-        component="main"
         sx={{
-          flexGrow: 1,
-          p: 3,
-          width: { sm: `calc(100% - ${drawerWidth}px)` },
-          mt: 8
+          display: 'flex', alignItems: 'center', gap: 1, p: 1, mt: 1,
+          border: '1px solid var(--border)', borderRadius: 'var(--r-ctl)', bgcolor: 'var(--bg-raised)'
         }}
       >
-        <Outlet />
+        <Avatar sx={{ width: 28, height: 28, fontSize: 11, bgcolor: 'var(--bg-hover)', color: 'var(--text-strong)' }}>
+          {initials}
+        </Avatar>
+        <Box sx={{ minWidth: 0, flex: 1 }}>
+          <Typography noWrap sx={{ fontSize: 12, fontWeight: 600, color: 'var(--text-strong)', lineHeight: 1.3 }}>
+            {user?.firstName} {user?.lastName}
+          </Typography>
+          <Typography noWrap sx={{ fontSize: 11, color: 'var(--text-subtle)', lineHeight: 1.3, textTransform: 'capitalize' }}>
+            {user?.role?.replace('_', ' ')}
+          </Typography>
+        </Box>
+        <Tooltip title={mode === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}>
+          <IconButton size="small" onClick={toggle} aria-label="Toggle theme" sx={{ color: 'var(--text-muted)' }}>
+            {mode === 'dark' ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="Log out">
+          <IconButton size="small" onClick={handleLogout} aria-label="Log out" sx={{ color: 'var(--text-muted)' }}>
+            <LogoutIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
       </Box>
     </Box>
+  );
+}
+
+export default function DashboardLayout() {
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  return (
+    <div className="bp-shell">
+      {/* ≥768px: persistent sidebar (CSS in styles/global.css) */}
+      <aside className="bp-sidebar" aria-label="Sidebar">
+        <SidebarContent />
+      </aside>
+
+      {/* <768px: drawer, opened from the floating button */}
+      <Drawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        ModalProps={{ keepMounted: false }}
+        sx={{ display: { xs: 'block', md: 'none' }, '& .MuiDrawer-paper': { width: 'min(280px, 86vw)' } }}
+      >
+        <SidebarContent onNavigate={() => setDrawerOpen(false)} />
+      </Drawer>
+
+      <main className="bp-panel" id="main">
+        <div className="bp-page">
+          <Outlet />
+        </div>
+      </main>
+
+      <div className="bp-fab-bar">
+        <IconButton
+          onClick={() => setDrawerOpen(true)}
+          aria-label="Open navigation"
+          sx={{ width: 40, height: 40, borderRadius: 9999, bgcolor: 'var(--bg-fab)', color: '#fff', '&:hover': { bgcolor: 'var(--bg-fab)' } }}
+        >
+          <MenuIcon fontSize="small" />
+        </IconButton>
+      </div>
+    </div>
   );
 }

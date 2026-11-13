@@ -710,6 +710,7 @@ const SocialPreviewModal: React.FC<SocialPreviewModalProps> = ({
                 disabled={saving}
                 sx={{
                   backgroundColor: '#1976D2',
+                  color: '#fff',
                   '&:hover': {
                     backgroundColor: '#1565C0'
                   }

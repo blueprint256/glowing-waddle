@@ -13,6 +13,20 @@ export default defineConfig({
       }
     }
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Stable vendor chunks cache well across deploys; page chunks come from React.lazy in App.tsx.
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router-dom'],
+          mui: ['@mui/material', '@emotion/react', '@emotion/styled'],
+          icons: ['@mui/icons-material'],
+          calendar: ['react-big-calendar', 'moment'],
+          dates: ['date-fns', '@mui/x-date-pickers']
+        }
+      }
+    }
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src')

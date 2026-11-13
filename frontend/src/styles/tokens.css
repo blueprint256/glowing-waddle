@@ -1,0 +1,175 @@
+/* ==========================================================================
+   BLUEPRINT TOKENS  —  single source of truth for the design language.
+   Extracted from live computed styles (Mantine-based app, dark + light).
+   Rule: components NEVER hard-code colours/sizes; they read these variables.
+   Theme switch:  <html data-theme="dark|light">   Section accent: <body data-accent="green|blue|purple|wine|violet|amber">
+   ========================================================================== */
+
+:root {
+  /* ---------- Raw palettes (measured) ---------- */
+  --dark-0:#c9c9c9; --dark-1:#b8b8b8; --dark-2:#828282; --dark-3:#696969; --dark-4:#424242;
+  --dark-5:#3b3b3b; --dark-6:#2e2e2e; --dark-7:#242424; --dark-8:#1f1f1f; --dark-9:#141414;
+
+  --paper-0:#f4f3f1; --paper-1:#efedea; --paper-2:#e5e2dd; --paper-3:#d8d3cb; --paper-4:#c4bcb0;
+  --paper-5:#a99e8d; --paper-6:#8c806d; --paper-7:#6e6253; --paper-8:#51483d; --paper-9:#342e27;
+
+  --gray-0:#f8f9fa; --gray-1:#f1f3f5; --gray-2:#e9ecef; --gray-3:#dee2e6; --gray-4:#ced4da;
+  --gray-5:#adb5bd; --gray-6:#868e96; --gray-7:#495057; --gray-8:#343a40; --gray-9:#212529;
+
+  --green-0:#ebfbee; --green-1:#d3f9d8; --green-2:#b2f2bb; --green-3:#8ce99a; --green-4:#69db7c;
+  --green-5:#51cf66; --green-6:#40c057; --green-7:#37b24d; --green-8:#2f9e44; --green-9:#2b8a3e;
+
+  --orange-0:#fff4e6; --orange-1:#ffe8cc; --orange-2:#ffd8a8; --orange-3:#ffc078; --orange-4:#ffa94d;
+  --orange-5:#ff922b; --orange-6:#fd7e14; --orange-7:#f76707; --orange-8:#e8590c; --orange-9:#d9480f;
+
+  --blue-0:#e7f5ff; --blue-1:#d0ebff; --blue-2:#a5d8ff; --blue-3:#74c0fc; --blue-4:#4dabf7;
+  --blue-5:#339af0; --blue-6:#228be6; --blue-7:#1c7ed6; --blue-8:#1971c2; --blue-9:#1864ab;
+
+  --red-0:#fff5f5; --red-1:#ffe3e3; --red-2:#ffc9c9; --red-3:#ffa8a8; --red-4:#ff8787;
+  --red-5:#ff6b6b; --red-6:#fa5252; --red-7:#f03e3e; --red-8:#e03131; --red-9:#c92a2a;
+
+  /* ---------- Typography ---------- */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --fs-3xs: 9px;   /* "Coming soon" micro-badge */
+  --fs-2xs: 11px;  /* section labels, mono chips */
+  --fs-xs: 12px;   /* descriptions, table heads, hints */
+  --fs-sm: 13px;   /* DEFAULT UI size: nav, buttons, inputs, rows */
+  --fs-md: 14px;   /* modal headers, card titles */
+  --fs-base: 16px; /* hero sub-copy */
+  --fs-lg: 18px;
+  --fs-h1: 25px;   /* hero headline (≥768px) */
+  --fs-h1-sm: 21px;/* hero headline (<768px) */
+  --fw-regular: 400; --fw-medium: 500; --fw-semibold: 600; --fw-bold: 700;
+  --lh-body: 1.55; --lh-tight: 1.4; --lh-h1: 1.5;
+  --ls-label: -0.01em;
+
+  /* ---------- Spacing (4-based UI scale + Mantine named steps) ---------- */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px; --sp-12: 48px;
+  --sp-xs: 10px; --sp-sm: 12px; --sp-md: 16px; --sp-lg: 20px; --sp-xl: 32px;
+
+  /* ---------- Radii ---------- */
+  --r-nav: 6px;     /* nav rows, small chips */
+  --r-ctl: 8px;     /* buttons, inputs, tiles, icon badges, banner cards */
+  --r-card: 10px;
+  --r-panel: 12px;  /* main content panel, popovers */
+  --r-modal: 16px;  /* modals */
+  --r-full: 9999px; /* chips, floating buttons, avatars */
+
+  /* ---------- Control sizing ---------- */
+  --h-ctl: 31px;    /* buttons + inputs (all sizes default) */
+  --h-nav: 30px;    /* nav row */
+  --h-row: 52px;    /* table row */
+  --h-th: 37px;     /* table head */
+  --h-topbar: 62px;
+
+  /* ---------- Layout ---------- */
+  --sidebar-w: 214px;      /* ≥992px  (nav items 190 + 12px gutters) */
+  --sidebar-w-sm: 206px;   /* 768–991px */
+  --panel-inset: 12px;     /* ≥992px  */
+  --panel-inset-sm: 8px;   /* <992px  */
+  --bp-xs: 36em; --bp-sm: 48em; --bp-md: 62em; --bp-lg: 75em; --bp-xl: 88em; /* 576 / 768 / 992 / 1200 / 1408 */
+
+  /* ---------- Motion ---------- */
+  --ease: cubic-bezier(.4, 0, .2, 1);
+  --t-fast: .15s var(--ease);
+  --t-modal: .2s var(--ease);
+
+  /* ---------- Z-index ---------- */
+  --z-app: 100; --z-modal: 200; --z-popover: 300; --z-overlay: 400; --z-max: 9999;
+
+  /* ---------- Section accents (icon badge bg / glyph) — dark mode ---------- */
+  --accent-green-bg:#16451f;  --accent-green-fg:#ebfbee;   /* Inbox      */
+  --accent-blue-bg:#1b2864;   --accent-blue-fg:#edf2ff;    /* Planner    */
+  --accent-purple-bg:#43174e; --accent-purple-fg:#f8f0fc;  /* Bio pages  */
+  --accent-wine-bg:#530f27;   --accent-wine-fg:#fff0f6;    /* Studio     */
+  --accent-violet-bg:#301f62; --accent-violet-fg:#f3f0ff;  /* Campaigns  */
+  --accent-amber-bg:#6b2a0c;  --accent-amber-fg:#fff4e6;   /* Workflows (≈ sampled by eye) */
+}
+
+/* ==========================================================================
+   DARK THEME (default)
+   ========================================================================== */
+:root, [data-theme="dark"] {
+  color-scheme: dark;
+  --bg-shell:   var(--dark-7);   /* body, sidebar, modal aside */
+  --bg-panel:   var(--dark-9);   /* main panel, modal body */
+  --bg-raised:  var(--dark-6);   /* inputs, tiles, cards on panel */
+  --bg-hover:   var(--dark-5);
+  --bg-subtle:  var(--dark-8);
+  --bg-float:   var(--dark-7);   /* popovers, install pill */
+  --bg-fab:     #4c4c4c;         /* mobile hamburger */
+  --border:     var(--dark-5);   /* every 1px divider/outline */
+  --border-strong: var(--dark-4);
+  --text:       var(--dark-0);   /* body copy */
+  --text-strong:#ffffff;         /* titles, active nav */
+  --text-muted: var(--dark-1);   /* descriptions, idle nav, table heads */
+  --text-subtle:var(--dark-2);   /* section labels */
+  --text-faint: var(--dark-3);   /* placeholder */
+  --primary-bg: var(--gray-2);   /* #e9ecef primary button */
+  --primary-bg-hover: var(--gray-3);
+  --primary-fg: #000000;
+  --link: #6a6a6a;
+  --overlay: rgba(0,0,0,.2);
+  --danger: var(--red-8);
+  --danger-text: var(--red-6);
+  --danger-solid: #5b1520;       /* ≈ sampled by eye */
+  --success: var(--green-6);
+  --warning: var(--orange-6);
+  --warning-surface: #6b3a05;    /* ≈ sampled by eye ("Choose a profile" notice) */
+  --shadow-modal: 0 1px 3px rgba(0,0,0,.05), 0 36px 28px -7px rgba(0,0,0,.05), 0 17px 17px -7px rgba(0,0,0,.04);
+  --shadow-pop:   0 10px 30px rgba(0,0,0,.35);
+  --canvas-bg:  var(--dark-9);
+  --canvas-dot: var(--dark-6);
+  --glass-bg: rgba(36,36,36,.55);
+  --sky-alpha: 1;
+}
+
+/* ==========================================================================
+   LIGHT THEME  ("paper": warm cream shell + white panel)
+   ========================================================================== */
+[data-theme="light"] {
+  color-scheme: light;
+  --bg-shell:   var(--paper-0);
+  --bg-panel:   #ffffff;
+  --bg-raised:  #ffffff;
+  --bg-hover:   var(--paper-1);
+  --bg-subtle:  var(--paper-0);
+  --bg-float:   #ffffff;
+  --bg-fab:     var(--paper-8);
+  --border:     var(--paper-1);
+  --border-strong: #ccc5ba;
+  --text:       #000000;
+  --text-strong:#18181b;
+  --text-muted: var(--paper-6);
+  --text-subtle:var(--paper-6);
+  --text-faint: var(--paper-5);
+  --primary-bg: var(--dark-6);   /* #2e2e2e */
+  --primary-bg-hover: var(--dark-7);
+  --primary-fg: #ffffff;
+  --link: var(--paper-7);
+  --overlay: rgba(0,0,0,.2);
+  --danger: var(--red-8);
+  --danger-text: var(--red-8);
+  --danger-solid: var(--red-8);
+  --warning-surface: var(--orange-1);
+  --shadow-pop: 0 10px 30px rgba(52,46,39,.18);
+  --canvas-bg:  var(--paper-1);
+  --canvas-dot: var(--paper-3);
+  --glass-bg: rgba(255,255,255,.65);
+  --sky-alpha: .55;
+}
+/* nav idle text differs from muted in light mode (measured #51483d) */
+:root, [data-theme="dark"] { --text-nav: var(--dark-1); --text-nav-active: #fff; }
+[data-theme="light"]       { --text-nav: var(--paper-8); --text-nav-active: #18181b; }
+
+/* ---------- Accent resolver: body[data-accent] → --accent-bg / --accent-fg / --sky-* ---------- */
+[data-accent="green"]  { --a-bg:var(--accent-green-bg);  --a-fg:var(--accent-green-fg);  --sky-a:#1f5a2a; --sky-b:#4a5a1a; }
+[data-accent="blue"]   { --a-bg:var(--accent-blue-bg);   --a-fg:var(--accent-blue-fg);   --sky-a:#2a3a8a; --sky-b:#7a2a3a; }
+[data-accent="purple"] { --a-bg:var(--accent-purple-bg); --a-fg:var(--accent-purple-fg); --sky-a:#5a2a7a; --sky-b:#2a4a8a; }
+[data-accent="wine"]   { --a-bg:var(--accent-wine-bg);   --a-fg:var(--accent-wine-fg);   --sky-a:#7a1f3f; --sky-b:#1f6a6a; }
+[data-accent="violet"] { --a-bg:var(--accent-violet-bg); --a-fg:var(--accent-violet-fg); --sky-a:#4a2f9a; --sky-b:#8a2a4a; }
+[data-accent="amber"]  { --a-bg:var(--accent-amber-bg);  --a-fg:var(--accent-amber-fg);  --sky-a:#8a4a1a; --sky-b:#6a5a1a; }
+/* dark: badge = deep tint with pale glyph (measured). light: inverted (inferred — verify against a light-mode hero). */
+[data-accent] { --accent-bg: var(--a-bg); --accent-fg: var(--a-fg); }
+[data-theme="light"][data-accent] { --accent-bg: var(--a-fg); --accent-fg: var(--a-bg); }

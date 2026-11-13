@@ -1,0 +1,48 @@
+/* Global layer: tokens first, then app-shell rules shared by every page.
+   (Page/component styling lives in the MUI theme + sx; this file is shell + helpers only.) */
+@import './tokens.css';
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
+  background: var(--bg-shell);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+::selection { background: color-mix(in srgb, var(--text-strong) 22%, transparent); }
+:focus-visible { outline: 2px solid var(--border-strong); outline-offset: 2px; }
+img { max-width: 100%; }
+
+/* ---- App shell -------------------------------------------------------- */
+.bp-shell { display: flex; height: 100dvh; background: var(--bg-shell); }
+.bp-sidebar { width: var(--sidebar-w-sm); flex: 0 0 var(--sidebar-w-sm); display: none; flex-direction: column; padding: var(--sp-3) var(--sp-2); }
+@media (min-width: 48em) { .bp-sidebar { display: flex; } }
+@media (min-width: 62em) { .bp-sidebar { width: var(--sidebar-w); flex-basis: var(--sidebar-w); } }
+
+/* The panel is the inset, rounded content surface that scrolls internally. */
+.bp-panel {
+  flex: 1 1 auto; min-width: 0;
+  margin: var(--panel-inset-sm);
+  border-radius: var(--r-panel);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  overflow: auto;
+  position: relative;
+}
+@media (min-width: 48em) { .bp-panel { margin-left: 0; } }
+@media (min-width: 62em) { .bp-panel { margin: var(--panel-inset); margin-left: 0; } }
+.bp-page { padding: var(--sp-4) var(--sp-4) 80px; max-width: 1400px; margin: 0 auto; } /* bottom room for the mobile FAB */
+@media (min-width: 48em) { .bp-page { padding: var(--sp-6) var(--sp-8); } }
+
+/* Mobile floating controls (hamburger + theme), hidden ≥768px */
+.bp-fab-bar { position: fixed; left: 20px; right: 20px; bottom: 20px; z-index: var(--z-app); display: flex; justify-content: space-between; pointer-events: none; }
+.bp-fab-bar > * { pointer-events: auto; }
+@media (min-width: 48em) { .bp-fab-bar { display: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+}

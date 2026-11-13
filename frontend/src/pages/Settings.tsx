@@ -1079,7 +1079,7 @@ export default function Settings() {
                             maxWidth: 200,
                             maxHeight: 100,
                             objectFit: 'contain',
-                            border: '1px solid #e0e0e0',
+                            border: '1px solid var(--border)',
                             borderRadius: 1,
                             p: 1
                           }}
@@ -1128,7 +1128,7 @@ export default function Settings() {
                             maxWidth: 200,
                             maxHeight: 100,
                             objectFit: 'contain',
-                            border: '1px solid #e0e0e0',
+                            border: '1px solid var(--border)',
                             borderRadius: 1,
                             p: 1
                           }}
@@ -1177,7 +1177,7 @@ export default function Settings() {
                             maxWidth: 200,
                             maxHeight: 100,
                             objectFit: 'contain',
-                            border: '1px solid #e0e0e0',
+                            border: '1px solid var(--border)',
                             borderRadius: 1,
                             p: 1
                           }}

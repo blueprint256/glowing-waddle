@@ -210,13 +210,13 @@ const FilterToolbar: React.FC<FilterToolbarProps> = ({
       sx={{
         p: 2,
         mb: 3,
-        backgroundColor: '#f8f9fa',
+        backgroundColor: 'var(--bg-subtle)',
         borderRadius: 2
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', mb: expanded ? 2 : 0 }}>
-        <FilterListIcon sx={{ mr: 1, color: '#1976d2' }} />
-        <Box sx={{ fontWeight: 600, fontSize: '1.1rem', color: '#1976d2', flexGrow: 1 }}>
+        <FilterListIcon sx={{ mr: 1, color: 'var(--text-strong)' }} />
+        <Box sx={{ fontWeight: 600, fontSize: '1.1rem', color: 'var(--text-strong)', flexGrow: 1 }}>
           Filters
           {hasActiveFilters() && (
             <Chip

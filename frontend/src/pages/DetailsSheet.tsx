@@ -92,17 +92,18 @@ export default function DetailsSheet() {
     createdBy: []
   });
 
-  // Color coding constants - Unified Blue Hierarchy (#1976d2 shades)
-  const CAMPAIGN_COLOR = '#BBDEFB'; // Deep blue background (lighter shade)
-  const CAMPAIGN_BORDER = '#1565C0'; // Darkest blue border (dark shade of #1976d2)
-  const CAMPAIGN_HOVER = '#90CAF9'; // Medium blue hover
-  const PROJECT_COLOR = '#E3F2FD';  // Light blue background
-  const PROJECT_BORDER = '#1976D2';  // Primary blue border (base color)
-  const PROJECT_HOVER = '#BBDEFB';   // Lighter blue hover
-  const TASK_COLOR = '#E3F2FD';      // Very light blue
-  const TASK_HOVER = '#BBDEFB';      // Light blue hover
-  const CREATOR_COLOR = '#E3F2FD';   // Very light blue for creator grouping
-  const CREATOR_BORDER = '#1976D2';  // Primary blue border
+  // Color coding: one blue hierarchy expressed as translucent tints so it reads on both the
+  // dark and light themes (campaign strongest → project → task). Base hue = blue-7 #1c7ed6.
+  const CAMPAIGN_COLOR = 'rgba(34, 139, 230, 0.24)';
+  const CAMPAIGN_BORDER = '#1c7ed6';
+  const CAMPAIGN_HOVER = 'rgba(34, 139, 230, 0.34)';
+  const PROJECT_COLOR = 'rgba(34, 139, 230, 0.13)';
+  const PROJECT_BORDER = '#228be6';
+  const PROJECT_HOVER = 'rgba(34, 139, 230, 0.22)';
+  const TASK_COLOR = 'rgba(34, 139, 230, 0.07)';
+  const TASK_HOVER = 'rgba(34, 139, 230, 0.16)';
+  const CREATOR_COLOR = 'rgba(34, 139, 230, 0.10)';
+  const CREATOR_BORDER = '#228be6';
 
   // Group campaigns by creator for System Admins
   const groupedCampaigns = (() => {
@@ -658,7 +659,7 @@ export default function DetailsSheet() {
             )}
           </Box>
         </AccordionSummary>
-        <AccordionDetails sx={{ pl: 4, backgroundColor: '#FAFAFA' }}>
+        <AccordionDetails sx={{ pl: 4, backgroundColor: 'var(--bg-subtle)' }}>
           {/* Create Project Button */}
           <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
             <Button
@@ -668,6 +669,7 @@ export default function DetailsSheet() {
               onClick={() => handleOpenCreateProjectModal(campaign._id)}
               sx={{
                 backgroundColor: PROJECT_BORDER,
+                color: '#fff',
                 borderRadius: '4px',
                 transition: 'all 0.2s ease',
                 boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
@@ -778,7 +780,7 @@ export default function DetailsSheet() {
                       </FormControl>
                     </Box>
                   </AccordionSummary>
-                  <AccordionDetails sx={{ backgroundColor: '#F5F5F5' }}>
+                  <AccordionDetails sx={{ backgroundColor: 'var(--bg-subtle)' }}>
                     <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
                       <Button
                         variant="contained"
@@ -787,6 +789,7 @@ export default function DetailsSheet() {
                         onClick={() => handleOpenCreateTaskModal(project._id, campaign._id)}
                         sx={{
                           backgroundColor: '#6366F1',
+                          color: '#fff',
                           borderRadius: '4px',
                           transition: 'all 0.2s ease',
                           boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
@@ -994,7 +997,7 @@ export default function DetailsSheet() {
                       <Paper sx={{
                         py: 3,
                         textAlign: 'center',
-                        backgroundColor: '#FAFAFA',
+                        backgroundColor: 'var(--bg-subtle)',
                         borderRadius: '8px',
                         boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)'
                       }}>
@@ -1014,7 +1017,7 @@ export default function DetailsSheet() {
                             transition: 'all 0.2s ease',
                             '&:hover': {
                               borderColor: '#4F46E5',
-                              backgroundColor: '#EEF2FF',
+                              backgroundColor: 'var(--bg-hover)',
                               transform: 'scale(0.98)'
                             },
                             '&:active': {
@@ -1034,7 +1037,7 @@ export default function DetailsSheet() {
             <Paper sx={{
               py: 3,
               textAlign: 'center',
-              backgroundColor: '#FAFAFA',
+              backgroundColor: 'var(--bg-subtle)',
               borderRadius: '8px',
               boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)'
             }}>
@@ -1095,6 +1098,7 @@ export default function DetailsSheet() {
           onClick={() => setCreateCampaignModalOpen(true)}
           sx={{
             backgroundColor: CAMPAIGN_BORDER,
+            color: '#fff',
             fontSize: '1rem',
             fontWeight: 600,
             px: 3,
@@ -1103,7 +1107,7 @@ export default function DetailsSheet() {
             boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
             transition: 'all 0.2s ease',
             '&:hover': {
-              backgroundColor: '#1D4ED8',
+              backgroundColor: '#1971c2',
               boxShadow: '0 6px 12px rgba(0, 0, 0, 0.15)',
               transform: 'scale(0.98)'
             },
@@ -1166,7 +1170,7 @@ export default function DetailsSheet() {
                       borderLeft: `4px solid ${CREATOR_BORDER}`,
                       transition: 'background-color 0.2s ease',
                       '&:hover': {
-                        backgroundColor: '#E0F2FE'
+                        backgroundColor: 'rgba(34, 139, 230, 0.2)'
                       }
                     },
                     '&.Mui-expanded': {
@@ -1193,7 +1197,7 @@ export default function DetailsSheet() {
                       </Typography>
                     </Box>
                   </AccordionSummary>
-                  <AccordionDetails sx={{ backgroundColor: '#FAFAFA' }}>
+                  <AccordionDetails sx={{ backgroundColor: 'var(--bg-subtle)' }}>
                     <Box>
                       {userCampaigns.map(renderCampaign)}
                     </Box>

@@ -222,8 +222,8 @@ export default function CreateTaskModal({
                   sx={{
                     p: 2,
                     position: 'relative',
-                    border: '2px dashed #2563EB',
-                    backgroundColor: '#F0F4FF'
+                    border: '2px dashed var(--border-strong)',
+                    backgroundColor: 'var(--bg-hover)'
                   }}
                 >
                   <IconButton
@@ -233,8 +233,8 @@ export default function CreateTaskModal({
                       position: 'absolute',
                       top: 8,
                       right: 8,
-                      backgroundColor: 'white',
-                      '&:hover': { backgroundColor: '#f5f5f5' }
+                      backgroundColor: 'var(--bg-raised)',
+                      '&:hover': { backgroundColor: 'var(--bg-subtle)' }
                     }}
                   >
                     <CloseIcon fontSize="small" />
@@ -264,11 +264,11 @@ export default function CreateTaskModal({
                     py: 3,
                     borderStyle: 'dashed',
                     borderWidth: 2,
-                    borderColor: '#2563EB',
-                    color: '#2563EB',
+                    borderColor: 'var(--border-strong)',
+                    color: 'var(--text-strong)',
                     '&:hover': {
-                      borderColor: '#1E40AF',
-                      backgroundColor: '#F0F4FF'
+                      borderColor: 'var(--text-muted)',
+                      backgroundColor: 'var(--bg-hover)'
                     }
                   }}
                 >

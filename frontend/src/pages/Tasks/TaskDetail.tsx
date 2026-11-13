@@ -278,7 +278,7 @@ export default function TaskDetail() {
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
-        <CircularProgress sx={{ color: '#2563EB' }} />
+        <CircularProgress sx={{ color: 'var(--text-muted)' }} />
       </Box>
     );
   }
@@ -362,7 +362,7 @@ export default function TaskDetail() {
                               maxHeight: 400,
                               objectFit: 'contain',
                               borderRadius: 1,
-                              border: '1px solid #e0e0e0'
+                              border: '1px solid var(--border)'
                             }}
                           />
                         </Box>
@@ -395,6 +395,7 @@ export default function TaskDetail() {
                           disabled={generatingPoster}
                           sx={{
                             backgroundColor: '#9333EA',
+                            color: '#fff',
                             '&:hover': { backgroundColor: '#7C3AED' }
                           }}
                         >
