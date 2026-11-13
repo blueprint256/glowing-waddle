@@ -214,4 +214,18 @@ export const chainAPI = {
   delete: (id: string) => api.delete(`/chains/${id}`)
 };
 
+// Content Hub API
+export const contentHubAPI = {
+  listSlots: (projectId: string) => api.get(`/projects/${projectId}/slots`),
+  getSlot: (projectId: string, slotId: string) => api.get(`/projects/${projectId}/slots/${slotId}`),
+  createSlot: (projectId: string, data: { name: string }) =>
+    api.post(`/projects/${projectId}/slots`, data),
+  requestUpload: (projectId: string, slotId: string) =>
+    api.post(`/projects/${projectId}/slots/${slotId}/request-upload`),
+  createVersion: (projectId: string, data: { structuredData: any }) =>
+    api.post(`/projects/${projectId}/versions`, data),
+  getVersion: (projectId: string, number: number) =>
+    api.get(`/projects/${projectId}/versions/${number}`)
+};
+
 export default api;

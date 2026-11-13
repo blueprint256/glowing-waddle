@@ -18,7 +18,8 @@ router.post('/projects/:projectId/slots', isAuthenticated, async (req, res) => {
 
     const newSlot = new Slot({
       name,
-      projectId
+      projectId,
+      userId: req.user!._id
     });
 
     await newSlot.save();
@@ -26,6 +27,24 @@ router.post('/projects/:projectId/slots', isAuthenticated, async (req, res) => {
     res.status(201).json(newSlot);
   } catch (error) {
     console.error('Create slot error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+/**
+ * @route GET /api/projects/:projectId/slots
+ * @desc List slots for a project
+ * @access Private
+ */
+router.get('/projects/:projectId/slots', isAuthenticated, async (req, res) => {
+  try {
+    const { projectId } = req.params;
+
+    const slots = await Slot.find({ projectId }).populate('assetId').sort({ createdAt: 1 });
+
+    res.json(slots);
+  } catch (error) {
+    console.error('List slots error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -64,7 +83,11 @@ router.post('/projects/:projectId/slots/:slotId/request-upload', isAuthenticated
     const existingPendingRequest = await PendingRequest.findOne({ slotId });
 
     if (existingPendingRequest) {
-      return res.status(400).json({ message: 'A pending request already exists for this slot' });
+      if (existingPendingRequest.expiresAt < new Date()) {
+        await existingPendingRequest.deleteOne();
+      } else {
+        return res.status(400).json({ message: 'A pending request already exists for this slot' });
+      }
     }
 
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes from now

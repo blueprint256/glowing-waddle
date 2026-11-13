@@ -1,40 +1,53 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { Box, Typography, Button } from '@mui/material';
-import { api } from '../../services/api';
+import { Box, Typography, Button, CircularProgress } from '@mui/material';
+import { contentHubAPI } from '../../services/api';
 
 interface Slot {
   _id: string;
   name: string;
-  assetId?: string;
+  assetId?: { _id: string; storageKey: string } | string;
 }
 
 export default function SlotManagement() {
-  const { projectId } = useParams();
+  const { projectId } = useParams<{ projectId: string }>();
   const [slots, setSlots] = useState<Slot[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchSlots();
-  }, []);
+    if (projectId) {
+      fetchSlots();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
 
   async function fetchSlots() {
+    if (!projectId) return;
     try {
-      const response = await api.get(`/projects/${projectId}/slots`);
+      setLoading(true);
+      const response = await contentHubAPI.listSlots(projectId);
       setSlots(response.data);
     } catch (error) {
       console.error('Error fetching slots:', error);
+    } finally {
+      setLoading(false);
     }
   }
 
   async function handleCreateSlot() {
+    if (!projectId) return;
     try {
-      const response = await api.post(`/projects/${projectId}/slots`, {
+      const response = await contentHubAPI.createSlot(projectId, {
         name: `Slot ${slots.length + 1}`
       });
       setSlots([...slots, response.data]);
     } catch (error) {
       console.error('Error creating slot:', error);
     }
+  }
+
+  if (!projectId) {
+    return <Typography color="error">No project selected.</Typography>;
   }
 
   return (
@@ -45,12 +58,18 @@ export default function SlotManagement() {
       <Button variant="contained" onClick={handleCreateSlot}>
         Create Slot
       </Button>
-      {slots.map((slot) => (
-        <Box key={slot._id} mt={2}>
-          <Typography>{slot.name}</Typography>
-          {/* Render slot details, upload button, etc. */}
+      {loading ? (
+        <Box display="flex" justifyContent="center" mt={4}>
+          <CircularProgress size={22} />
         </Box>
-      ))}
+      ) : (
+        slots.map((slot) => (
+          <Box key={slot._id} mt={2}>
+            <Typography>{slot.name}</Typography>
+            {/* Render slot details, upload button, etc. */}
+          </Box>
+        ))
+      )}
     </Box>
   );
 }

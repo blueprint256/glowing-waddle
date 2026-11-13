@@ -3,7 +3,7 @@ import multer from 'multer';
 import { PendingRequest } from '../models/PendingRequest';
 import { Asset } from '../models/Asset';
 import { Slot } from '../models/Slot';
-import { uploadFile } from '../utils/s3Service';
+import { uploadToS3 } from '../utils/s3Service';
 
 const router = express.Router();
 
@@ -14,15 +14,21 @@ const upload = multer({
 
 /**
  * @route POST /api/upload
- * @desc Handle a one-time upload
+ * @desc Handle a one-time upload bound to a pending request token.
+ *       Public by design: the token itself is the credential, so this
+ *       works from a guest browser with no login.
  * @access Public
  */
 router.post('/upload', upload.single('file'), async (req, res) => {
   try {
     const { token } = req.query;
 
-    if (!token) {
+    if (!token || typeof token !== 'string') {
       return res.status(400).json({ message: 'Upload token is required' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file was provided' });
     }
 
     const pendingRequest = await PendingRequest.findOne({ token });
@@ -32,40 +38,32 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     }
 
     if (pendingRequest.expiresAt < new Date()) {
-      await pendingRequest.remove();
+      await pendingRequest.deleteOne();
       return res.status(410).json({ message: 'Upload token has expired' });
     }
 
     const slot = await Slot.findById(pendingRequest.slotId);
 
     if (!slot) {
-      await pendingRequest.remove();
+      await pendingRequest.deleteOne();
       return res.status(404).json({ message: 'Associated slot not found' });
     }
 
-    const { originalname, mimetype, buffer } = req.file;
-    const size = buffer.length;
-
-    const s3Key = `uploads/${slot._id}/${Date.now()}-${originalname}`;
-
-    const s3Upload = await uploadFile({
-      key: s3Key,
-      contentType: mimetype,
-      body: buffer
-    });
+    const { key } = await uploadToS3(req.file, `content-hub/${slot._id}`);
 
     const asset = new Asset({
       userId: slot.userId,
-      originalFileName: originalname,
-      storageKey: s3Upload.Key,
-      contentType: mimetype,
-      size
+      originalFileName: req.file.originalname,
+      storageKey: key,
+      contentType: req.file.mimetype,
+      size: req.file.size
     });
 
     await asset.save();
-    slot.assetId = asset._id;
+
+    slot.assetId = asset._id as any;
     await slot.save();
-    await pendingRequest.remove();
+    await pendingRequest.deleteOne();
 
     res.json({ message: 'File uploaded successfully', assetId: asset._id });
   } catch (error) {

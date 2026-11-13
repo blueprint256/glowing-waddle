@@ -2,7 +2,7 @@ import express from 'express';
 import { isAuthenticated } from '../middleware/auth';
 import { Version } from '../models/Version';
 import { Asset } from '../models/Asset';
-import { uploadFile } from '../utils/s3Service';
+import { uploadBufferToS3 } from '../utils/s3Service';
 import { renderPoster } from '../services/renderService';
 
 const router = express.Router();
@@ -25,18 +25,19 @@ router.post('/projects/:projectId/versions', isAuthenticated, async (req, res) =
 
     const renderedBuffer = await renderPoster(structuredData);
 
-    const s3Key = `renders/${projectId}/${Date.now()}-poster.png`;
-
-    const s3Upload = await uploadFile({
-      key: s3Key,
-      contentType: 'image/png',
-      body: renderedBuffer
-    });
+    const renderedLocation = await uploadBufferToS3(
+      renderedBuffer,
+      'image/png',
+      `content-hub-renders/${projectId}`
+    );
+    // uploadBufferToS3 returns a full https URL; store just the bare key so
+    // it matches how upload.routes.ts and renderService.ts treat storageKey.
+    const renderedKey = renderedLocation.split('.amazonaws.com/')[1] || renderedLocation;
 
     const renderedAsset = new Asset({
-      userId: req.user._id,
+      userId: req.user!._id,
       originalFileName: `poster-${nextNumber}.png`,
-      storageKey: s3Upload.Key,
+      storageKey: renderedKey,
       contentType: 'image/png',
       size: renderedBuffer.length,
       width: structuredData.width,
