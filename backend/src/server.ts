@@ -27,6 +27,11 @@ import llmRoutes from './routes/llm.routes';
 import commandMappingRoutes from './routes/commandMapping.routes';
 import chainRoutes from './routes/chain.routes';
 
+// Content Hub routes
+import slotRoutes from './routes/slot.routes';
+import uploadRoutes from './routes/upload.routes';
+import versionRoutes from './routes/version.routes';
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/campaign_management';
@@ -102,6 +107,11 @@ app.use('/api/prompts', promptRoutes);
 app.use('/api/llm', llmRoutes);
 app.use('/api/command-mappings', commandMappingRoutes);
 app.use('/api/chains', chainRoutes);
+
+// Content Hub routes
+app.use('/api', slotRoutes);
+app.use('/api', uploadRoutes);
+app.use('/api', versionRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response) => {

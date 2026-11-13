@@ -1,41 +1,32 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
-export enum AssetType {
-  IMAGE = 'image',
-  VIDEO = 'video',
-  DOCUMENT = 'document',
-  OTHER = 'other'
-}
-
 export interface IAsset extends Document {
-  filename: string;
-  originalName: string;
-  mimeType: string;
+  userId: mongoose.Types.ObjectId;
+  originalFileName: string;
+  storageKey: string;
+  contentType: string;
   size: number;
-  type: AssetType;
-  path: string;
-  location: string; // S3 URL
-  taskId?: mongoose.Types.ObjectId;
-  projectId?: mongoose.Types.ObjectId;
-  campaignId?: mongoose.Types.ObjectId;
-  uploadedBy: mongoose.Types.ObjectId;
-  version: number;
-  previousVersionId?: mongoose.Types.ObjectId;
+  width?: number;
+  height?: number;
   createdAt: Date;
-  updatedAt: Date;
 }
 
 const assetSchema = new Schema<IAsset>(
   {
-    filename: {
+    userId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
+    },
+    originalFileName: {
       type: String,
       required: true
     },
-    originalName: {
+    storageKey: {
       type: String,
       required: true
     },
-    mimeType: {
+    contentType: {
       type: String,
       required: true
     },
@@ -43,54 +34,12 @@ const assetSchema = new Schema<IAsset>(
       type: Number,
       required: true
     },
-    type: {
-      type: String,
-      enum: Object.values(AssetType),
-      required: true
-    },
-    path: {
-      type: String,
-      required: true
-    },
-    location: {
-      type: String,
-      required: true
-    },
-    taskId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Task'
-    },
-    projectId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Project',
-      index: true
-    },
-    campaignId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Campaign',
-      index: true
-    },
-    uploadedBy: {
-      type: Schema.Types.ObjectId,
-      ref: 'User',
-      required: true
-    },
-    version: {
-      type: Number,
-      default: 1
-    },
-    previousVersionId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Asset'
-    }
+    width: Number,
+    height: Number
   },
   {
-    timestamps: true
+    timestamps: { createdAt: true, updatedAt: false }
   }
 );
-
-// Indexes
-assetSchema.index({ taskId: 1, version: -1 });
-assetSchema.index({ uploadedBy: 1 });
 
 export const Asset = mongoose.model<IAsset>('Asset', assetSchema);
