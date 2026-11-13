@@ -4,6 +4,27 @@ export enum UserRole {
   HYBRID = 'hybrid'
 }
 
+/**
+ * Which part of the platform a user is on (set by a System Admin).
+ * Same app and data for both; Part two simply has AI generation switched off.
+ */
+export enum AccessMode {
+  PART_ONE = 'part_one',
+  PART_TWO = 'part_two'
+}
+
+export const ACCESS_MODE_LABELS: Record<AccessMode, string> = {
+  [AccessMode.PART_ONE]: 'Part one — AI generation enabled',
+  [AccessMode.PART_TWO]: 'Part two — manual & connectors (AI generation off)'
+};
+
+/** Same rule as the API: System Admins always keep AI access. */
+export function canUseAI(user: { role: UserRole; accessMode?: AccessMode | string } | null | undefined): boolean {
+  if (!user) return false;
+  if (user.role === UserRole.SYSTEM_ADMIN) return true;
+  return user.accessMode !== AccessMode.PART_TWO;
+}
+
 export interface CompanyInfo {
   companyName?: string;
   sector?: string;
@@ -22,6 +43,7 @@ export interface User {
   firstName: string;
   lastName: string;
   role: UserRole;
+  accessMode?: AccessMode;
   isActive: boolean;
   authProvider?: 'local' | 'google';
   companyInfo?: CompanyInfo;

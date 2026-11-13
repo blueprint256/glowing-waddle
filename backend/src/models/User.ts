@@ -6,6 +6,29 @@ export enum UserRole {
   HYBRID = 'hybrid'
 }
 
+/**
+ * Which part of the platform a user is on. Set by a System Admin (later: driven by plan/subscription).
+ *
+ * Both parts are the SAME app with the same data and screens (campaigns, projects, tasks, calendar,
+ * sheets, archives, Canva import, manual uploads, social previews). The only difference is how content is made:
+ *  - part_one: the user may generate content with our backend AI routing (default)
+ *  - part_two: AI generation is switched off. Content arrives manually or through connectors
+ *              (e.g. an MCP server letting ChatGPT/Claude work with the app's API on the user's behalf).
+ * System Admins always keep AI access (they configure it).
+ *
+ * Legacy value 'both' (from an earlier iteration) is read as part_one.
+ */
+export enum AccessMode {
+  PART_ONE = 'part_one',
+  PART_TWO = 'part_two'
+}
+
+/** True when the user may use backend AI generation. */
+export function canUseAI(user: { role: UserRole; accessMode?: string }): boolean {
+  if (user.role === UserRole.SYSTEM_ADMIN) return true;
+  return user.accessMode !== AccessMode.PART_TWO;
+}
+
 export interface IUser extends Document {
   email: string;
   password?: string;
@@ -14,6 +37,7 @@ export interface IUser extends Document {
   firstName: string;
   lastName: string;
   role: UserRole;
+  accessMode: AccessMode;
   isActive: boolean;
   companyInfo?: {
     companyName?: string;
@@ -84,6 +108,11 @@ const userSchema = new Schema<IUser>(
       enum: Object.values(UserRole),
       required: true,
       default: UserRole.HYBRID
+    },
+    accessMode: {
+      type: String,
+      enum: Object.values(AccessMode),
+      default: AccessMode.PART_ONE
     },
     isActive: {
       type: Boolean,

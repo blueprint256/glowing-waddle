@@ -16,6 +16,16 @@ const s3Client = new S3Client({
 const BUCKET_NAME = process.env.AWS_S3_BUCKET || 'campaign-management-assets';
 
 /**
+ * Modern S3 buckets (Object Ownership = "Bucket owner enforced", the AWS default)
+ * reject any request that sets an ACL with AccessControlListNotSupported.
+ * So no ACL is sent by default; public read access should come from a bucket policy.
+ * Only set S3_OBJECT_ACL=public-read if your bucket still has ACLs enabled.
+ */
+function objectAcl(): { ACL?: 'public-read' } {
+  return process.env.S3_OBJECT_ACL === 'public-read' ? { ACL: 'public-read' } : {};
+}
+
+/**
  * Upload file to S3
  */
 export async function uploadToS3(
@@ -31,7 +41,7 @@ export async function uploadToS3(
     Key: key,
     Body: file.buffer,
     ContentType: file.mimetype,
-    ACL: 'public-read' // Make files publicly readable
+    ...objectAcl()
   });
 
   await s3Client.send(command);
@@ -111,7 +121,7 @@ export async function uploadBufferToS3(
       Key: key,
       Body: buffer,
       ContentType: contentType,
-      ACL: 'public-read'
+      ...objectAcl()
     });
 
     await s3Client.send(command);
@@ -259,7 +269,7 @@ export async function uploadImageFromUrl(imageUrl: string, folder: string = 'gen
       Key: key,
       Body: buffer,
       ContentType: contentType,
-      ACL: 'public-read'
+      ...objectAcl()
     });
 
     await s3Client.send(command);

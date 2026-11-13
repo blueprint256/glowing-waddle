@@ -531,3 +531,7 @@ For questions or issues, please create an issue in the repository or contact the
 ---
 
 **Built with ❤️ using Node.js, React, MongoDB, and TypeScript**
+
+## Access modes (Part one / Part two)
+
+A System Admin assigns each user Part one (AI generation enabled) or Part two (AI generation off; manual upload, Canva import and, later, connectors). The app and data are identical. See [docs/ACCESS_MODES.md](docs/ACCESS_MODES.md).

@@ -62,7 +62,8 @@ router.post('/signup', async (req: Request, res: Response) => {
           email: newUser.email,
           firstName: newUser.firstName,
           lastName: newUser.lastName,
-          role: newUser.role
+          role: newUser.role,
+          accessMode: newUser.accessMode ?? 'part_one'
         }
       });
     });
@@ -112,7 +113,8 @@ router.post('/login', (req: Request, res: Response, next: NextFunction) => {
           email: user.email,
           firstName: user.firstName,
           lastName: user.lastName,
-          role: user.role
+          role: user.role,
+          accessMode: user.accessMode ?? 'part_one'
         }
       });
     });
@@ -161,6 +163,7 @@ router.get('/me', isAuthenticated, (req: Request, res: Response) => {
       firstName: req.user.firstName,
       lastName: req.user.lastName,
       role: req.user.role,
+      accessMode: req.user.accessMode ?? 'part_one',
       isActive: req.user.isActive
     }
   });

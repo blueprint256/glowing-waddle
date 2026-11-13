@@ -31,12 +31,16 @@ import {
   AutoAwesome as AutoAwesomeIcon
 } from '@mui/icons-material';
 import { taskAPI, commentAPI } from '../../services/api';
-import { Task, Comment, TaskStatus } from '../../types';
+import { Task, Comment, TaskStatus, canUseAI } from '../../types';
+import { useAuthStore } from '../../store/authStore';
 import SocialPreviewModal from '../../components/SocialPreviewModal';
 
 export default function TaskDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useAuthStore();
+  // Part two users have AI generation switched off; everything else is identical.
+  const aiEnabled = canUseAI(user);
   const [task, setTask] = useState<Task | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
@@ -388,6 +392,7 @@ export default function TaskDetail() {
                           />
                         </Button>
 
+                        {aiEnabled && (
                         <Button
                           variant="contained"
                           startIcon={generatingPoster ? <CircularProgress size={20} /> : <AutoAwesomeIcon />}
@@ -401,12 +406,13 @@ export default function TaskDetail() {
                         >
                           {generatingPoster ? 'Generating Poster...' : 'Generate Poster with AI'}
                         </Button>
+                        )}
                       </Box>
                     </Box>
                   </Grid>
 
                   {/* Generated Poster Preview */}
-                  {generatedPosterUrl && (
+                  {aiEnabled && generatedPosterUrl && (
                     <Grid item xs={12} md={6}>
                       <Box>
                         <Typography variant="subtitle2" color="text.secondary" gutterBottom>
@@ -492,6 +498,7 @@ export default function TaskDetail() {
                 multiline
                 rows={3}
               />
+              {aiEnabled && (
               <Button
                 variant="outlined"
                 startIcon={refining ? <CircularProgress size={20} /> : <AutoAwesomeIcon />}
@@ -501,6 +508,7 @@ export default function TaskDetail() {
               >
                 {refining ? 'Refining...' : 'Refine Description with AI'}
               </Button>
+              )}
 
               <Grid container spacing={2} sx={{ mt: 1 }}>
                 <Grid item xs={12} md={6}>

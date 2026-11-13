@@ -26,6 +26,7 @@ import promptRoutes from './routes/prompt.routes';
 import llmRoutes from './routes/llm.routes';
 import commandMappingRoutes from './routes/commandMapping.routes';
 import chainRoutes from './routes/chain.routes';
+import { requireAI } from './middleware/access';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -88,6 +89,33 @@ app.use(
 // Initialize Passport
 app.use(passport.initialize());
 app.use(passport.session());
+
+// ---------------------------------------------------------------------------
+// AI generation guard (Part one = allowed, Part two = blocked).
+// Everything that spends our AI routing is listed here, in one place, so it is easy to audit.
+// All other endpoints behave identically for both parts.
+// ---------------------------------------------------------------------------
+app.use(
+  [
+    '/api/llm',
+    '/api/prompts',
+    '/api/command-mappings',
+    '/api/chains',
+    // provider API keys / default model configuration
+    '/api/integrations/openai',
+    '/api/integrations/anthropic',
+    '/api/integrations/grok',
+    '/api/integrations/gemini',
+    '/api/integrations/llm',
+    '/api/integrations/image-llm'
+  ],
+  requireAI
+);
+app.post('/api/campaigns/:id/generate', requireAI);
+app.post('/api/campaigns/:id/generate-tasks', requireAI);
+app.post('/api/tasks/:id/generate-poster', requireAI);
+app.post('/api/tasks/:id/refine-description', requireAI);
+app.patch('/api/tasks/:id/adopt-poster', requireAI);
 
 // API Routes
 app.use('/api/auth', authRoutes);
