@@ -11,7 +11,7 @@ export interface IVersion extends Document {
 const versionSchema = new Schema<IVersion>({
   projectId: {
     type: Schema.Types.ObjectId,
-    ref: 'Project',
+    ref: 'HubProject',
     required: true,
   },
   number: {
@@ -24,11 +24,14 @@ const versionSchema = new Schema<IVersion>({
   },
   renderedAssetId: {
     type: Schema.Types.ObjectId,
-    ref: 'Asset',
+    ref: 'HubAsset',
     required: true,
   },
 }, {
   timestamps: { createdAt: true, updatedAt: false }
 });
+
+// A project can only have one version per number; the route retries on a collision.
+versionSchema.index({ projectId: 1, number: 1 }, { unique: true });
 
 export const Version = mongoose.model<IVersion>('Version', versionSchema);

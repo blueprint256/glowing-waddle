@@ -55,6 +55,10 @@ A full-stack collaborative campaign management and content production platform w
 - **Tasks Sheet**: Comprehensive task overview and management
 - **Settings**: User preferences and third-party integrations
 
+## Part two: Content Hub
+
+A second part of the platform for image slots, one-time upload links and versioned, server-rendered posters. A System Admin can restrict each user to Part one, Part two, or both. See [docs/CONTENT_HUB.md](docs/CONTENT_HUB.md).
+
 ## Architecture Overview
 
 ### Tech Stack

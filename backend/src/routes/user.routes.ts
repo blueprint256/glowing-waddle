@@ -32,7 +32,7 @@ const upload = multer({
  */
 router.post('/', isAuthenticated, canManageUsers, validateUserCreation, async (req: Request, res: Response) => {
   try {
-    const { email, password, firstName, lastName, role } = req.body;
+    const { email, password, firstName, lastName, role, accessMode } = req.body;
 
     // Check if user already exists
     const existingUser = await User.findOne({ email: email.toLowerCase() });
@@ -49,11 +49,12 @@ router.post('/', isAuthenticated, canManageUsers, validateUserCreation, async (r
       password,
       firstName,
       lastName,
-      role
+      role,
+      ...(accessMode ? { accessMode } : {})
     });
 
     // Log user creation
-    await logUserCreated(req.user!._id, user._id, { email, role }, req);
+    await logUserCreated(req.user!._id, user._id, { email, role, accessMode: user.accessMode }, req);
 
     res.status(201).json({
       success: true,
@@ -63,7 +64,8 @@ router.post('/', isAuthenticated, canManageUsers, validateUserCreation, async (r
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
-        role: user.role
+        role: user.role,
+        accessMode: user.accessMode
       }
     });
   } catch (error: any) {
@@ -181,7 +183,7 @@ router.get('/:id', isAuthenticated, validateMongoId('id'), async (req: Request, 
  */
 router.put('/:id', isAuthenticated, canManageUsers, validateMongoId('id'), validateUserUpdate, async (req: Request, res: Response) => {
   try {
-    const { email, firstName, lastName, role, isActive } = req.body;
+    const { email, firstName, lastName, role, isActive, accessMode } = req.body;
 
     const user = await User.findById(req.params.id);
     if (!user) {
@@ -198,6 +200,7 @@ router.put('/:id', isAuthenticated, canManageUsers, validateMongoId('id'), valid
     if (firstName) user.firstName = firstName;
     if (lastName) user.lastName = lastName;
     if (role) user.role = role;
+    if (accessMode) user.accessMode = accessMode;
     if (typeof isActive !== 'undefined') user.isActive = isActive;
 
     await user.save();
@@ -221,6 +224,7 @@ router.put('/:id', isAuthenticated, canManageUsers, validateMongoId('id'), valid
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
+        accessMode: user.accessMode,
         isActive: user.isActive
       }
     });

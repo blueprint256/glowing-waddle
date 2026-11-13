@@ -74,6 +74,46 @@ export async function uploadTaskImage(file: Express.Multer.File): Promise<string
 }
 
 /**
+ * Upload a buffer as a PRIVATE object and return its bare key.
+ * Used by the Content Hub: files are never made public; they are served through
+ * short-lived signed URLs (see getSignedDownloadUrl).
+ */
+export async function uploadPrivateBuffer(
+  buffer: Buffer,
+  contentType: string,
+  folder: string
+): Promise<{ key: string }> {
+  const extensionByType: Record<string, string> = {
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/webp': 'webp',
+    'image/gif': 'gif'
+  };
+  const extension = extensionByType[contentType] || 'bin';
+  const key = `${folder}/${crypto.randomBytes(16).toString('hex')}.${extension}`;
+
+  await s3Client.send(
+    new PutObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType
+    })
+  );
+
+  return { key };
+}
+
+/**
+ * Download an object's bytes (server-side), e.g. to composite it into a poster.
+ */
+export async function getObjectBuffer(key: string): Promise<Buffer> {
+  const response = await s3Client.send(new GetObjectCommand({ Bucket: BUCKET_NAME, Key: key }));
+  const bytes = await response.Body!.transformToByteArray();
+  return Buffer.from(bytes);
+}
+
+/**
  * Upload buffer directly to S3
  * Used for AI-generated images that are returned as base64
  */

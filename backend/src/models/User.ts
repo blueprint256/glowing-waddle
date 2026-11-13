@@ -6,6 +6,31 @@ export enum UserRole {
   HYBRID = 'hybrid'
 }
 
+/**
+ * Which part(s) of the platform a user may use. Set by a System Admin.
+ *  - part_one: the full campaign suite (campaigns, projects, tasks, calendar, sheets, AI tools)
+ *  - part_two: the Content Hub (hub projects, slots, uploads, poster versions)
+ *  - both:     no restriction (default, so existing users keep working unchanged)
+ * System Admins always have access to both parts regardless of this value.
+ */
+export enum AccessMode {
+  BOTH = 'both',
+  PART_ONE = 'part_one',
+  PART_TWO = 'part_two'
+}
+
+export type AppPart = AccessMode.PART_ONE | AccessMode.PART_TWO;
+
+/** True when the user may use the given part of the platform. */
+export function hasPartAccess(
+  user: { role: UserRole; accessMode?: AccessMode },
+  part: AppPart
+): boolean {
+  if (user.role === UserRole.SYSTEM_ADMIN) return true;
+  const mode = user.accessMode ?? AccessMode.BOTH;
+  return mode === AccessMode.BOTH || mode === part;
+}
+
 export interface IUser extends Document {
   email: string;
   password?: string;
@@ -14,6 +39,7 @@ export interface IUser extends Document {
   firstName: string;
   lastName: string;
   role: UserRole;
+  accessMode: AccessMode;
   isActive: boolean;
   companyInfo?: {
     companyName?: string;
@@ -84,6 +110,11 @@ const userSchema = new Schema<IUser>(
       enum: Object.values(UserRole),
       required: true,
       default: UserRole.HYBRID
+    },
+    accessMode: {
+      type: String,
+      enum: Object.values(AccessMode),
+      default: AccessMode.BOTH
     },
     isActive: {
       type: Boolean,

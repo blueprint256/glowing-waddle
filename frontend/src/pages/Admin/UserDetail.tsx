@@ -11,11 +11,15 @@ import {
   CircularProgress,
   Card,
   CardContent,
-  Divider
+  Divider,
+  TextField,
+  MenuItem,
+  Button,
+  Alert
 } from '@mui/material';
 import { CheckCircle, Cancel } from '@mui/icons-material';
 import { userAPI } from '../../services/api';
-import { User, UserRole } from '../../types';
+import { AccessMode, ACCESS_MODE_LABELS, User, UserRole } from '../../types';
 
 export default function UserDetail() {
   const { id } = useParams<{ id: string }>();
@@ -23,6 +27,9 @@ export default function UserDetail() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [accessMode, setAccessMode] = useState<AccessMode>(AccessMode.BOTH);
+  const [savingAccess, setSavingAccess] = useState(false);
+  const [accessMessage, setAccessMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -37,12 +44,27 @@ export default function UserDetail() {
       const res = await userAPI.getById(id!);
       if (res.data && res.data.user) {
         setUser(res.data.user);
+        setAccessMode(res.data.user.accessMode ?? AccessMode.BOTH);
       }
     } catch (error: any) {
       console.error('Error loading user:', error);
       setError(error.response?.data?.message || 'Failed to load user details');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const saveAccess = async () => {
+    try {
+      setSavingAccess(true);
+      setAccessMessage(null);
+      await userAPI.update(id!, { accessMode });
+      setUser((u) => (u ? { ...u, accessMode } : u));
+      setAccessMessage({ type: 'success', text: 'Access updated. It applies the next time the user loads the app.' });
+    } catch (e: any) {
+      setAccessMessage({ type: 'error', text: e.response?.data?.message || 'Failed to update access' });
+    } finally {
+      setSavingAccess(false);
     }
   };
 
@@ -113,6 +135,50 @@ export default function UserDetail() {
                     </>
                   )}
                 </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Platform access: Part one (campaign suite) / Part two (Content Hub) */}
+          <Grid item xs={12}>
+            <Card variant="outlined">
+              <CardContent>
+                <Typography variant="h6" gutterBottom color="primary">
+                  Platform Access
+                </Typography>
+                {user.role === UserRole.SYSTEM_ADMIN ? (
+                  <Typography variant="body2" color="text.secondary">
+                    System Admins always have access to both parts.
+                  </Typography>
+                ) : (
+                  <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start', flexWrap: 'wrap', mt: 1 }}>
+                    <TextField
+                      select
+                      label="Allowed parts"
+                      value={accessMode}
+                      onChange={(e) => setAccessMode(e.target.value as AccessMode)}
+                      sx={{ minWidth: 280 }}
+                    >
+                      {Object.values(AccessMode).map((mode) => (
+                        <MenuItem key={mode} value={mode}>
+                          {ACCESS_MODE_LABELS[mode]}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                    <Button
+                      variant="contained"
+                      onClick={saveAccess}
+                      disabled={savingAccess || accessMode === (user.accessMode ?? AccessMode.BOTH)}
+                    >
+                      Save
+                    </Button>
+                  </Box>
+                )}
+                {accessMessage && (
+                  <Alert severity={accessMessage.type} sx={{ mt: 2 }}>
+                    {accessMessage.text}
+                  </Alert>
+                )}
               </CardContent>
             </Card>
           </Grid>

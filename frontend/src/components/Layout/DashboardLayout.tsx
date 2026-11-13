@@ -12,11 +12,12 @@ import {
   Settings as SettingsIcon,
   Logout as LogoutIcon,
   DarkMode as DarkModeIcon,
-  LightMode as LightModeIcon
+  LightMode as LightModeIcon,
+  PhotoLibrary as HubIcon
 } from '@mui/icons-material';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
-import { UserRole } from '../../types';
+import { AccessMode, UserRole, hasPartAccess } from '../../types';
 
 /** Accent names map to --accent-<name>-bg / -fg in styles/tokens.css. */
 type Accent = 'green' | 'blue' | 'purple' | 'wine' | 'violet' | 'amber';
@@ -27,17 +28,23 @@ interface NavItem {
   path: string;
   accent?: Accent;
   roles: Array<'all' | UserRole>;
+  /** Which part of the platform this item belongs to (hidden when the user's access excludes it). */
+  part?: AccessMode.PART_ONE | AccessMode.PART_TWO;
   /** Extra path prefixes that should keep this item highlighted (detail pages). */
   also?: string[];
 }
 
+const P1 = AccessMode.PART_ONE;
+const P2 = AccessMode.PART_TWO;
+
 const NAV: NavItem[] = [
-  { text: 'Dashboard', icon: <DashboardIcon />, path: '/', accent: 'green', roles: ['all'] },
-  { text: 'Campaigns', icon: <CampaignIcon />, path: '/campaigns', accent: 'violet', roles: ['all'], also: ['/projects/', '/tasks/'] },
-  { text: 'Details Sheet', icon: <ListAltIcon />, path: '/details-sheet', accent: 'blue', roles: ['all'] },
-  { text: 'Calendar', icon: <CalendarIcon />, path: '/calendar', accent: 'purple', roles: ['all'] },
-  { text: 'Tasks Sheet', icon: <TableChartIcon />, path: '/tasks-sheet', accent: 'amber', roles: ['all'] },
-  { text: 'Settings', icon: <SettingsIcon />, path: '/settings', roles: ['all'] },
+  { text: 'Dashboard', icon: <DashboardIcon />, path: '/', accent: 'green', roles: ['all'], part: P1 },
+  { text: 'Campaigns', icon: <CampaignIcon />, path: '/campaigns', accent: 'violet', roles: ['all'], also: ['/projects/', '/tasks/'], part: P1 },
+  { text: 'Details Sheet', icon: <ListAltIcon />, path: '/details-sheet', accent: 'blue', roles: ['all'], part: P1 },
+  { text: 'Calendar', icon: <CalendarIcon />, path: '/calendar', accent: 'purple', roles: ['all'], part: P1 },
+  { text: 'Tasks Sheet', icon: <TableChartIcon />, path: '/tasks-sheet', accent: 'amber', roles: ['all'], part: P1 },
+  { text: 'Content Hub', icon: <HubIcon />, path: '/hub', accent: 'wine', roles: ['all'], part: P2 },
+  { text: 'Settings', icon: <SettingsIcon />, path: '/settings', roles: ['all'], part: P1 },
   { text: 'Users', icon: <PeopleIcon />, path: '/admin/users', accent: 'wine', roles: [UserRole.SYSTEM_ADMIN] }
 ];
 
@@ -56,7 +63,11 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { user, logout } = useAuthStore();
   const { mode, toggle } = useThemeStore();
 
-  const items = NAV.filter((i) => i.roles.includes('all') || (user && i.roles.includes(user.role)));
+  const items = NAV.filter(
+    (i) =>
+      (i.roles.includes('all') || (user && i.roles.includes(user.role))) &&
+      (!i.part || hasPartAccess(user, i.part))
+  );
   const initials = `${user?.firstName?.[0] ?? ''}${user?.lastName?.[0] ?? ''}`.toUpperCase() || 'U';
 
   const go = (path: string) => {

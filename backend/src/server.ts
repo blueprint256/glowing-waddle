@@ -26,11 +26,15 @@ import promptRoutes from './routes/prompt.routes';
 import llmRoutes from './routes/llm.routes';
 import commandMappingRoutes from './routes/commandMapping.routes';
 import chainRoutes from './routes/chain.routes';
+import { requirePartOne, requirePartTwo } from './middleware/access';
+import { isAuthenticated } from './middleware/auth';
 
 // Content Hub routes
 import slotRoutes from './routes/slot.routes';
 import uploadRoutes from './routes/upload.routes';
 import versionRoutes from './routes/version.routes';
+import hubProjectRoutes from './routes/hubProject.routes';
+import hubAssetRoutes from './routes/hubAsset.routes';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -97,21 +101,24 @@ app.use(passport.session());
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/campaigns', campaignRoutes);
-app.use('/api/projects', projectRoutes);
-app.use('/api/tasks', taskRoutes);
-app.use('/api/comments', commentRoutes);
-app.use('/api/assets', assetRoutes);
-app.use('/api/integrations', integrationsRoutes);
-app.use('/api/prompts', promptRoutes);
-app.use('/api/llm', llmRoutes);
-app.use('/api/command-mappings', commandMappingRoutes);
-app.use('/api/chains', chainRoutes);
+// Part one (full campaign suite). A System Admin can restrict a user to the Content Hub only,
+// in which case every request below answers 403 ACCESS_RESTRICTED for that user.
+app.use('/api/campaigns', requirePartOne, campaignRoutes);
+app.use('/api/projects', requirePartOne, projectRoutes);
+app.use('/api/tasks', requirePartOne, taskRoutes);
+app.use('/api/comments', requirePartOne, commentRoutes);
+app.use('/api/assets', requirePartOne, assetRoutes);
+app.use('/api/integrations', requirePartOne, integrationsRoutes);
+app.use('/api/prompts', requirePartOne, promptRoutes);
+app.use('/api/llm', requirePartOne, llmRoutes);
+app.use('/api/command-mappings', requirePartOne, commandMappingRoutes);
+app.use('/api/chains', requirePartOne, chainRoutes);
 
-// Content Hub routes
-app.use('/api', slotRoutes);
-app.use('/api', uploadRoutes);
-app.use('/api', versionRoutes);
+// Part two (Content Hub), everything namespaced under /api/hub.
+// The guest upload endpoint is public by design (its one-time token is the credential),
+// so it is mounted before the authenticated + access-gated hub routes.
+app.use('/api/hub', uploadRoutes);
+app.use('/api/hub', isAuthenticated, requirePartTwo, hubProjectRoutes, slotRoutes, versionRoutes, hubAssetRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response) => {

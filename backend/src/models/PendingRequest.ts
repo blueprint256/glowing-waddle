@@ -15,6 +15,8 @@ const pendingRequestSchema = new Schema<IPendingRequest>({
   expiresAt: {
     type: Date,
     required: true,
+    // MongoDB removes the document once expiresAt has passed (expired links clean themselves up).
+    index: { expireAfterSeconds: 0 },
   },
   token: {
     type: String,

@@ -4,6 +4,30 @@ export enum UserRole {
   HYBRID = 'hybrid'
 }
 
+/** Which part of the platform a user may use (set by a System Admin). */
+export enum AccessMode {
+  BOTH = 'both',
+  PART_ONE = 'part_one', // full campaign suite
+  PART_TWO = 'part_two' // Content Hub
+}
+
+export const ACCESS_MODE_LABELS: Record<AccessMode, string> = {
+  [AccessMode.BOTH]: 'Both parts',
+  [AccessMode.PART_ONE]: 'Part one only (campaign suite)',
+  [AccessMode.PART_TWO]: 'Part two only (Content Hub)'
+};
+
+/** Same rule as the API: System Admins always have both parts. */
+export function hasPartAccess(
+  user: { role: UserRole; accessMode?: AccessMode } | null | undefined,
+  part: AccessMode.PART_ONE | AccessMode.PART_TWO
+): boolean {
+  if (!user) return false;
+  if (user.role === UserRole.SYSTEM_ADMIN) return true;
+  const mode = user.accessMode ?? AccessMode.BOTH;
+  return mode === AccessMode.BOTH || mode === part;
+}
+
 export interface CompanyInfo {
   companyName?: string;
   sector?: string;
@@ -22,6 +46,7 @@ export interface User {
   firstName: string;
   lastName: string;
   role: UserRole;
+  accessMode?: AccessMode;
   isActive: boolean;
   authProvider?: 'local' | 'google';
   companyInfo?: CompanyInfo;

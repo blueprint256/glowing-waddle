@@ -19,8 +19,9 @@ const slotSchema = new Schema<ISlot>(
     },
     projectId: {
       type: Schema.Types.ObjectId,
-      ref: 'Project',
-      required: true
+      ref: 'HubProject',
+      required: true,
+      index: true
     },
     userId: {
       type: Schema.Types.ObjectId,
@@ -29,7 +30,7 @@ const slotSchema = new Schema<ISlot>(
     },
     assetId: {
       type: Schema.Types.ObjectId,
-      ref: 'Asset'
+      ref: 'HubAsset'
     },
     pendingRequestId: {
       type: Schema.Types.ObjectId,

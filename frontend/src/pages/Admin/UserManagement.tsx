@@ -22,7 +22,7 @@ import {
 } from '@mui/material';
 import { Add as AddIcon } from '@mui/icons-material';
 import { userAPI } from '../../services/api';
-import { User, UserRole } from '../../types';
+import { AccessMode, ACCESS_MODE_LABELS, User, UserRole } from '../../types';
 import Pagination from '../../components/Pagination';
 
 export default function UserManagement() {
@@ -37,7 +37,8 @@ export default function UserManagement() {
     password: '',
     firstName: '',
     lastName: '',
-    role: UserRole.HYBRID
+    role: UserRole.HYBRID,
+    accessMode: AccessMode.BOTH
   });
 
   useEffect(() => {
@@ -71,7 +72,8 @@ export default function UserManagement() {
         password: '',
         firstName: '',
         lastName: '',
-        role: UserRole.HYBRID
+        role: UserRole.HYBRID,
+        accessMode: AccessMode.BOTH
       });
       loadUsers();
     } catch (error: any) {
@@ -103,6 +105,7 @@ export default function UserManagement() {
               <TableCell>Name</TableCell>
               <TableCell>Email</TableCell>
               <TableCell>Role</TableCell>
+              <TableCell>Access</TableCell>
               <TableCell>Status</TableCell>
             </TableRow>
           </TableHead>
@@ -120,6 +123,11 @@ export default function UserManagement() {
                 <TableCell>{user.email}</TableCell>
                 <TableCell>
                   <Chip label={user.role} size="small" />
+                </TableCell>
+                <TableCell>
+                  {user.role === UserRole.SYSTEM_ADMIN
+                    ? 'Both parts'
+                    : ACCESS_MODE_LABELS[user.accessMode ?? AccessMode.BOTH]}
                 </TableCell>
                 <TableCell>
                   <Chip
@@ -191,6 +199,21 @@ export default function UserManagement() {
             {Object.values(UserRole).map((role) => (
               <MenuItem key={role} value={role}>
                 {role}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            fullWidth
+            select
+            label="Access"
+            value={formData.accessMode}
+            onChange={(e) => setFormData({ ...formData, accessMode: e.target.value as AccessMode })}
+            helperText="System Admins always have access to both parts"
+            margin="normal"
+          >
+            {Object.values(AccessMode).map((mode) => (
+              <MenuItem key={mode} value={mode}>
+                {ACCESS_MODE_LABELS[mode]}
               </MenuItem>
             ))}
           </TextField>
