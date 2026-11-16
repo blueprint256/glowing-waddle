@@ -27,7 +27,7 @@ export interface LLMConfig {
  * Get API key for a specific provider from database or environment variable
  * Priority: Database > Environment Variable
  */
-async function getProviderKey(provider: LLMProvider): Promise<string> {
+export async function getProviderKey(provider: LLMProvider): Promise<string> {
   try {
     const config = await AppConfig.getConfig();
 
@@ -391,7 +391,7 @@ async function resolveLLMConfig(promptName?: string): Promise<LLMConfig> {
  * Calculate estimated cost based on provider, model and token usage
  * Pricing as of December 2024 (approximate, subject to change)
  */
-function calculateEstimatedCost(
+export function calculateEstimatedCost(
   provider: LLMProvider,
   model: string,
   promptTokens: number,

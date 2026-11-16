@@ -30,6 +30,7 @@ import { requireAI } from './middleware/access';
 import { authenticateBearer, skipForBearer, isInternalRequest } from './middleware/bearerAuth';
 import oauthRoutes from './oauth/oauth.routes';
 import connectedAppsRoutes from './routes/connectedApps.routes';
+import blueRoutes from './routes/blue.routes';
 import mcpRouter from './mcp/router';
 
 const app = express();
@@ -150,6 +151,7 @@ app.patch('/api/tasks/:id/adopt-poster', requireAI);
 
 // API Routes
 app.use('/api', connectedAppsRoutes); // /api/oauth/requests/*, /api/connected-apps
+app.use('/api/blue', blueRoutes); // Blue, the in-app assistant
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/campaigns', campaignRoutes);

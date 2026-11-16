@@ -114,7 +114,9 @@ router.post('/login', (req: Request, res: Response, next: NextFunction) => {
           firstName: user.firstName,
           lastName: user.lastName,
           role: user.role,
-          accessMode: user.accessMode ?? 'part_one'
+          accessMode: user.accessMode ?? 'part_one',
+          mcpEnabled: user.mcpEnabled !== false,
+          assistantEnabled: user.assistantEnabled !== false
         }
       });
     });
@@ -165,6 +167,7 @@ router.get('/me', isAuthenticated, (req: Request, res: Response) => {
       role: req.user.role,
       accessMode: req.user.accessMode ?? 'part_one',
       mcpEnabled: req.user.mcpEnabled !== false,
+      assistantEnabled: req.user.assistantEnabled !== false,
       isActive: req.user.isActive
     }
   });

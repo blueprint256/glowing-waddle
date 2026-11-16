@@ -26,7 +26,11 @@ export interface ApiClient {
 
 export interface ApiClientConfig {
   baseUrl: string; // e.g. http://127.0.0.1:5000
-  accessToken: string;
+  /** OAuth access token (Claude connector). */
+  accessToken?: string;
+  /** In-app assistant (Blue): act as this user id via the internal loopback header. */
+  actAsUserId?: string;
+  actAsHeader?: string;
   internalHeader: string;
   internalSecret: string;
   userAgent: string;
@@ -74,7 +78,8 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
             method,
             headers: {
               Accept: 'application/json',
-              Authorization: `Bearer ${config.accessToken}`,
+              ...(config.accessToken ? { Authorization: `Bearer ${config.accessToken}` } : {}),
+              ...(config.actAsUserId ? { [config.actAsHeader || 'x-blueprint-act-as']: config.actAsUserId } : {}),
               'User-Agent': config.userAgent,
               [config.internalHeader]: config.internalSecret,
               ...(payload ? { 'Content-Type': 'application/json', 'Content-Length': String(payload.length) } : {})

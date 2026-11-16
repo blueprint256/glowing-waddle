@@ -33,6 +33,8 @@ export default function UserDetail() {
   const [savingAccess, setSavingAccess] = useState(false);
   const [accessMessage, setAccessMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [savingConnector, setSavingConnector] = useState(false);
+  const [savingBlue, setSavingBlue] = useState(false);
+  const [blueMessage, setBlueMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [connectorMessage, setConnectorMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
@@ -88,6 +90,23 @@ export default function UserDetail() {
       setConnectorMessage({ type: 'error', text: e.response?.data?.message || 'Failed to update connector access' });
     } finally {
       setSavingConnector(false);
+    }
+  };
+
+  const toggleBlue = async (enabled: boolean) => {
+    try {
+      setSavingBlue(true);
+      setBlueMessage(null);
+      await userAPI.update(id!, { assistantEnabled: enabled });
+      setUser((u) => (u ? { ...u, assistantEnabled: enabled } : u));
+      setBlueMessage({
+        type: 'success',
+        text: enabled ? 'Blue enabled for this user.' : 'Blue disabled for this user. It disappears from their app the next time it loads.'
+      });
+    } catch (e: any) {
+      setBlueMessage({ type: 'error', text: e.response?.data?.message || 'Failed to update Blue access' });
+    } finally {
+      setSavingBlue(false);
     }
   };
 
@@ -206,9 +225,39 @@ export default function UserDetail() {
             </Card>
           </Grid>
 
+          {/* Blue (in-app assistant) access */}
+          <Grid item xs={12} md={6}>
+            <Card variant="outlined" sx={{ height: '100%' }}>
+              <CardContent>
+                <Typography variant="h6" gutterBottom color="primary">
+                  Blue Assistant
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  The chat assistant inside the app. It runs on the organisation’s AI keys and acts with this user’s
+                  permissions.
+                </Typography>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={user.assistantEnabled !== false}
+                      onChange={(e) => toggleBlue(e.target.checked)}
+                      disabled={savingBlue || !user.isActive}
+                    />
+                  }
+                  label={user.assistantEnabled !== false ? 'Enabled' : 'Disabled'}
+                />
+                {blueMessage && (
+                  <Alert severity={blueMessage.type} sx={{ mt: 2 }}>
+                    {blueMessage.text}
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+
           {/* Claude connector (MCP) access */}
-          <Grid item xs={12}>
-            <Card variant="outlined">
+          <Grid item xs={12} md={6}>
+            <Card variant="outlined" sx={{ height: '100%' }}>
               <CardContent>
                 <Typography variant="h6" gutterBottom color="primary">
                   Claude Connector

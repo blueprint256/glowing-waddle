@@ -41,7 +41,8 @@ export default function UserManagement() {
     lastName: '',
     role: UserRole.HYBRID,
     accessMode: AccessMode.PART_ONE,
-    mcpEnabled: true
+    mcpEnabled: true,
+    assistantEnabled: true
   });
 
   useEffect(() => {
@@ -77,7 +78,8 @@ export default function UserManagement() {
         lastName: '',
         role: UserRole.HYBRID,
         accessMode: AccessMode.PART_ONE,
-        mcpEnabled: true
+        mcpEnabled: true,
+        assistantEnabled: true
       });
       loadUsers();
     } catch (error: any) {
@@ -110,6 +112,7 @@ export default function UserManagement() {
               <TableCell>Email</TableCell>
               <TableCell>Role</TableCell>
               <TableCell>Part</TableCell>
+              <TableCell>Blue</TableCell>
               <TableCell>Claude</TableCell>
               <TableCell>Status</TableCell>
             </TableRow>
@@ -133,6 +136,14 @@ export default function UserManagement() {
                   {user.role === UserRole.SYSTEM_ADMIN
                     ? 'AI generation (admin)'
                     : ACCESS_MODE_LABELS[user.accessMode ?? AccessMode.PART_ONE]}
+                </TableCell>
+                <TableCell>
+                  <Chip
+                    label={user.assistantEnabled === false ? 'Off' : 'On'}
+                    color={user.assistantEnabled === false ? 'default' : 'primary'}
+                    variant={user.assistantEnabled === false ? 'outlined' : 'filled'}
+                    size="small"
+                  />
                 </TableCell>
                 <TableCell>
                   <Chip
@@ -239,6 +250,15 @@ export default function UserManagement() {
               />
             }
             label="Allow Claude connector"
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={formData.assistantEnabled}
+                onChange={(e) => setFormData({ ...formData, assistantEnabled: e.target.checked })}
+              />
+            }
+            label="Allow Blue assistant"
           />
         </DialogContent>
         <DialogActions>

@@ -49,6 +49,7 @@ import { useAuthStore } from '../store/authStore';
 import { UserRole } from '../types';
 import api, { promptAPI, commandMappingAPI, chainAPI } from '../services/api';
 import ClaudeConnectorCard from '../components/Settings/ClaudeConnectorCard';
+import BlueSettingsCard from '../components/Settings/BlueSettingsCard';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -1609,6 +1610,9 @@ export default function Settings() {
               <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
                 Configure default LLM provider and model, and manage per-prompt overrides
               </Typography>
+
+              {/* Blue, the in-app assistant */}
+              <BlueSettingsCard />
 
               {/* Default LLM Configuration Section */}
               <Card sx={{ mb: 4 }}>

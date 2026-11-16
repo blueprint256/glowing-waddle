@@ -10,7 +10,8 @@
     "seed": "ts-node src/scripts/seed.ts",
     "test": "jest",
     "mcp:selftest": "ts-node --transpile-only src/scripts/mcpSelfTest.ts",
-    "mcp:smoke": "ts-node --transpile-only src/scripts/mcpSmokeTest.ts"
+    "mcp:smoke": "ts-node --transpile-only src/scripts/mcpSmokeTest.ts",
+    "blue:selftest": "ts-node --transpile-only src/scripts/blueSelfTest.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",

@@ -35,6 +35,8 @@ export const validateUserCreation = [
     .withMessage('Invalid access mode'),
   body('mcpEnabled').optional().custom((value) => typeof value === 'boolean')
     .withMessage('mcpEnabled must be true or false'),
+  body('assistantEnabled').optional().custom((value) => typeof value === 'boolean')
+    .withMessage('assistantEnabled must be true or false'),
   handleValidationErrors
 ];
 
@@ -49,6 +51,8 @@ export const validateUserUpdate = [
     .withMessage('Invalid access mode'),
   body('mcpEnabled').optional().custom((value) => typeof value === 'boolean')
     .withMessage('mcpEnabled must be true or false'),
+  body('assistantEnabled').optional().custom((value) => typeof value === 'boolean')
+    .withMessage('assistantEnabled must be true or false'),
   handleValidationErrors
 ];
 

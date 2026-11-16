@@ -30,6 +30,12 @@ export interface IAppConfig extends Document {
   defaultImageLLMProvider?: string; // 'openai' (only option)
   defaultImageLLMModel?: string; // 'gpt-image-1.5' (only option)
 
+  // Blue (in-app assistant) configuration
+  blueEnabled: boolean;
+  blueProvider?: 'anthropic' | 'openai' | 'grok';
+  blueModel?: string;
+  blueDailyMessageLimit: number; // per user per day; 0 = unlimited
+
   createdAt: Date;
   updatedAt: Date;
   encryptApiKey(key: string): string;
@@ -115,6 +121,25 @@ const appConfigSchema = new Schema<IAppConfig>(
     defaultImageLLMModel: {
       type: String,
       default: 'gpt-image-1.5'
+    },
+
+    // Blue (in-app assistant) configuration
+    blueEnabled: {
+      type: Boolean,
+      default: true
+    },
+    blueProvider: {
+      type: String,
+      enum: ['anthropic', 'openai', 'grok']
+    },
+    blueModel: {
+      type: String,
+      trim: true
+    },
+    blueDailyMessageLimit: {
+      type: Number,
+      default: 100,
+      min: 0
     }
   },
   {

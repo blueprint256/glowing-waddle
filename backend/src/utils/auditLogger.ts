@@ -26,7 +26,9 @@ export const logAudit = async (data: AuditLogData): Promise<void> => {
       // Mark actions performed through the Claude connector.
       metadata: data.req?.oauth
         ? { ...(data.metadata || {}), via: 'claude_connector', oauthClientId: data.req.oauth.clientId }
-        : data.metadata,
+        : data.req?.viaBlue
+          ? { ...(data.metadata || {}), via: 'blue_assistant' }
+          : data.metadata,
       ipAddress: data.req?.ip,
       userAgent: data.req?.get('user-agent')
     });

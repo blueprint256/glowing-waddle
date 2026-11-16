@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar, Box, Drawer, IconButton, Tooltip, Typography } from '@mui/material';
 import {
@@ -17,6 +17,8 @@ import {
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
 import { UserRole } from '../../types';
+import { useBlueStore } from '../../store/blueStore';
+import BluePanel, { BlueMark } from '../Blue/BluePanel';
 
 /** Accent names map to --accent-<name>-bg / -fg in styles/tokens.css. */
 type Accent = 'green' | 'blue' | 'purple' | 'wine' | 'violet' | 'amber';
@@ -50,11 +52,50 @@ function isActive(item: NavItem, pathname: string) {
   );
 }
 
+/** Blue toggle, shown above Dashboard in the sidebar. */
+function BlueToggle({ onNavigate }: { onNavigate?: () => void }) {
+  const { open, toggle } = useBlueStore();
+  return (
+    <Tooltip title="Ask Blue to do things for you (Ctrl+J)" placement="right">
+      <Box
+        component="button"
+        type="button"
+        onClick={() => {
+          toggle();
+          onNavigate?.();
+        }}
+        aria-pressed={open}
+        aria-label={open ? 'Close Blue' : 'Open Blue'}
+        sx={{
+          all: 'unset', boxSizing: 'border-box', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', gap: '10px',
+          height: 36, px: '8px', mb: 1, borderRadius: 'var(--r-ctl)',
+          fontSize: 'var(--fs-sm)', fontWeight: 600,
+          border: '1px solid',
+          borderColor: open ? 'var(--accent-blue-fg)' : 'var(--border)',
+          bgcolor: open ? 'var(--accent-blue-bg)' : 'var(--bg-raised)',
+          color: open ? 'var(--accent-blue-fg)' : 'var(--text-strong)',
+          transition: 'background-color var(--t-fast), border-color var(--t-fast)',
+          '&:hover': { borderColor: 'var(--accent-blue-fg)' },
+          '&:focus-visible': { outline: '2px solid var(--border-strong)' }
+        }}
+      >
+        <BlueMark size={20} />
+        <Box component="span" sx={{ flex: 1 }}>Blue</Box>
+        <Box component="span" sx={{ fontSize: 11, fontWeight: 500, color: 'var(--text-faint)', display: { xs: 'none', lg: 'inline' } }}>
+          Ctrl J
+        </Box>
+      </Box>
+    </Tooltip>
+  );
+}
+
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { user, logout } = useAuthStore();
   const { mode, toggle } = useThemeStore();
+  const blueAllowed = user?.assistantEnabled !== false;
 
   const items = NAV.filter((i) => i.roles.includes('all') || (user && i.roles.includes(user.role)));
   const initials = `${user?.firstName?.[0] ?? ''}${user?.lastName?.[0] ?? ''}`.toUpperCase() || 'U';
@@ -85,6 +126,8 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           Campaign Mgmt
         </Typography>
       </Box>
+
+      {blueAllowed && <BlueToggle onNavigate={onNavigate} />}
 
       {/* Navigation */}
       <Box component="nav" aria-label="Main" sx={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1, overflowY: 'auto' }}>
@@ -162,6 +205,22 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
 export default function DashboardLayout() {
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const { user } = useAuthStore();
+  const blueAllowed = user?.assistantEnabled !== false;
+  const { toggle: toggleBlue, refreshKey } = useBlueStore();
+
+  // Ctrl/⌘ + J opens and closes Blue.
+  useEffect(() => {
+    if (!blueAllowed) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'j') {
+        e.preventDefault();
+        toggleBlue();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [blueAllowed, toggleBlue]);
 
   return (
     <div className="bp-shell">
@@ -182,9 +241,12 @@ export default function DashboardLayout() {
 
       <main className="bp-panel" id="main">
         <div className="bp-page">
-          <Outlet />
+          {/* Re-mounts the page after Blue changes data, so it shows the latest. */}
+          <Outlet key={refreshKey} />
         </div>
       </main>
+
+      {blueAllowed && <BluePanel />}
 
       <div className="bp-fab-bar">
         <IconButton
@@ -194,6 +256,15 @@ export default function DashboardLayout() {
         >
           <MenuIcon fontSize="small" />
         </IconButton>
+        {blueAllowed && (
+          <IconButton
+            onClick={toggleBlue}
+            aria-label="Open Blue"
+            sx={{ width: 40, height: 40, borderRadius: 9999, bgcolor: 'var(--accent-blue-fg)', color: '#fff', '&:hover': { bgcolor: 'var(--accent-blue-fg)' } }}
+          >
+            <Box component="span" sx={{ fontWeight: 700, fontSize: 16 }}>B</Box>
+          </IconButton>
+        )}
       </div>
     </div>
   );

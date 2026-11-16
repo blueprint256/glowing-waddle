@@ -46,6 +46,8 @@ export interface User {
   accessMode?: AccessMode;
   /** Claude connector (MCP) access; set by a System Admin. Treated as enabled when absent. */
   mcpEnabled?: boolean;
+  /** Blue (in-app assistant) access; set by a System Admin. Treated as enabled when absent. */
+  assistantEnabled?: boolean;
   isActive: boolean;
   authProvider?: 'local' | 'google';
   companyInfo?: CompanyInfo;

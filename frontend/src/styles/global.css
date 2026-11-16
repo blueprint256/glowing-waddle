@@ -43,6 +43,23 @@ img { max-width: 100%; }
 .bp-fab-bar > * { pointer-events: auto; }
 @media (min-width: 48em) { .bp-fab-bar { display: none; } }
 
+/* Blue (in-app assistant): docked beside the panel on desktop, full screen on phones */
+.bp-blue {
+  position: fixed; inset: 0; z-index: var(--z-modal);
+  display: flex; flex-direction: column; min-width: 0;
+  background: var(--bg-panel);
+}
+@media (min-width: 48em) {
+  .bp-blue {
+    position: relative; inset: auto; z-index: auto;
+    flex: 0 0 380px; width: 380px;
+    margin: var(--panel-inset-sm); margin-left: 0;
+    border: 1px solid var(--border); border-radius: var(--r-panel); overflow: hidden;
+  }
+  .bp-blue--expanded { flex-basis: min(720px, 50vw); width: min(720px, 50vw); }
+}
+@media (min-width: 62em) { .bp-blue { margin: var(--panel-inset); margin-left: 0; } }
+
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
 }

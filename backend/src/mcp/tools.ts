@@ -181,6 +181,7 @@ function shapeUser(u: any) {
     role: u.role,
     part: u.accessMode === 'part_two' ? 'part_two' : 'part_one',
     claude_connector_enabled: u.mcpEnabled !== false,
+    blue_enabled: u.assistantEnabled !== false,
     active: u.isActive !== false,
     login_method: u.authProvider,
     campaign_count: u.campaignCount,
@@ -914,7 +915,8 @@ const adminTools: Tool[] = [
         last_name: name('Last name.'),
         role: userRole,
         part: userPart,
-        claude_connector_enabled: { type: 'boolean', description: 'Allow this user to connect Claude. Default true.' }
+        claude_connector_enabled: { type: 'boolean', description: 'Allow this user to connect Claude. Default true.' },
+        blue_enabled: { type: 'boolean', description: 'Allow this user to use Blue, the in-app assistant. Default true.' }
       },
       ['email', 'password', 'first_name', 'last_name', 'role']
     ),
@@ -929,7 +931,8 @@ const adminTools: Tool[] = [
           last_name: 'lastName',
           role: 'role',
           part: 'accessMode',
-          claude_connector_enabled: 'mcpEnabled'
+          claude_connector_enabled: 'mcpEnabled',
+          blue_enabled: 'assistantEnabled'
         })
       });
       return { message: res.message, user: shapeUser(res.user) };
@@ -938,7 +941,7 @@ const adminTools: Tool[] = [
   {
     name: 'update_user',
     title: 'Update user',
-    description: 'Change a user account: name, email, role, platform part, Claude connector access, or reactivate it (System Admins only). Turning the connector off disconnects that user\'s Claude immediately.',
+    description: 'Change a user account: name, email, role, platform part, Claude connector access, Blue access, or reactivate it (System Admins only). Turning the connector off disconnects that user\'s Claude immediately.',
     inputSchema: obj(
       {
         user_id: id('User ID.'),
@@ -948,6 +951,7 @@ const adminTools: Tool[] = [
         role: userRole,
         part: userPart,
         claude_connector_enabled: { type: 'boolean', description: 'Allow this user to connect Claude.' },
+        blue_enabled: { type: 'boolean', description: 'Allow this user to use Blue, the in-app assistant.' },
         active: { type: 'boolean', description: 'false deactivates the account, true reactivates it.' }
       },
       ['user_id']
@@ -962,9 +966,10 @@ const adminTools: Tool[] = [
         role: 'role',
         part: 'accessMode',
         claude_connector_enabled: 'mcpEnabled',
+        blue_enabled: 'assistantEnabled',
         active: 'isActive'
       });
-      requireSomeField(body, 'email, first_name, last_name, role, part, claude_connector_enabled, active');
+      requireSomeField(body, 'email, first_name, last_name, role, part, claude_connector_enabled, blue_enabled, active');
       const res = await ctx.api.request('PUT', `/api/users/${args.user_id}`, { body });
       return { message: res.message, user: shapeUser(res.user) };
     }

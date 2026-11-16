@@ -38,6 +38,14 @@ export function canUseConnector(user: { isActive?: boolean; mcpEnabled?: boolean
   return user.isActive !== false && user.mcpEnabled !== false;
 }
 
+/**
+ * True when the user may use Blue, the in-app AI assistant (runs on the app's own AI keys).
+ * Available to every user by default, whatever their Part; a System Admin can switch it off per account.
+ */
+export function canUseBlue(user: { isActive?: boolean; assistantEnabled?: boolean }): boolean {
+  return user.isActive !== false && user.assistantEnabled !== false;
+}
+
 export interface IUser extends Document {
   email: string;
   password?: string;
@@ -49,6 +57,8 @@ export interface IUser extends Document {
   accessMode: AccessMode;
   /** Claude connector (MCP) access, toggled by a System Admin. Default true. */
   mcpEnabled: boolean;
+  /** Blue (in-app assistant) access, toggled by a System Admin. Default true. */
+  assistantEnabled: boolean;
   isActive: boolean;
   companyInfo?: {
     companyName?: string;
@@ -126,6 +136,10 @@ const userSchema = new Schema<IUser>(
       default: AccessMode.PART_ONE
     },
     mcpEnabled: {
+      type: Boolean,
+      default: true
+    },
+    assistantEnabled: {
       type: Boolean,
       default: true
     },

@@ -34,7 +34,7 @@ const upload = multer({
  */
 router.post('/', isAuthenticated, canManageUsers, validateUserCreation, async (req: Request, res: Response) => {
   try {
-    const { email, password, firstName, lastName, role, accessMode, mcpEnabled } = req.body;
+    const { email, password, firstName, lastName, role, accessMode, mcpEnabled, assistantEnabled } = req.body;
 
     // Check if user already exists
     const existingUser = await User.findOne({ email: email.toLowerCase() });
@@ -53,7 +53,8 @@ router.post('/', isAuthenticated, canManageUsers, validateUserCreation, async (r
       lastName,
       role,
       ...(accessMode ? { accessMode } : {}),
-      ...(typeof mcpEnabled === 'boolean' ? { mcpEnabled } : {})
+      ...(typeof mcpEnabled === 'boolean' ? { mcpEnabled } : {}),
+      ...(typeof assistantEnabled === 'boolean' ? { assistantEnabled } : {})
     });
 
     // Log user creation
@@ -70,6 +71,7 @@ router.post('/', isAuthenticated, canManageUsers, validateUserCreation, async (r
         role: user.role,
         accessMode: user.accessMode,
         mcpEnabled: user.mcpEnabled,
+        assistantEnabled: user.assistantEnabled,
         isActive: user.isActive
       }
     });
@@ -188,7 +190,7 @@ router.get('/:id', isAuthenticated, validateMongoId('id'), async (req: Request, 
  */
 router.put('/:id', isAuthenticated, canManageUsers, validateMongoId('id'), validateUserUpdate, async (req: Request, res: Response) => {
   try {
-    const { email, firstName, lastName, role, isActive, accessMode, mcpEnabled } = req.body;
+    const { email, firstName, lastName, role, isActive, accessMode, mcpEnabled, assistantEnabled } = req.body;
 
     const user = await User.findById(req.params.id);
     if (!user) {
@@ -207,6 +209,7 @@ router.put('/:id', isAuthenticated, canManageUsers, validateMongoId('id'), valid
     if (role) user.role = role;
     if (accessMode) user.accessMode = accessMode;
     if (typeof mcpEnabled === 'boolean') user.mcpEnabled = mcpEnabled;
+    if (typeof assistantEnabled === 'boolean') user.assistantEnabled = assistantEnabled;
     if (typeof isActive === 'boolean') user.isActive = isActive;
 
     // Email must stay unique (a duplicate would otherwise surface as a generic 500).
@@ -245,6 +248,7 @@ router.put('/:id', isAuthenticated, canManageUsers, validateMongoId('id'), valid
         role: user.role,
         accessMode: user.accessMode,
         mcpEnabled: user.mcpEnabled,
+        assistantEnabled: user.assistantEnabled,
         isActive: user.isActive
       }
     });

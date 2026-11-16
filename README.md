@@ -539,3 +539,7 @@ A System Admin assigns each user Part one (AI generation enabled) or Part two (A
 ## Claude connector (MCP)
 
 Users can connect Claude to their account and manage campaigns, projects, tasks and comments from a chat, with exactly their own permissions. Sign-in uses OAuth 2.1 against the app itself. System Admins can turn the connector off per user. Setup, local testing with a tunnel, the tool list and the security model are in [docs/MCP_CONNECTOR.md](docs/MCP_CONNECTOR.md).
+
+## Blue (in-app assistant)
+
+Blue is a chat assistant built into the app: users type what they need ("create a task for Friday's sale with a caption") and Blue does it, showing the results as cards. It runs on the organisation's AI keys, acts with each user's own permissions, asks before deleting anything, and can be switched off globally or per user. See [docs/BLUE_ASSISTANT.md](docs/BLUE_ASSISTANT.md).
