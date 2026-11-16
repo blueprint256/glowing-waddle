@@ -36,6 +36,13 @@ export interface IAppConfig extends Document {
   blueModel?: string;
   blueDailyMessageLimit: number; // per user per day; 0 = unlimited
 
+  // Library (Aggregator) configuration
+  libraryEnabled: boolean;
+  libraryProvider?: 'anthropic' | 'openai' | 'grok';
+  libraryModel?: string;
+  libraryMonthlyAiLimit: number; // AI-read items per user per month; 0 = unlimited
+  librarySemanticSearch: boolean; // embeddings (needs an OpenAI key)
+
   createdAt: Date;
   updatedAt: Date;
   encryptApiKey(key: string): string;
@@ -140,6 +147,29 @@ const appConfigSchema = new Schema<IAppConfig>(
       type: Number,
       default: 100,
       min: 0
+    },
+
+    // Library (Aggregator) configuration
+    libraryEnabled: {
+      type: Boolean,
+      default: true
+    },
+    libraryProvider: {
+      type: String,
+      enum: ['anthropic', 'openai', 'grok']
+    },
+    libraryModel: {
+      type: String,
+      trim: true
+    },
+    libraryMonthlyAiLimit: {
+      type: Number,
+      default: 500,
+      min: 0
+    },
+    librarySemanticSearch: {
+      type: Boolean,
+      default: true
     }
   },
   {

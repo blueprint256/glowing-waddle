@@ -50,6 +50,7 @@ import { UserRole } from '../types';
 import api, { promptAPI, commandMappingAPI, chainAPI } from '../services/api';
 import ClaudeConnectorCard from '../components/Settings/ClaudeConnectorCard';
 import BlueSettingsCard from '../components/Settings/BlueSettingsCard';
+import LibrarySettingsCard from '../components/Settings/LibrarySettingsCard';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -1613,6 +1614,7 @@ export default function Settings() {
 
               {/* Blue, the in-app assistant */}
               <BlueSettingsCard />
+              <LibrarySettingsCard />
 
               {/* Default LLM Configuration Section */}
               <Card sx={{ mb: 4 }}>

@@ -93,7 +93,7 @@ function makeCtx(port: number, user: Partial<ToolContext['user']> = {}): ToolCon
       internalSecret: 'secret',
       userAgent: 'Blueprint MCP connector (Claude)'
     }),
-    user: { id: ID(900), email: 'ada@example.com', name: 'Ada Lovelace', role: 'hybrid', accessMode: 'part_two', canUseAI: false, ...user },
+    user: { id: ID(900), email: 'ada@example.com', name: 'Ada Lovelace', role: 'hybrid', accessMode: 'part_two', canUseAI: false, canUseLibrary: true, ...user },
     appUrl: 'http://localhost:3000'
   };
 }

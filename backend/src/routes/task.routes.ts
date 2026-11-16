@@ -10,6 +10,7 @@ import { canManageTasks } from '../middleware/rbac';
 import { checkTaskOwnership } from '../middleware/ownership';
 import { validateMongoId, validateTaskCreate, validateTaskUpdate } from '../middleware/validation';
 import { Comment } from '../models/Comment';
+import { queueTaskImage } from '../library/hooks';
 import { logAudit } from '../utils/auditLogger';
 import { AuditAction } from '../models/AuditLog';
 import { searchRegex } from '../utils/regex';
@@ -362,6 +363,8 @@ router.post('/:id/upload-image', isAuthenticated, canManageTasks, validateMongoI
     const location = await uploadTaskImage(req.file);
     task.designedImage = location;
     await task.save();
+    // The image also becomes the next version of this task's Library item (background, never blocks).
+    void queueTaskImage(task.campaignId, task._id, location, req.user!._id, 'Uploaded on the task page');
 
     res.json({
       success: true,
@@ -645,6 +648,7 @@ router.patch('/:id/adopt-poster', isAuthenticated, canManageTasks, validateMongo
 
     // Move pendingGeneratedImage to designedImage (adopt the generated poster)
     task.designedImage = task.pendingGeneratedImage;
+    void queueTaskImage(task.campaignId, task._id, task.pendingGeneratedImage || '', req.user!._id, 'AI poster adopted');
     task.pendingGeneratedImage = undefined; // Clear the pending image
     task.lastModifiedBy = req.user!._id;
     await task.save();

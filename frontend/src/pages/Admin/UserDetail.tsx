@@ -35,6 +35,8 @@ export default function UserDetail() {
   const [savingConnector, setSavingConnector] = useState(false);
   const [savingBlue, setSavingBlue] = useState(false);
   const [blueMessage, setBlueMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [savingLibrary, setSavingLibrary] = useState(false);
+  const [libraryMessage, setLibraryMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [connectorMessage, setConnectorMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
@@ -90,6 +92,25 @@ export default function UserDetail() {
       setConnectorMessage({ type: 'error', text: e.response?.data?.message || 'Failed to update connector access' });
     } finally {
       setSavingConnector(false);
+    }
+  };
+
+  const toggleLibrary = async (enabled: boolean) => {
+    try {
+      setSavingLibrary(true);
+      setLibraryMessage(null);
+      await userAPI.update(id!, { libraryEnabled: enabled });
+      setUser((u) => (u ? { ...u, libraryEnabled: enabled } : u));
+      setLibraryMessage({
+        type: 'success',
+        text: enabled
+          ? 'Library enabled for this user.'
+          : 'Library disabled for this user. Their files are kept; it reappears with everything in it if you turn it back on.'
+      });
+    } catch (e: any) {
+      setLibraryMessage({ type: 'error', text: e.response?.data?.message || 'Failed to update Library access' });
+    } finally {
+      setSavingLibrary(false);
     }
   };
 
@@ -249,6 +270,36 @@ export default function UserDetail() {
                 {blueMessage && (
                   <Alert severity={blueMessage.type} sx={{ mt: 2 }}>
                     {blueMessage.text}
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Library (Aggregator) access */}
+          <Grid item xs={12} md={6}>
+            <Card variant="outlined" sx={{ height: '100%' }}>
+              <CardContent>
+                <Typography variant="h6" gutterBottom color="primary">
+                  Library
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  Upload and organise past work (posters, photos, captions, files) with version history, searchable by
+                  the user, Blue and Claude.
+                </Typography>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={user.libraryEnabled !== false}
+                      onChange={(e) => toggleLibrary(e.target.checked)}
+                      disabled={savingLibrary || !user.isActive}
+                    />
+                  }
+                  label={user.libraryEnabled !== false ? 'Enabled' : 'Disabled'}
+                />
+                {libraryMessage && (
+                  <Alert severity={libraryMessage.type} sx={{ mt: 2 }}>
+                    {libraryMessage.text}
                   </Alert>
                 )}
               </CardContent>

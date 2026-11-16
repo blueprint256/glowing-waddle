@@ -21,6 +21,8 @@ const Calendar = lazy(() => import('./pages/Calendar'));
 const TasksSheet = lazy(() => import('./pages/TasksSheet'));
 const Settings = lazy(() => import('./pages/Settings'));
 const OAuthConsent = lazy(() => import('./pages/OAuth/OAuthConsent'));
+const LibraryPage = lazy(() => import('./pages/Library/LibraryPage'));
+const LibraryItemPage = lazy(() => import('./pages/Library/LibraryItemPage'));
 
 function PageFallback() {
   return (
@@ -85,6 +87,8 @@ function App() {
         <Route path="calendar" element={<Calendar />} />
         <Route path="tasks-sheet" element={<TasksSheet />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="library" element={<LibraryPage />} />
+        <Route path="library/:id" element={<LibraryItemPage />} />
         <Route path="admin/users" element={<UserManagement />} />
         <Route path="admin/users/:id" element={<UserDetail />} />
       </Route>

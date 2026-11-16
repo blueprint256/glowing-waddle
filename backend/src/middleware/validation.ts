@@ -37,6 +37,8 @@ export const validateUserCreation = [
     .withMessage('mcpEnabled must be true or false'),
   body('assistantEnabled').optional().custom((value) => typeof value === 'boolean')
     .withMessage('assistantEnabled must be true or false'),
+  body('libraryEnabled').optional().custom((value) => typeof value === 'boolean')
+    .withMessage('libraryEnabled must be true or false'),
   handleValidationErrors
 ];
 
@@ -53,6 +55,8 @@ export const validateUserUpdate = [
     .withMessage('mcpEnabled must be true or false'),
   body('assistantEnabled').optional().custom((value) => typeof value === 'boolean')
     .withMessage('assistantEnabled must be true or false'),
+  body('libraryEnabled').optional().custom((value) => typeof value === 'boolean')
+    .withMessage('libraryEnabled must be true or false'),
   handleValidationErrors
 ];
 

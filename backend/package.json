@@ -11,7 +11,8 @@
     "test": "jest",
     "mcp:selftest": "ts-node --transpile-only src/scripts/mcpSelfTest.ts",
     "mcp:smoke": "ts-node --transpile-only src/scripts/mcpSmokeTest.ts",
-    "blue:selftest": "ts-node --transpile-only src/scripts/blueSelfTest.ts"
+    "blue:selftest": "ts-node --transpile-only src/scripts/blueSelfTest.ts",
+    "library:selftest": "ts-node --transpile-only src/scripts/librarySelfTest.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
@@ -31,6 +32,7 @@
     "mongoose": "^8.0.3",
     "morgan": "^1.10.0",
     "multer": "^2.0.0",
+    "sharp": "^0.33.5",
     "openai": "^6.15.0",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",

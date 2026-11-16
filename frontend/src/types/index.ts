@@ -48,6 +48,8 @@ export interface User {
   mcpEnabled?: boolean;
   /** Blue (in-app assistant) access; set by a System Admin. Treated as enabled when absent. */
   assistantEnabled?: boolean;
+  /** Library (Aggregator) access; set by a System Admin. Treated as enabled when absent. */
+  libraryEnabled?: boolean;
   isActive: boolean;
   authProvider?: 'local' | 'google';
   companyInfo?: CompanyInfo;

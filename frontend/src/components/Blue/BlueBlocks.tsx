@@ -12,6 +12,7 @@ import {
 import SocialPreviewModal from '../SocialPreviewModal';
 import BlueText from './BlueText';
 import type { BlueItem } from '../../services/blue';
+import { librarySrc } from '../../services/library';
 
 /**
  * Turns Blue's tool results into cards: tasks, campaigns, projects, calendars, comments, users.
@@ -124,6 +125,95 @@ function useOpen() {
 // ---------------------------------------------------------------------------
 // Entity cards
 // ---------------------------------------------------------------------------
+
+function libDate(value?: string): string | null {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+}
+
+function LibraryThumb({ item, size }: { item: any; size: number | string }) {
+  const [broken, setBroken] = useState(false);
+  const src = !broken ? librarySrc(item.thumbnail_url) : undefined;
+  return (
+    <Box sx={{ width: size, aspectRatio: '1 / 1', flexShrink: 0, borderRadius: 'var(--r-nav)', overflow: 'hidden', bgcolor: 'var(--bg-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      {src ? (
+        <img src={src} alt="" loading="lazy" onError={() => setBroken(true)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      ) : (
+        <Typography sx={{ fontSize: 10, color: 'var(--text-faint)', textTransform: 'uppercase' }}>{item.kind || 'file'}</Typography>
+      )}
+    </Box>
+  );
+}
+
+function LibraryGallery({ items, total }: { items: any[]; total?: number }) {
+  const open = useOpen();
+  if (!items.length) return <Step ok text="Nothing in the Library matches" />;
+  return (
+    <Box>
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 0.75 }}>
+        {items.slice(0, 9).map((i) => (
+          <Box
+            key={i.id}
+            onClick={open(i.url)}
+            role="link"
+            tabIndex={0}
+            title={[i.title, i.date, i.event].filter(Boolean).join(' · ')}
+            sx={{ cursor: 'pointer', minWidth: 0, '&:hover img': { opacity: 0.85 } }}
+          >
+            <LibraryThumb item={i} size="100%" />
+            <Typography sx={{ fontSize: 11, mt: 0.25, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{i.title}</Typography>
+            <Typography sx={{ fontSize: 10, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {[libDate(i.date), i.versions > 1 ? `v${i.current_version}` : null].filter(Boolean).join(' · ')}
+            </Typography>
+          </Box>
+        ))}
+      </Box>
+      {(total ?? items.length) > Math.min(items.length, 9) && (
+        <Meta>
+          {total} matches · <Box component="span" sx={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => open('/library')?.()}>open the Library</Box>
+        </Meta>
+      )}
+    </Box>
+  );
+}
+
+function LibraryItemCard({ item, versions }: { item: any; versions?: any[] }) {
+  const open = useOpen();
+  return (
+    <Card onOpen={open(item.url)}>
+      <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'flex-start' }}>
+        <LibraryThumb item={item} size={72} />
+        <Box sx={{ minWidth: 0, flex: 1 }}>
+          <Title>{item.title}</Title>
+          <Meta>{[libDate(item.date), item.event, item.versions > 1 ? `version ${item.current_version} of ${item.versions}` : null].filter(Boolean).join(' · ')}</Meta>
+          {item.description && <Meta>{item.description}</Meta>}
+        </Box>
+      </Box>
+      {versions && versions.length > 1 && (
+        <Meta>
+          Versions: {versions.slice(0, 5).map((v: any) => `v${v.number}${v.current ? ' (current)' : ''} ${v.added}`).join(', ')}
+          {versions.length > 5 ? ', …' : ''}
+        </Meta>
+      )}
+    </Card>
+  );
+}
+
+function LibraryOverviewCard({ data }: { data: any }) {
+  const open = useOpen();
+  return (
+    <Card onOpen={open('/library')}>
+      <Title>Library · {data.total_items} items</Title>
+      {(data.timeline || []).slice(0, 4).map((y: any) => (
+        <Meta key={y.year}>
+          {y.year}: {y.items} · {y.months.slice(0, 4).map((m: any) => `${m.month.slice(0, 3)} ${m.items}`).join(', ')}
+          {y.months.length > 4 ? ', …' : ''}
+        </Meta>
+      ))}
+    </Card>
+  );
+}
 
 function TaskCard({ task, compact }: { task: any; compact?: boolean }) {
   const open = useOpen();
@@ -293,6 +383,7 @@ const STEP_LABELS: Record<string, string> = {
   get_company_info: 'Read your company info',
   update_company_info: 'Updated your company info',
   delete_task: 'Task deleted',
+  delete_library_item: 'Moved to the trash',
   delete_comment: 'Comment deleted',
   remove_user_from_project: 'Removed from the project',
   deactivate_user: 'Account deactivated'
@@ -383,6 +474,15 @@ export function BlueToolItem({ item }: { item: ToolItem }) {
           <ListOf items={d.projects || []} label="projects" render={(p: any) => <ProjectCard key={p.id} project={p} extra={`${p.tasks_created ?? 0} tasks`} />} />
         </Box>
       );
+    case 'search_library':
+      return <LibraryGallery items={d.items || []} total={d.total_matches} />;
+    case 'get_library_item':
+      return <LibraryItemCard item={d.item} versions={d.versions} />;
+    case 'update_library_item':
+    case 'restore_library_version':
+      return d.item ? <LibraryItemCard item={d.item} /> : <Step ok text={d.message || 'Done'} />;
+    case 'library_overview':
+      return <LibraryOverviewCard data={d} />;
     case 'refine_task_description':
       return (
         <Card>

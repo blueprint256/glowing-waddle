@@ -42,7 +42,8 @@ export default function UserManagement() {
     role: UserRole.HYBRID,
     accessMode: AccessMode.PART_ONE,
     mcpEnabled: true,
-    assistantEnabled: true
+    assistantEnabled: true,
+    libraryEnabled: true
   });
 
   useEffect(() => {
@@ -79,7 +80,8 @@ export default function UserManagement() {
         role: UserRole.HYBRID,
         accessMode: AccessMode.PART_ONE,
         mcpEnabled: true,
-        assistantEnabled: true
+        assistantEnabled: true,
+        libraryEnabled: true
       });
       loadUsers();
     } catch (error: any) {
@@ -113,6 +115,7 @@ export default function UserManagement() {
               <TableCell>Role</TableCell>
               <TableCell>Part</TableCell>
               <TableCell>Blue</TableCell>
+              <TableCell>Library</TableCell>
               <TableCell>Claude</TableCell>
               <TableCell>Status</TableCell>
             </TableRow>
@@ -142,6 +145,14 @@ export default function UserManagement() {
                     label={user.assistantEnabled === false ? 'Off' : 'On'}
                     color={user.assistantEnabled === false ? 'default' : 'primary'}
                     variant={user.assistantEnabled === false ? 'outlined' : 'filled'}
+                    size="small"
+                  />
+                </TableCell>
+                <TableCell>
+                  <Chip
+                    label={user.libraryEnabled === false ? 'Off' : 'On'}
+                    color={user.libraryEnabled === false ? 'default' : 'primary'}
+                    variant={user.libraryEnabled === false ? 'outlined' : 'filled'}
                     size="small"
                   />
                 </TableCell>
@@ -259,6 +270,15 @@ export default function UserManagement() {
               />
             }
             label="Allow Blue assistant"
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={formData.libraryEnabled}
+                onChange={(e) => setFormData({ ...formData, libraryEnabled: e.target.checked })}
+              />
+            }
+            label="Allow Library"
           />
         </DialogContent>
         <DialogActions>

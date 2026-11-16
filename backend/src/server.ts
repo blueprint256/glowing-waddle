@@ -31,6 +31,8 @@ import { authenticateBearer, skipForBearer, isInternalRequest } from './middlewa
 import oauthRoutes from './oauth/oauth.routes';
 import connectedAppsRoutes from './routes/connectedApps.routes';
 import blueRoutes from './routes/blue.routes';
+import libraryRoutes from './routes/library.routes';
+import { startLibraryWorker } from './library/worker';
 import mcpRouter from './mcp/router';
 
 const app = express();
@@ -86,10 +88,14 @@ app.set('etag', false);
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
+  // A Library page alone loads dozens of thumbnails, so the old limit of 100 was far too low for normal use.
+  max: Number(process.env.API_RATE_LIMIT_PER_15_MIN) || 1500,
   message: 'Too many requests from this IP, please try again later',
-  // The MCP connector's own loopback calls are limited per token on /mcp instead.
-  skip: (req) => isInternalRequest(req)
+  standardHeaders: true,
+  legacyHeaders: false,
+  // The MCP connector's own loopback calls are limited per token on /mcp instead; Library file links
+  // are cheap signed-URL redirects that browsers request in bulk.
+  skip: (req) => isInternalRequest(req) || (req.method === 'GET' && /^\/api\/library\/items\/[a-f0-9]{24}\/file$/i.test(`${req.baseUrl}${req.path}`))
 });
 
 app.use('/api/', limiter);
@@ -152,6 +158,7 @@ app.patch('/api/tasks/:id/adopt-poster', requireAI);
 // API Routes
 app.use('/api', connectedAppsRoutes); // /api/oauth/requests/*, /api/connected-apps
 app.use('/api/blue', blueRoutes); // Blue, the in-app assistant
+app.use('/api/library', libraryRoutes); // Library (Aggregator)
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/campaigns', campaignRoutes);
@@ -209,6 +216,7 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 API: http://localhost:${PORT}`);
+  startLibraryWorker();
 });
 
 export default app;

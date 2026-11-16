@@ -20,7 +20,9 @@ export enum AuditAction {
   TASK_DELETED = 'task_deleted',
   CONNECTOR_AUTHORIZED = 'connector_authorized',
   CONNECTOR_DENIED = 'connector_denied',
-  CONNECTOR_REVOKED = 'connector_revoked'
+  CONNECTOR_REVOKED = 'connector_revoked',
+  LIBRARY_UPLOADED = 'library_uploaded',
+  LIBRARY_DELETED = 'library_deleted'
 }
 
 export interface IAuditLog extends Document {

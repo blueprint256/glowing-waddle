@@ -3,7 +3,8 @@ import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import { getBearerToken } from '../oauth/crypto';
 import { validateAccessToken } from '../oauth/oauthService';
-import { canUseAI } from '../models/User';
+import { canUseAI, canUseLibrary } from '../models/User';
+import { loadLibrarySetup } from '../library/setup';
 import { getFrontendUrl } from '../config/publicUrl';
 import { getInternalSecret, INTERNAL_HEADER, wwwAuthenticate } from '../middleware/bearerAuth';
 import { createApiClient } from './apiClient';
@@ -110,7 +111,8 @@ async function authenticate(req: Request, res: Response): Promise<Authenticated 
         name: `${user.firstName} ${user.lastName}`.trim(),
         role: user.role,
         accessMode: user.accessMode,
-        canUseAI: canUseAI(user)
+        canUseAI: canUseAI(user),
+        canUseLibrary: canUseLibrary(user) && (await loadLibrarySetup()).enabled
       },
       appUrl: getFrontendUrl()
     }

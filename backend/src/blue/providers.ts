@@ -44,7 +44,7 @@ export function sanitizeSchema(schema: JsonSchema): JsonSchema {
   return walk(schema);
 }
 
-async function postJson(fetchImpl: FetchLike, url: string, headers: Record<string, string>, body: unknown, label: string) {
+export async function postJson(fetchImpl: FetchLike, url: string, headers: Record<string, string>, body: unknown, label: string) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   let res: FetchResponseLike;

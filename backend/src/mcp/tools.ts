@@ -19,6 +19,8 @@ export interface ToolUser {
   role: string;
   accessMode: string;
   canUseAI: boolean;
+  /** Library (Aggregator) available to this user (global switch + per-user toggle). */
+  canUseLibrary: boolean;
 }
 
 export interface ToolContext {
@@ -182,6 +184,7 @@ function shapeUser(u: any) {
     part: u.accessMode === 'part_two' ? 'part_two' : 'part_one',
     claude_connector_enabled: u.mcpEnabled !== false,
     blue_enabled: u.assistantEnabled !== false,
+    library_enabled: u.libraryEnabled !== false,
     active: u.isActive !== false,
     login_method: u.authProvider,
     campaign_count: u.campaignCount,
@@ -916,7 +919,8 @@ const adminTools: Tool[] = [
         role: userRole,
         part: userPart,
         claude_connector_enabled: { type: 'boolean', description: 'Allow this user to connect Claude. Default true.' },
-        blue_enabled: { type: 'boolean', description: 'Allow this user to use Blue, the in-app assistant. Default true.' }
+        blue_enabled: { type: 'boolean', description: 'Allow this user to use Blue, the in-app assistant. Default true.' },
+        library_enabled: { type: 'boolean', description: 'Allow this user to use the Library (Aggregator). Default true.' }
       },
       ['email', 'password', 'first_name', 'last_name', 'role']
     ),
@@ -932,7 +936,8 @@ const adminTools: Tool[] = [
           role: 'role',
           part: 'accessMode',
           claude_connector_enabled: 'mcpEnabled',
-          blue_enabled: 'assistantEnabled'
+          blue_enabled: 'assistantEnabled',
+          library_enabled: 'libraryEnabled'
         })
       });
       return { message: res.message, user: shapeUser(res.user) };
@@ -952,6 +957,7 @@ const adminTools: Tool[] = [
         part: userPart,
         claude_connector_enabled: { type: 'boolean', description: 'Allow this user to connect Claude.' },
         blue_enabled: { type: 'boolean', description: 'Allow this user to use Blue, the in-app assistant.' },
+        library_enabled: { type: 'boolean', description: 'Allow this user to use the Library (Aggregator).' },
         active: { type: 'boolean', description: 'false deactivates the account, true reactivates it.' }
       },
       ['user_id']
@@ -967,9 +973,10 @@ const adminTools: Tool[] = [
         part: 'accessMode',
         claude_connector_enabled: 'mcpEnabled',
         blue_enabled: 'assistantEnabled',
+        library_enabled: 'libraryEnabled',
         active: 'isActive'
       });
-      requireSomeField(body, 'email, first_name, last_name, role, part, claude_connector_enabled, blue_enabled, active');
+      requireSomeField(body, 'email, first_name, last_name, role, part, claude_connector_enabled, blue_enabled, library_enabled, active');
       const res = await ctx.api.request('PUT', `/api/users/${args.user_id}`, { body });
       return { message: res.message, user: shapeUser(res.user) };
     }
@@ -989,12 +996,224 @@ const adminTools: Tool[] = [
   }
 ];
 
+
+// ---------------------------------------------------------------------------
+// Library (Aggregator): the user's past and present work, with versions
+// ---------------------------------------------------------------------------
+
+const LIBRARY_KINDS = ['image', 'video', 'audio', 'document', 'text', 'design', 'other'];
+const LIBRARY_CATEGORIES = ['poster', 'social_post', 'photo', 'logo', 'illustration', 'screenshot', 'document', 'caption', 'draft', 'video', 'other'];
+
+function shapeLibraryItem(i: any, appUrl: string, detail = false) {
+  const text = detail ? i.textContent : i.textPreview;
+  return clean({
+    id: i.id,
+    title: i.title,
+    kind: i.kind,
+    category: i.category,
+    date: i.capturedAt ? String(i.capturedAt).slice(0, 10) : undefined,
+    date_source: i.dateSource,
+    event: i.event || undefined,
+    tags: i.tags?.length ? i.tags : undefined,
+    description: i.description || undefined,
+    text: text ? String(text).slice(0, detail ? 3000 : 280) : undefined,
+    notes: detail && i.notes ? i.notes : undefined,
+    folder: i.folder || undefined,
+    versions: i.versionCount,
+    current_version: i.currentVersion?.number,
+    file: i.currentVersion
+      ? clean({
+          name: i.currentVersion.originalName,
+          type: i.currentVersion.mime,
+          size_kb: Math.round((i.currentVersion.size || 0) / 1024),
+          width: i.currentVersion.width,
+          height: i.currentVersion.height
+        })
+      : undefined,
+    linked_campaign_id: i.links?.campaignId || undefined,
+    linked_project_id: i.links?.projectId || undefined,
+    linked_task_id: i.links?.taskId || undefined,
+    needs_review: i.needsReview || undefined,
+    ai_status: i.aiStatus !== 'done' ? i.aiStatus : undefined,
+    in_trash: i.deletedAt ? true : undefined,
+    url: `${appUrl}/library/${i.id}`,
+    thumbnail_url: i.thumbnailUrl || undefined
+  });
+}
+
+const canUseLibraryTools = (ctx: ToolContext) => ctx.user.canUseLibrary;
+
+const libraryTools: Tool[] = [
+  {
+    name: 'library_overview',
+    title: 'Library overview',
+    description:
+      "The table of contents of the user's Library (their uploaded past work: posters, photos, captions, logos, documents, videos): totals by type, and years → months → events with item counts. Call this first when looking for something, so you know which dates and events exist before searching.",
+    inputSchema: obj({}),
+    annotations: READ,
+    isAvailable: canUseLibraryTools,
+    handler: async (_args, ctx) => {
+      const o = (await ctx.api.request('GET', '/api/library/overview')).overview;
+      return {
+        total_items: o.total,
+        by_type: o.kinds,
+        needs_review: o.needsReview,
+        being_processed: o.processing,
+        in_trash: o.inTrash,
+        top_events: o.topEvents,
+        timeline: o.years.map((y: any) => ({
+          year: y.year,
+          items: y.count,
+          months: y.months.map((m: any) => clean({ month: m.name, items: m.count, events: m.events.length ? m.events : undefined }))
+        }))
+      };
+    }
+  },
+  {
+    name: 'search_library',
+    title: 'Search Library',
+    description:
+      'Find items in the Library by words (searches titles, AI descriptions, text inside images, captions, tags, events, file and folder names) and/or filters. For "two years ago" or "around March" convert to a date range (e.g. a whole month, or ±3 weeks). Results are shown to the user as an image gallery.',
+    inputSchema: obj({
+      query: { type: 'string', maxLength: 200, description: 'Words to search for, e.g. "women\'s day poster pink".' },
+      kind: { type: 'string', enum: LIBRARY_KINDS, description: 'Type of file.' },
+      category: { type: 'string', enum: LIBRARY_CATEGORIES, description: 'What the item is.' },
+      event: { type: 'string', maxLength: 120, description: 'Exact event name as shown in library_overview.' },
+      tags: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 40 }, maxItems: 10, description: 'Items must have all these tags.' },
+      date_from: date('Only items dated on/after this day.'),
+      date_to: date('Only items dated on/before this day (inclusive).'),
+      linked_campaign_id: id('Only items linked to this campaign.'),
+      linked_task_id: id('Only items linked to this task.'),
+      needs_review: { type: 'boolean', description: 'Only items waiting for review (possible duplicates/versions).' },
+      in_trash: { type: 'boolean', description: 'Search the trash instead.' },
+      sort: { type: 'string', enum: ['newest', 'oldest'], description: 'Order when there is no query (default newest).' },
+      page,
+      limit: limit(12, 50)
+    }),
+    annotations: READ,
+    isAvailable: canUseLibraryTools,
+    handler: async (args, ctx) => {
+      const res = await ctx.api.request('GET', '/api/library/items', {
+        query: {
+          q: args.query,
+          kind: args.kind,
+          category: args.category,
+          event: args.event,
+          tags: args.tags,
+          from: args.date_from ? String(args.date_from).slice(0, 10) : undefined,
+          to: args.date_to ? String(args.date_to).slice(0, 10) : undefined,
+          campaignId: args.linked_campaign_id,
+          taskId: args.linked_task_id,
+          needsReview: args.needs_review ? 'true' : undefined,
+          trash: args.in_trash ? 'true' : undefined,
+          sort: args.sort,
+          page: args.page ?? 1,
+          limit: args.limit ?? 12
+        }
+      });
+      return {
+        items: res.items.map((i: any) => shapeLibraryItem(i, ctx.appUrl)),
+        total_matches: res.total,
+        page: res.page,
+        per_page: res.limit
+      };
+    }
+  },
+  {
+    name: 'get_library_item',
+    title: 'Get Library item',
+    description: 'Full details of one Library item: description, all text inside it, tags, links, and its version history (newest first).',
+    inputSchema: obj({ item_id: id('Library item ID.') }, ['item_id']),
+    annotations: READ,
+    isAvailable: canUseLibraryTools,
+    handler: async (args, ctx) => {
+      const item = (await ctx.api.request('GET', `/api/library/items/${args.item_id}`)).item;
+      return {
+        item: shapeLibraryItem(item, ctx.appUrl, true),
+        versions: item.versions.map((v: any) =>
+          clean({
+            number: v.number,
+            current: v.isCurrent || undefined,
+            added: String(v.createdAt).slice(0, 10),
+            note: v.note || undefined,
+            source: v.source,
+            file: v.originalName
+          })
+        )
+      };
+    }
+  },
+  {
+    name: 'update_library_item',
+    title: 'Update Library item',
+    description: 'Fix or enrich a Library item: title, description, event, tags (replaces the list), notes, date, or link it to a task, project or campaign (one link; null to unlink).',
+    inputSchema: obj(
+      {
+        item_id: id('Library item ID.'),
+        title: name('New title.'),
+        description: text('Description.', 2000),
+        event: { type: 'string', maxLength: 120, description: 'Event or occasion, e.g. "Women\'s Day". Empty string to clear.' },
+        tags: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 40 }, maxItems: 30, description: 'Tags (replaces the list).' },
+        notes: text('Notes.', 5000),
+        date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'The date the item is from, YYYY-MM-DD.' },
+        link_task_id: { type: ['string', 'null'], pattern: OBJECT_ID_PATTERN, description: 'Link to this task (its project and campaign are linked too). null to unlink.' },
+        link_project_id: { type: 'string', pattern: OBJECT_ID_PATTERN, description: 'Link to this project.' },
+        link_campaign_id: { type: 'string', pattern: OBJECT_ID_PATTERN, description: 'Link to this campaign.' }
+      },
+      ['item_id']
+    ),
+    annotations: UPDATE,
+    isAvailable: canUseLibraryTools,
+    handler: async (args, ctx) => {
+      const body: Record<string, unknown> = pick(args, { title: 'title', description: 'description', event: 'event', tags: 'tags', notes: 'notes', date: 'capturedAt' });
+      if (args.link_task_id === null) body.links = {};
+      else if (args.link_task_id) body.links = { taskId: args.link_task_id };
+      else if (args.link_project_id) body.links = { projectId: args.link_project_id };
+      else if (args.link_campaign_id) body.links = { campaignId: args.link_campaign_id };
+      requireSomeField(body, 'title, description, event, tags, notes, date, link_task_id, link_project_id, link_campaign_id');
+      const res = await ctx.api.request('PATCH', `/api/library/items/${args.item_id}`, { body });
+      return { message: 'Saved', item: shapeLibraryItem(res.item, ctx.appUrl) };
+    }
+  },
+  {
+    name: 'restore_library_version',
+    title: 'Restore a version',
+    description: 'Make an older version of a Library item the current one again. History is kept: the restore is added as a new version.',
+    inputSchema: obj(
+      { item_id: id('Library item ID.'), version_number: { type: 'integer', minimum: 1, description: 'The version number to bring back.' } },
+      ['item_id', 'version_number']
+    ),
+    annotations: UPDATE,
+    isAvailable: canUseLibraryTools,
+    handler: async (args, ctx) => {
+      const item = (await ctx.api.request('GET', `/api/library/items/${args.item_id}`)).item;
+      const version = item.versions.find((v: any) => v.number === args.version_number);
+      if (!version) throw new ToolError(`Version ${args.version_number} doesn't exist; this item has versions ${item.versions.map((v: any) => v.number).join(', ')}.`);
+      const res = await ctx.api.request('POST', `/api/library/items/${args.item_id}/versions/${version.id}/restore`);
+      return { message: `Version ${args.version_number} is current again`, item: shapeLibraryItem(res.item, ctx.appUrl) };
+    }
+  },
+  {
+    name: 'delete_library_item',
+    title: 'Delete Library item',
+    description: 'Move a Library item (with all its versions) to the trash. It can be restored for 30 days, then it is deleted for good.',
+    inputSchema: obj({ item_id: id('Library item ID.') }, ['item_id']),
+    annotations: DESTRUCTIVE,
+    isAvailable: canUseLibraryTools,
+    handler: async (args, ctx) => {
+      const res = await ctx.api.request('DELETE', `/api/library/items/${args.item_id}`);
+      return { message: res.message };
+    }
+  }
+];
+
 export const TOOLS: Tool[] = [
   ...accountTools,
   ...campaignTools,
   ...projectTools,
   ...taskTools,
   ...commentTools,
+  ...libraryTools,
   ...aiTools,
   ...adminTools
 ];
@@ -1011,4 +1230,5 @@ How to work:
 - archive_campaign, delete_task, delete_comment, remove_user_from_project and deactivate_user remove things: confirm with the user first.
 - Every result includes a "url" the user can open in the app.
 - Images cannot be added through this connector yet; tell the user to upload them in the app.
-- Projects cannot be deleted (the app does not allow it either).`;
+- Projects cannot be deleted (the app does not allow it either).
+- The Library holds the user's past and present work (posters, photos, captions, logos, files) with full version history. To find something, call library_overview first to see which years, months and events exist, then search_library with a date range and/or words. Never guess item ids.`;

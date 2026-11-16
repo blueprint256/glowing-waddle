@@ -84,7 +84,7 @@ function makeCtx(port: number, over: Partial<ToolContext['user']> = {}): ToolCon
       internalSecret: 'secret',
       userAgent: 'Blue assistant'
     }),
-    user: { id: ID(900), email: 'ada@example.com', name: 'Ada Lovelace', role: 'hybrid', accessMode: 'part_two', canUseAI: false, ...over },
+    user: { id: ID(900), email: 'ada@example.com', name: 'Ada Lovelace', role: 'hybrid', accessMode: 'part_two', canUseAI: false, canUseLibrary: true, ...over },
     appUrl: 'http://localhost:3000'
   };
 }

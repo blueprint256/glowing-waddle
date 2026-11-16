@@ -9,6 +9,7 @@ import {
   ListAlt as ListAltIcon,
   CalendarMonth as CalendarIcon,
   TableChart as TableChartIcon,
+  PhotoLibrary as PhotoLibraryIcon,
   Settings as SettingsIcon,
   Logout as LogoutIcon,
   DarkMode as DarkModeIcon,
@@ -31,6 +32,8 @@ interface NavItem {
   roles: Array<'all' | UserRole>;
   /** Extra path prefixes that should keep this item highlighted (detail pages). */
   also?: string[];
+  /** Hidden when the user's Library (Aggregator) access is switched off. */
+  library?: boolean;
 }
 
 const NAV: NavItem[] = [
@@ -39,6 +42,7 @@ const NAV: NavItem[] = [
   { text: 'Details Sheet', icon: <ListAltIcon />, path: '/details-sheet', accent: 'blue', roles: ['all'] },
   { text: 'Calendar', icon: <CalendarIcon />, path: '/calendar', accent: 'purple', roles: ['all'] },
   { text: 'Tasks Sheet', icon: <TableChartIcon />, path: '/tasks-sheet', accent: 'amber', roles: ['all'] },
+  { text: 'Library', icon: <PhotoLibraryIcon />, path: '/library', accent: 'blue', roles: ['all'], library: true },
   { text: 'Settings', icon: <SettingsIcon />, path: '/settings', roles: ['all'] },
   { text: 'Users', icon: <PeopleIcon />, path: '/admin/users', accent: 'wine', roles: [UserRole.SYSTEM_ADMIN] }
 ];
@@ -97,7 +101,9 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { mode, toggle } = useThemeStore();
   const blueAllowed = user?.assistantEnabled !== false;
 
-  const items = NAV.filter((i) => i.roles.includes('all') || (user && i.roles.includes(user.role)));
+  const items = NAV.filter(
+    (i) => (i.roles.includes('all') || (user && i.roles.includes(user.role))) && (!i.library || user?.libraryEnabled !== false)
+  );
   const initials = `${user?.firstName?.[0] ?? ''}${user?.lastName?.[0] ?? ''}`.toUpperCase() || 'U';
 
   const go = (path: string) => {

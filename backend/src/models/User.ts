@@ -46,6 +46,14 @@ export function canUseBlue(user: { isActive?: boolean; assistantEnabled?: boolea
   return user.isActive !== false && user.assistantEnabled !== false;
 }
 
+/**
+ * True when the user may use the Library (Aggregator): upload past work, versions, AI search.
+ * On for everyone by default; a System Admin can switch it off per account.
+ */
+export function canUseLibrary(user: { isActive?: boolean; libraryEnabled?: boolean }): boolean {
+  return user.isActive !== false && user.libraryEnabled !== false;
+}
+
 export interface IUser extends Document {
   email: string;
   password?: string;
@@ -59,6 +67,8 @@ export interface IUser extends Document {
   mcpEnabled: boolean;
   /** Blue (in-app assistant) access, toggled by a System Admin. Default true. */
   assistantEnabled: boolean;
+  /** Library (Aggregator) access, toggled by a System Admin. Default true. */
+  libraryEnabled: boolean;
   isActive: boolean;
   companyInfo?: {
     companyName?: string;
@@ -140,6 +150,10 @@ const userSchema = new Schema<IUser>(
       default: true
     },
     assistantEnabled: {
+      type: Boolean,
+      default: true
+    },
+    libraryEnabled: {
       type: Boolean,
       default: true
     },
