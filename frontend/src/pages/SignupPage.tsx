@@ -13,6 +13,7 @@ import {
 } from '@mui/material';
 import GoogleIcon from '@mui/icons-material/Google';
 import { useAuthStore } from '../store/authStore';
+import { getReturnTo } from '../utils/returnTo';
 
 export default function SignupPage() {
   const navigate = useNavigate();
@@ -33,14 +34,14 @@ export default function SignupPage() {
     const authStatus = searchParams.get('auth');
     if (authStatus === 'success') {
       checkAuth().then(() => {
-        navigate('/');
+        navigate(getReturnTo() || '/');
       });
     }
   }, [searchParams, checkAuth, navigate]);
 
-  if (isAuthenticated) {
-    navigate('/');
-  }
+  useEffect(() => {
+    if (isAuthenticated) navigate(getReturnTo() || '/', { replace: true });
+  }, [isAuthenticated, navigate]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
@@ -73,7 +74,7 @@ export default function SignupPage() {
 
     try {
       await signup(formData.email, formData.password, formData.firstName, formData.lastName);
-      navigate('/');
+      navigate(getReturnTo() || '/');
     } catch (err: any) {
       setError(err.response?.data?.message || 'Signup failed');
     } finally {

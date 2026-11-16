@@ -8,9 +8,11 @@ import { CommandMapping } from '../models/CommandMapping';
 import { isAuthenticated } from '../middleware/auth';
 import { canManageTasks } from '../middleware/rbac';
 import { checkTaskOwnership } from '../middleware/ownership';
-import { validateMongoId } from '../middleware/validation';
+import { validateMongoId, validateTaskCreate, validateTaskUpdate } from '../middleware/validation';
+import { Comment } from '../models/Comment';
 import { logAudit } from '../utils/auditLogger';
 import { AuditAction } from '../models/AuditLog';
+import { searchRegex } from '../utils/regex';
 import { uploadTaskImage, uploadImageFromUrl } from '../utils/s3Service';
 import { generateWithPrompt, generateImageWithPrompt, executeCommandChain } from '../services/llmService';
 import mongoose from 'mongoose';
@@ -37,7 +39,7 @@ const upload = multer({
  * @desc    Create a new task
  * @access  Private (System Admin, Hybrid)
  */
-router.post('/', isAuthenticated, canManageTasks, async (req: Request, res: Response) => {
+router.post('/', isAuthenticated, canManageTasks, validateTaskCreate, async (req: Request, res: Response) => {
   try {
     const { name, description, projectId, taskDate, content, status } = req.body;
 
@@ -199,11 +201,11 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
     }
 
     // Global search across task names and descriptions
-    if (req.query.search) {
-      const searchRegex = new RegExp(req.query.search as string, 'i');
+    const searchPattern = searchRegex(req.query.search);
+    if (searchPattern) {
       query.$or = [
-        { name: searchRegex },
-        { description: searchRegex }
+        { name: searchPattern },
+        { description: searchPattern }
       ];
     }
 
@@ -281,7 +283,7 @@ router.get('/:id', isAuthenticated, validateMongoId('id'), checkTaskOwnership, a
  * @desc    Update task (with ownership check)
  * @access  Private (System Admin, Hybrid)
  */
-router.put('/:id', isAuthenticated, canManageTasks, validateMongoId('id'), checkTaskOwnership, async (req: Request, res: Response) => {
+router.put('/:id', isAuthenticated, canManageTasks, validateMongoId('id'), validateTaskUpdate, checkTaskOwnership, async (req: Request, res: Response) => {
   try {
     const task = await Task.findById(req.params.id);
     if (!task) {
@@ -753,6 +755,16 @@ router.delete('/:id', isAuthenticated, canManageTasks, validateMongoId('id'), ch
     }
 
     await Task.findByIdAndDelete(req.params.id);
+    await Comment.deleteMany({ taskId: task._id });
+
+    await logAudit({
+      action: AuditAction.TASK_DELETED,
+      userId: req.user!._id,
+      targetType: 'Task',
+      targetId: task._id,
+      metadata: { name: task.name, projectId: task.projectId },
+      req
+    });
 
     res.json({
       success: true,

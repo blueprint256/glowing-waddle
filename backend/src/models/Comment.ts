@@ -2,6 +2,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IComment extends Document {
   content: string;
+  taskId?: mongoose.Types.ObjectId;
   projectId?: mongoose.Types.ObjectId;
   campaignId?: mongoose.Types.ObjectId;
   authorId: mongoose.Types.ObjectId;
@@ -18,6 +19,11 @@ const commentSchema = new Schema<IComment>(
       type: String,
       required: true,
       trim: true
+    },
+    taskId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Task',
+      index: true
     },
     projectId: {
       type: Schema.Types.ObjectId,

@@ -44,6 +44,8 @@ export interface User {
   lastName: string;
   role: UserRole;
   accessMode?: AccessMode;
+  /** Claude connector (MCP) access; set by a System Admin. Treated as enabled when absent. */
+  mcpEnabled?: boolean;
   isActive: boolean;
   authProvider?: 'local' | 'google';
   companyInfo?: CompanyInfo;

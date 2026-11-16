@@ -8,7 +8,9 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "seed": "ts-node src/scripts/seed.ts",
-    "test": "jest"
+    "test": "jest",
+    "mcp:selftest": "ts-node --transpile-only src/scripts/mcpSelfTest.ts",
+    "mcp:smoke": "ts-node --transpile-only src/scripts/mcpSmokeTest.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",

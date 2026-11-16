@@ -5,9 +5,11 @@ import { UserRole } from '../models/User';
 import { isAuthenticated } from '../middleware/auth';
 import { canCreateCampaign, canAssignToProject } from '../middleware/rbac';
 import { checkProjectOwnership } from '../middleware/ownership';
-import { validateProjectCreation, validateMongoId } from '../middleware/validation';
+import { validateProjectCreation, validateProjectUpdate, validateProjectAssignment, validateMongoId } from '../middleware/validation';
+import { User } from '../models/User';
 import { logAudit, logProjectAssignment } from '../utils/auditLogger';
 import { AuditAction } from '../models/AuditLog';
+import { searchRegex } from '../utils/regex';
 import mongoose from 'mongoose';
 
 const router = express.Router();
@@ -123,11 +125,11 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
     }
 
     // Global search across project names and descriptions
-    if (req.query.search) {
-      const searchRegex = new RegExp(req.query.search as string, 'i');
+    const searchPattern = searchRegex(req.query.search);
+    if (searchPattern) {
       query.$or = [
-        { name: searchRegex },
-        { description: searchRegex }
+        { name: searchPattern },
+        { description: searchPattern }
       ];
     }
 
@@ -224,7 +226,7 @@ router.get('/:id', isAuthenticated, validateMongoId('id'), checkProjectOwnership
  * @desc    Update project (with ownership check)
  * @access  Private (System Admin, Hybrid)
  */
-router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), checkProjectOwnership, async (req: Request, res: Response) => {
+router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), validateProjectUpdate, checkProjectOwnership, async (req: Request, res: Response) => {
   try {
     const project = await Project.findById(req.params.id);
     if (!project) {
@@ -283,10 +285,19 @@ router.post('/:id/assignments',
   isAuthenticated,
   validateMongoId('id'),
   canAssignToProject,
+  validateProjectAssignment,
   checkProjectOwnership,
   async (req: Request, res: Response) => {
     try {
       const { userId, role } = req.body;
+
+      const assignee = await User.findById(userId).select('isActive');
+      if (!assignee || !assignee.isActive) {
+        return res.status(404).json({
+          success: false,
+          message: 'User to assign not found or inactive'
+        });
+      }
 
       if (!userId || !role) {
         return res.status(400).json({

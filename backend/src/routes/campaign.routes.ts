@@ -6,9 +6,10 @@ import { Task, TaskStatus } from '../models/Task';
 import { CommandMapping } from '../models/CommandMapping';
 import { isAuthenticated } from '../middleware/auth';
 import { canCreateCampaign } from '../middleware/rbac';
-import { validateCampaignCreation, validateMongoId } from '../middleware/validation';
+import { validateCampaignCreation, validateCampaignFields, validateMongoId } from '../middleware/validation';
 import { logAudit } from '../utils/auditLogger';
 import { AuditAction } from '../models/AuditLog';
+import { searchRegex } from '../utils/regex';
 import { fetchAndCompilePrompt, generateWithPrompt, executeCommandChain } from '../services/llmService';
 
 const router = express.Router();
@@ -18,7 +19,7 @@ const router = express.Router();
  * @desc    Create a new campaign
  * @access  Private (System Admin, Hybrid)
  */
-router.post('/', isAuthenticated, canCreateCampaign, validateCampaignCreation, async (req: Request, res: Response) => {
+router.post('/', isAuthenticated, canCreateCampaign, validateCampaignCreation, validateCampaignFields, async (req: Request, res: Response) => {
   try {
     const { name, description, status, startDate, endDate, goals, coreMessages, hashtags } = req.body;
 
@@ -99,11 +100,11 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
     }
 
     // Global search across campaign names and descriptions
-    if (req.query.search) {
-      const searchRegex = new RegExp(req.query.search as string, 'i');
+    const searchPattern = searchRegex(req.query.search);
+    if (searchPattern) {
       query.$or = [
-        { name: searchRegex },
-        { description: searchRegex }
+        { name: searchPattern },
+        { description: searchPattern }
       ];
     }
 
@@ -177,8 +178,10 @@ router.get('/:id', isAuthenticated, validateMongoId('id'), async (req: Request, 
     }
 
     // CRITICAL: Hybrid Users can ONLY access campaigns they own
+    // (createdBy may be null after population if the creator record no longer exists)
     if (req.user!.role === UserRole.HYBRID) {
-      if (campaign.createdBy._id.toString() !== req.user!._id.toString()) {
+      const ownerId = (campaign.createdBy as any)?._id ?? campaign.createdBy;
+      if (!ownerId || ownerId.toString() !== req.user!._id.toString()) {
         return res.status(403).json({
           success: false,
           message: 'Access denied: You can only view campaigns you created'
@@ -204,7 +207,7 @@ router.get('/:id', isAuthenticated, validateMongoId('id'), async (req: Request, 
  * @desc    Update campaign (with ownership check for Hybrid Users)
  * @access  Private (System Admin, Hybrid)
  */
-router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), async (req: Request, res: Response) => {
+router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), validateCampaignFields, async (req: Request, res: Response) => {
   try {
     const campaign = await Campaign.findById(req.params.id);
     if (!campaign) {
@@ -318,6 +321,57 @@ router.put('/:id/archive', isAuthenticated, canCreateCampaign, validateMongoId('
     res.status(500).json({
       success: false,
       message: 'Error archiving campaign'
+    });
+  }
+});
+
+/**
+ * @route   PUT /api/campaigns/:id/unarchive
+ * @desc    Restore an archived campaign (with ownership check for Hybrid Users)
+ * @access  Private (System Admin, Hybrid)
+ */
+router.put('/:id/unarchive', isAuthenticated, canCreateCampaign, validateMongoId('id'), async (req: Request, res: Response) => {
+  try {
+    const campaign = await Campaign.findById(req.params.id);
+    if (!campaign) {
+      return res.status(404).json({
+        success: false,
+        message: 'Campaign not found'
+      });
+    }
+
+    if (req.user!.role === UserRole.HYBRID && campaign.createdBy.toString() !== req.user!._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied: You can only restore campaigns you created'
+      });
+    }
+
+    campaign.archived = false;
+    await campaign.save();
+
+    await logAudit({
+      action: AuditAction.CAMPAIGN_UPDATED,
+      userId: req.user!._id,
+      targetType: 'Campaign',
+      targetId: campaign._id,
+      metadata: { archived: false },
+      req
+    });
+
+    const restoredCampaign = await Campaign.findById(campaign._id)
+      .populate('createdBy', 'firstName lastName email');
+
+    res.json({
+      success: true,
+      message: 'Campaign restored successfully',
+      campaign: restoredCampaign
+    });
+  } catch (error: any) {
+    console.error('Error restoring campaign:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error restoring campaign'
     });
   }
 });

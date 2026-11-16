@@ -164,6 +164,7 @@ router.get('/me', isAuthenticated, (req: Request, res: Response) => {
       lastName: req.user.lastName,
       role: req.user.role,
       accessMode: req.user.accessMode ?? 'part_one',
+      mcpEnabled: req.user.mcpEnabled !== false,
       isActive: req.user.isActive
     }
   });

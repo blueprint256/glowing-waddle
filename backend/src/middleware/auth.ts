@@ -16,7 +16,8 @@ export const isAuthenticated = (
   res: Response,
   next: NextFunction
 ): void => {
-  if (req.isAuthenticated()) {
+  // req.user is set either by the cookie session (passport) or by an OAuth bearer token (bearerAuth.ts).
+  if (req.user || req.isAuthenticated()) {
     return next();
   }
 

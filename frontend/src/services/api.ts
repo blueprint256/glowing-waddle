@@ -99,6 +99,18 @@ export const commentAPI = {
 };
 
 // Asset API
+// Claude connector (MCP): OAuth consent + connected apps
+export const oauthAPI = {
+  getRequest: (requestId: string) => api.get(`/oauth/requests/${encodeURIComponent(requestId)}`),
+  decide: (requestId: string, approve: boolean) =>
+    api.post(`/oauth/requests/${encodeURIComponent(requestId)}/decision`, { approve })
+};
+
+export const connectedAppsAPI = {
+  list: () => api.get('/connected-apps'),
+  disconnect: (clientId: string) => api.delete(`/connected-apps/${encodeURIComponent(clientId)}`)
+};
+
 export const assetAPI = {
   getAll: (params?: any) => api.get('/assets', { params }),
   getById: (id: string) => api.get(`/assets/${id}`),

@@ -33,6 +33,8 @@ export const validateUserCreation = [
     .withMessage('Invalid role'),
   body('accessMode').optional().isIn(['part_one', 'part_two'])
     .withMessage('Invalid access mode'),
+  body('mcpEnabled').optional().custom((value) => typeof value === 'boolean')
+    .withMessage('mcpEnabled must be true or false'),
   handleValidationErrors
 ];
 
@@ -41,8 +43,12 @@ export const validateUserUpdate = [
   body('firstName').optional().trim().notEmpty(),
   body('lastName').optional().trim().notEmpty(),
   body('role').optional().isIn(['system_admin', 'hybrid']),
+  body('isActive').optional().custom((value) => typeof value === 'boolean')
+    .withMessage('isActive must be true or false'),
   body('accessMode').optional().isIn(['part_one', 'part_two'])
     .withMessage('Invalid access mode'),
+  body('mcpEnabled').optional().custom((value) => typeof value === 'boolean')
+    .withMessage('mcpEnabled must be true or false'),
   handleValidationErrors
 ];
 
@@ -110,5 +116,74 @@ export const validateApprovalRequest = [
  */
 export const validateMongoId = (paramName: string = 'id') => [
   param(paramName).isMongoId().withMessage(`Valid ${paramName} is required`),
+  handleValidationErrors
+];
+
+/**
+ * Field rules shared by the web app and the Claude connector: bad input gets a clear 400
+ * instead of failing inside Mongoose with a generic 500.
+ */
+const isValidDateValue = (value: unknown) =>
+  value === null ||
+  value === '' ||
+  ((typeof value === 'string' || typeof value === 'number') && !Number.isNaN(new Date(value).getTime()));
+
+const optionalDate = (field: string) =>
+  body(field).optional().custom(isValidDateValue).withMessage(`${field} must be a valid date`);
+
+const optionalEnum = (field: string, values: string[]) =>
+  body(field).optional({ values: 'falsy' }).isIn(values).withMessage(`${field} must be one of: ${values.join(', ')}`);
+
+const optionalText = (field: string) =>
+  body(field).optional({ values: 'null' }).isString().withMessage(`${field} must be text`);
+
+export const CAMPAIGN_STATUS_VALUES = ['draft', 'planning', 'active', 'paused', 'completed', 'archived'];
+export const PROJECT_STATUS_VALUES = ['planning', 'in_progress', 'review', 'completed', 'on_hold'];
+export const TASK_STATUS_VALUES = ['Pending', 'In Progress', 'Completed'];
+export const PROJECT_ROLE_VALUES = ['project_manager', 'project_marketer', 'project_designer', 'viewer'];
+
+export const validateCampaignFields = [
+  body('name').optional({ values: 'falsy' }).isString().trim().notEmpty().withMessage('name cannot be empty'),
+  optionalEnum('status', CAMPAIGN_STATUS_VALUES),
+  optionalDate('startDate'),
+  optionalDate('endDate'),
+  optionalText('description'),
+  optionalText('coreMessages'),
+  body('goals').optional({ values: 'null' }).isArray().withMessage('goals must be a list'),
+  body('hashtags').optional({ values: 'null' }).isArray().withMessage('hashtags must be a list'),
+  handleValidationErrors
+];
+
+export const validateProjectUpdate = [
+  body('name').optional({ values: 'falsy' }).isString().trim().notEmpty().withMessage('name cannot be empty'),
+  optionalEnum('status', PROJECT_STATUS_VALUES),
+  optionalDate('startDate'),
+  optionalDate('dueDate'),
+  optionalText('description'),
+  handleValidationErrors
+];
+
+export const validateProjectAssignment = [
+  body('userId').isMongoId().withMessage('Valid userId is required'),
+  body('role').isIn(PROJECT_ROLE_VALUES).withMessage(`role must be one of: ${PROJECT_ROLE_VALUES.join(', ')}`),
+  handleValidationErrors
+];
+
+export const validateTaskCreate = [
+  body('name').isString().trim().notEmpty().withMessage('Task name is required'),
+  body('projectId').isMongoId().withMessage('Valid projectId is required'),
+  optionalEnum('status', TASK_STATUS_VALUES),
+  optionalDate('taskDate'),
+  optionalText('description'),
+  optionalText('content'),
+  handleValidationErrors
+];
+
+export const validateTaskUpdate = [
+  body('name').optional({ values: 'falsy' }).isString().trim().notEmpty().withMessage('name cannot be empty'),
+  optionalEnum('status', TASK_STATUS_VALUES),
+  optionalDate('taskDate'),
+  optionalText('description'),
+  optionalText('content'),
   handleValidationErrors
 ];

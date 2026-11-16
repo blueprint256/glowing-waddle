@@ -48,6 +48,7 @@ import {
 import { useAuthStore } from '../store/authStore';
 import { UserRole } from '../types';
 import api, { promptAPI, commandMappingAPI, chainAPI } from '../services/api';
+import ClaudeConnectorCard from '../components/Settings/ClaudeConnectorCard';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -1228,6 +1229,8 @@ export default function Settings() {
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
               Connect external services to enhance your workflow
             </Typography>
+
+            <ClaudeConnectorCard />
 
             {loading ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>

@@ -27,6 +27,10 @@ import llmRoutes from './routes/llm.routes';
 import commandMappingRoutes from './routes/commandMapping.routes';
 import chainRoutes from './routes/chain.routes';
 import { requireAI } from './middleware/access';
+import { authenticateBearer, skipForBearer, isInternalRequest } from './middleware/bearerAuth';
+import oauthRoutes from './oauth/oauth.routes';
+import connectedAppsRoutes from './routes/connectedApps.routes';
+import mcpRouter from './mcp/router';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -35,8 +39,33 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/campai
 // Connect to database
 connectDatabase();
 
+// Behind a tunnel or reverse proxy (ngrok, cloudflared, nginx) this lets req.ip / req.protocol / host
+// reflect the real client and public URL. Default trusts only a proxy running on this machine.
+const trustProxyEnv = process.env.TRUST_PROXY?.trim();
+app.set(
+  'trust proxy',
+  !trustProxyEnv ? 'loopback'
+    : trustProxyEnv === 'true' ? true
+    : trustProxyEnv === 'false' ? false
+    : /^\d+$/.test(trustProxyEnv) ? Number(trustProxyEnv)
+    : trustProxyEnv
+);
+
 // Security middleware
 app.use(helmet());
+
+// Request logging
+if (process.env.NODE_ENV !== 'production') {
+  app.use(morgan('dev'));
+}
+
+// ---------------------------------------------------------------------------
+// Claude connector: OAuth 2.1 authorization server + MCP endpoint.
+// Mounted before the app's cookie/CORS stack: these are called server-to-server by Claude
+// (and by browser-based MCP tools), authenticate with bearer tokens and never use cookies.
+// ---------------------------------------------------------------------------
+app.use(oauthRoutes);
+app.use('/mcp', mcpRouter);
 
 // CORS configuration
 app.use(cors({
@@ -44,14 +73,9 @@ app.use(cors({
   credentials: true
 }));
 
-// Request logging
-if (process.env.NODE_ENV !== 'production') {
-  app.use(morgan('dev'));
-}
-
-// Body parsing middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Body parsing middleware (task content written through the connector can be long)
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
 // Disable ETags for API routes to prevent 304 caching issues
 // ETags can cause problems with client-side state management when
@@ -62,13 +86,15 @@ app.set('etag', false);
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // Limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later'
+  message: 'Too many requests from this IP, please try again later',
+  // The MCP connector's own loopback calls are limited per token on /mcp instead.
+  skip: (req) => isInternalRequest(req)
 });
 
 app.use('/api/', limiter);
 
 // Session configuration
-app.use(
+const sessionMiddleware = (
   session({
     secret: process.env.SESSION_SECRET || 'your-super-secret-key-change-in-production',
     resave: false,
@@ -85,10 +111,15 @@ app.use(
     }
   })
 );
+// Requests authenticated with an OAuth bearer token (Claude) never create or read cookie sessions.
+app.use(skipForBearer(sessionMiddleware));
 
 // Initialize Passport
 app.use(passport.initialize());
-app.use(passport.session());
+app.use(skipForBearer(passport.session()));
+
+// OAuth bearer tokens act as the user who approved the connection (same permissions as the web app).
+app.use('/api', authenticateBearer);
 
 // ---------------------------------------------------------------------------
 // AI generation guard (Part one = allowed, Part two = blocked).
@@ -118,6 +149,7 @@ app.post('/api/tasks/:id/refine-description', requireAI);
 app.patch('/api/tasks/:id/adopt-poster', requireAI);
 
 // API Routes
+app.use('/api', connectedAppsRoutes); // /api/oauth/requests/*, /api/connected-apps
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/campaigns', campaignRoutes);

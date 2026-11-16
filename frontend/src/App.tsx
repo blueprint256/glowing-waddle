@@ -1,8 +1,9 @@
 import { lazy, Suspense, useEffect } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { Box, CircularProgress } from '@mui/material';
 import { useAuthStore } from './store/authStore';
 import DashboardLayout from './components/Layout/DashboardLayout';
+import { getReturnTo } from './utils/returnTo';
 
 // Route-level code splitting: each page is its own chunk, fetched on first visit.
 // (Settings, DetailsSheet and Calendar are the heaviest — they no longer load at login.)
@@ -19,6 +20,7 @@ const DetailsSheet = lazy(() => import('./pages/DetailsSheet'));
 const Calendar = lazy(() => import('./pages/Calendar'));
 const TasksSheet = lazy(() => import('./pages/TasksSheet'));
 const Settings = lazy(() => import('./pages/Settings'));
+const OAuthConsent = lazy(() => import('./pages/OAuth/OAuthConsent'));
 
 function PageFallback() {
   return (
@@ -44,9 +46,17 @@ function ProtectedRoute({ children }: { children: JSX.Element }) {
 
 function App() {
   const { checkAuth } = useAuthStore();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
-    checkAuth();
+    checkAuth().then(() => {
+      // Signed in via a full-page redirect (e.g. Google) while connecting Claude: resume the consent screen.
+      const returnTo = getReturnTo();
+      if (useAuthStore.getState().isAuthenticated && returnTo && `${location.pathname}${location.search}` !== returnTo) {
+        navigate(returnTo, { replace: true });
+      }
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -55,6 +65,8 @@ function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
+      {/* Claude connector consent screen (handles its own sign-in redirect) */}
+      <Route path="/oauth/consent" element={<OAuthConsent />} />
 
       <Route
         path="/"

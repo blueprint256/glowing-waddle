@@ -16,7 +16,11 @@ export enum AuditAction {
   ASSET_UPLOADED = 'asset_uploaded',
   ASSET_DELETED = 'asset_deleted',
   EVENT_CREATED = 'event_created',
-  EVENT_UPDATED = 'event_updated'
+  EVENT_UPDATED = 'event_updated',
+  TASK_DELETED = 'task_deleted',
+  CONNECTOR_AUTHORIZED = 'connector_authorized',
+  CONNECTOR_DENIED = 'connector_denied',
+  CONNECTOR_REVOKED = 'connector_revoked'
 }
 
 export interface IAuditLog extends Document {

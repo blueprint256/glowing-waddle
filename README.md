@@ -535,3 +535,7 @@ For questions or issues, please create an issue in the repository or contact the
 ## Access modes (Part one / Part two)
 
 A System Admin assigns each user Part one (AI generation enabled) or Part two (AI generation off; manual upload, Canva import and, later, connectors). The app and data are identical. See [docs/ACCESS_MODES.md](docs/ACCESS_MODES.md).
+
+## Claude connector (MCP)
+
+Users can connect Claude to their account and manage campaigns, projects, tasks and comments from a chat, with exactly their own permissions. Sign-in uses OAuth 2.1 against the app itself. System Admins can turn the connector off per user. Setup, local testing with a tunnel, the tool list and the security model are in [docs/MCP_CONNECTOR.md](docs/MCP_CONNECTOR.md).

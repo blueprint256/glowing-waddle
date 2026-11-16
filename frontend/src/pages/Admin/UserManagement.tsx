@@ -18,7 +18,9 @@ import {
   TextField,
   MenuItem,
   Chip,
-  CircularProgress
+  CircularProgress,
+  FormControlLabel,
+  Switch
 } from '@mui/material';
 import { Add as AddIcon } from '@mui/icons-material';
 import { userAPI } from '../../services/api';
@@ -38,7 +40,8 @@ export default function UserManagement() {
     firstName: '',
     lastName: '',
     role: UserRole.HYBRID,
-    accessMode: AccessMode.PART_ONE
+    accessMode: AccessMode.PART_ONE,
+    mcpEnabled: true
   });
 
   useEffect(() => {
@@ -73,7 +76,8 @@ export default function UserManagement() {
         firstName: '',
         lastName: '',
         role: UserRole.HYBRID,
-        accessMode: AccessMode.PART_ONE
+        accessMode: AccessMode.PART_ONE,
+        mcpEnabled: true
       });
       loadUsers();
     } catch (error: any) {
@@ -106,6 +110,7 @@ export default function UserManagement() {
               <TableCell>Email</TableCell>
               <TableCell>Role</TableCell>
               <TableCell>Part</TableCell>
+              <TableCell>Claude</TableCell>
               <TableCell>Status</TableCell>
             </TableRow>
           </TableHead>
@@ -128,6 +133,14 @@ export default function UserManagement() {
                   {user.role === UserRole.SYSTEM_ADMIN
                     ? 'AI generation (admin)'
                     : ACCESS_MODE_LABELS[user.accessMode ?? AccessMode.PART_ONE]}
+                </TableCell>
+                <TableCell>
+                  <Chip
+                    label={user.mcpEnabled === false ? 'Off' : 'On'}
+                    color={user.mcpEnabled === false ? 'default' : 'primary'}
+                    variant={user.mcpEnabled === false ? 'outlined' : 'filled'}
+                    size="small"
+                  />
                 </TableCell>
                 <TableCell>
                   <Chip
@@ -217,6 +230,16 @@ export default function UserManagement() {
               </MenuItem>
             ))}
           </TextField>
+          <FormControlLabel
+            sx={{ mt: 1 }}
+            control={
+              <Switch
+                checked={formData.mcpEnabled}
+                onChange={(e) => setFormData({ ...formData, mcpEnabled: e.target.checked })}
+              />
+            }
+            label="Allow Claude connector"
+          />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Cancel</Button>

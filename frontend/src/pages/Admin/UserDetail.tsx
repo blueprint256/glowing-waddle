@@ -15,7 +15,9 @@ import {
   TextField,
   MenuItem,
   Button,
-  Alert
+  Alert,
+  FormControlLabel,
+  Switch
 } from '@mui/material';
 import { CheckCircle, Cancel } from '@mui/icons-material';
 import { userAPI } from '../../services/api';
@@ -30,6 +32,8 @@ export default function UserDetail() {
   const [accessMode, setAccessMode] = useState<AccessMode>(AccessMode.PART_ONE);
   const [savingAccess, setSavingAccess] = useState(false);
   const [accessMessage, setAccessMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [savingConnector, setSavingConnector] = useState(false);
+  const [connectorMessage, setConnectorMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -65,6 +69,25 @@ export default function UserDetail() {
       setAccessMessage({ type: 'error', text: e.response?.data?.message || 'Failed to update access' });
     } finally {
       setSavingAccess(false);
+    }
+  };
+
+  const toggleConnector = async (enabled: boolean) => {
+    try {
+      setSavingConnector(true);
+      setConnectorMessage(null);
+      await userAPI.update(id!, { mcpEnabled: enabled });
+      setUser((u) => (u ? { ...u, mcpEnabled: enabled } : u));
+      setConnectorMessage({
+        type: 'success',
+        text: enabled
+          ? 'Claude connector enabled. The user can now connect Claude from Settings → Integrations.'
+          : 'Claude connector disabled. Any connected Claude was disconnected immediately.'
+      });
+    } catch (e: any) {
+      setConnectorMessage({ type: 'error', text: e.response?.data?.message || 'Failed to update connector access' });
+    } finally {
+      setSavingConnector(false);
     }
   };
 
@@ -177,6 +200,41 @@ export default function UserDetail() {
                 {accessMessage && (
                   <Alert severity={accessMessage.type} sx={{ mt: 2 }}>
                     {accessMessage.text}
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Claude connector (MCP) access */}
+          <Grid item xs={12}>
+            <Card variant="outlined">
+              <CardContent>
+                <Typography variant="h6" gutterBottom color="primary">
+                  Claude Connector
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  Lets this user connect Claude to their account. Claude then works with their campaigns, projects
+                  and tasks with exactly the same permissions they have in the app.
+                </Typography>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={user.mcpEnabled !== false}
+                      onChange={(e) => toggleConnector(e.target.checked)}
+                      disabled={savingConnector || !user.isActive}
+                    />
+                  }
+                  label={user.mcpEnabled !== false ? 'Enabled' : 'Disabled'}
+                />
+                {!user.isActive && (
+                  <Typography variant="body2" color="text.secondary">
+                    Inactive accounts cannot use the connector.
+                  </Typography>
+                )}
+                {connectorMessage && (
+                  <Alert severity={connectorMessage.type} sx={{ mt: 2 }}>
+                    {connectorMessage.text}
                   </Alert>
                 )}
               </CardContent>

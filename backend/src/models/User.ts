@@ -29,6 +29,15 @@ export function canUseAI(user: { role: UserRole; accessMode?: string }): boolean
   return user.accessMode !== AccessMode.PART_TWO;
 }
 
+/**
+ * True when the user may connect an AI assistant (e.g. Claude via our MCP connector) to their account.
+ * Enabled for everyone by default; a System Admin can switch it off per account.
+ * Deactivated accounts can never use the connector.
+ */
+export function canUseConnector(user: { isActive?: boolean; mcpEnabled?: boolean }): boolean {
+  return user.isActive !== false && user.mcpEnabled !== false;
+}
+
 export interface IUser extends Document {
   email: string;
   password?: string;
@@ -38,6 +47,8 @@ export interface IUser extends Document {
   lastName: string;
   role: UserRole;
   accessMode: AccessMode;
+  /** Claude connector (MCP) access, toggled by a System Admin. Default true. */
+  mcpEnabled: boolean;
   isActive: boolean;
   companyInfo?: {
     companyName?: string;
@@ -113,6 +124,10 @@ const userSchema = new Schema<IUser>(
       type: String,
       enum: Object.values(AccessMode),
       default: AccessMode.PART_ONE
+    },
+    mcpEnabled: {
+      type: Boolean,
+      default: true
     },
     isActive: {
       type: Boolean,

@@ -1,6 +1,8 @@
 import express, { Request, Response } from 'express';
 import multer from 'multer';
-import { User, UserRole } from '../models/User';
+import mongoose from 'mongoose';
+import { User, UserRole, canUseConnector } from '../models/User';
+import { revokeUserTokens } from '../oauth/oauthService';
 import { isAuthenticated } from '../middleware/auth';
 import { canManageUsers } from '../middleware/rbac';
 import { validateUserCreation, validateUserUpdate, validateMongoId } from '../middleware/validation';
@@ -32,7 +34,7 @@ const upload = multer({
  */
 router.post('/', isAuthenticated, canManageUsers, validateUserCreation, async (req: Request, res: Response) => {
   try {
-    const { email, password, firstName, lastName, role, accessMode } = req.body;
+    const { email, password, firstName, lastName, role, accessMode, mcpEnabled } = req.body;
 
     // Check if user already exists
     const existingUser = await User.findOne({ email: email.toLowerCase() });
@@ -50,11 +52,12 @@ router.post('/', isAuthenticated, canManageUsers, validateUserCreation, async (r
       firstName,
       lastName,
       role,
-      ...(accessMode ? { accessMode } : {})
+      ...(accessMode ? { accessMode } : {}),
+      ...(typeof mcpEnabled === 'boolean' ? { mcpEnabled } : {})
     });
 
     // Log user creation
-    await logUserCreated(req.user!._id, user._id, { email, role, accessMode: user.accessMode }, req);
+    await logUserCreated(req.user!._id, user._id, { email, role, accessMode: user.accessMode, mcpEnabled: user.mcpEnabled }, req);
 
     res.status(201).json({
       success: true,
@@ -65,7 +68,9 @@ router.post('/', isAuthenticated, canManageUsers, validateUserCreation, async (r
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
-        accessMode: user.accessMode
+        accessMode: user.accessMode,
+        mcpEnabled: user.mcpEnabled,
+        isActive: user.isActive
       }
     });
   } catch (error: any) {
@@ -183,7 +188,7 @@ router.get('/:id', isAuthenticated, validateMongoId('id'), async (req: Request, 
  */
 router.put('/:id', isAuthenticated, canManageUsers, validateMongoId('id'), validateUserUpdate, async (req: Request, res: Response) => {
   try {
-    const { email, firstName, lastName, role, isActive, accessMode } = req.body;
+    const { email, firstName, lastName, role, isActive, accessMode, mcpEnabled } = req.body;
 
     const user = await User.findById(req.params.id);
     if (!user) {
@@ -201,9 +206,23 @@ router.put('/:id', isAuthenticated, canManageUsers, validateMongoId('id'), valid
     if (lastName) user.lastName = lastName;
     if (role) user.role = role;
     if (accessMode) user.accessMode = accessMode;
-    if (typeof isActive !== 'undefined') user.isActive = isActive;
+    if (typeof mcpEnabled === 'boolean') user.mcpEnabled = mcpEnabled;
+    if (typeof isActive === 'boolean') user.isActive = isActive;
+
+    // Email must stay unique (a duplicate would otherwise surface as a generic 500).
+    if (email && user.isModified('email')) {
+      const taken = await User.findOne({ email: user.email, _id: { $ne: user._id } }).select('_id');
+      if (taken) {
+        return res.status(400).json({ success: false, message: 'Another user already uses this email' });
+      }
+    }
 
     await user.save();
+
+    // Turning the connector off (or deactivating the account) disconnects Claude immediately.
+    if (!canUseConnector(user)) {
+      await revokeUserTokens(user._id as mongoose.Types.ObjectId);
+    }
 
     // Log update
     await logAudit({
@@ -225,6 +244,7 @@ router.put('/:id', isAuthenticated, canManageUsers, validateMongoId('id'), valid
         lastName: user.lastName,
         role: user.role,
         accessMode: user.accessMode,
+        mcpEnabled: user.mcpEnabled,
         isActive: user.isActive
       }
     });
@@ -297,14 +317,14 @@ router.patch('/me/company-info', isAuthenticated, async (req: Request, res: Resp
 
     // Update company info (only for Hybrid users, but we'll allow it for all authenticated users)
     user.companyInfo = {
-      companyName: companyName || user.companyInfo?.companyName,
-      sector: sector || user.companyInfo?.sector,
-      about: about || user.companyInfo?.about,
-      productsServices: productsServices || user.companyInfo?.productsServices,
-      usp: usp || user.companyInfo?.usp,
-      brandTone: brandTone || user.companyInfo?.brandTone,
-      audienceProfile: audienceProfile || user.companyInfo?.audienceProfile,
-      globalRules: globalRules || user.companyInfo?.globalRules,
+      companyName: companyName !== undefined ? companyName : user.companyInfo?.companyName,
+      sector: sector !== undefined ? sector : user.companyInfo?.sector,
+      about: about !== undefined ? about : user.companyInfo?.about,
+      productsServices: productsServices !== undefined ? productsServices : user.companyInfo?.productsServices,
+      usp: usp !== undefined ? usp : user.companyInfo?.usp,
+      brandTone: brandTone !== undefined ? brandTone : user.companyInfo?.brandTone,
+      audienceProfile: audienceProfile !== undefined ? audienceProfile : user.companyInfo?.audienceProfile,
+      globalRules: globalRules !== undefined ? globalRules : user.companyInfo?.globalRules,
       brandGuidelines: brandGuidelines !== undefined ? brandGuidelines : user.companyInfo?.brandGuidelines,
       primaryLogoUrl: primaryLogoUrl !== undefined ? primaryLogoUrl : user.companyInfo?.primaryLogoUrl,
       secondaryLogoUrl: secondaryLogoUrl !== undefined ? secondaryLogoUrl : user.companyInfo?.secondaryLogoUrl,
@@ -438,9 +458,14 @@ router.delete('/:id', isAuthenticated, canManageUsers, validateMongoId('id'), as
       });
     }
 
+    if (String(user._id) === String(req.user!._id)) {
+      return res.status(400).json({ success: false, message: 'You cannot deactivate your own account' });
+    }
+
     // Soft delete by setting isActive to false
     user.isActive = false;
     await user.save();
+    await revokeUserTokens(user._id as mongoose.Types.ObjectId);
 
     // Log deletion
     await logAudit({
