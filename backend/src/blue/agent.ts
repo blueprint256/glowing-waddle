@@ -34,6 +34,14 @@ export interface AgentResult {
 }
 
 const MAX_RESULT_CHARS = 24_000;
+/** Results the chat shows as a table, gallery or card under Blue's reply. */
+const SHOWN_AS_CARDS = new Set([
+  'list_tasks', 'get_task', 'get_calendar', 'create_tasks', 'list_campaigns', 'get_campaign', 'list_projects', 'get_project',
+  'list_posts', 'schedule_post', 'list_users', 'list_inbox', 'list_comments', 'search_library', 'get_library_item',
+  'generate_campaign_content', 'ai_usage', 'ai_setup_status', 'list_publishing_channels'
+]);
+const SHOWN_NOTE =
+  '\n[The user already sees this as a table/card with links right under your reply. Do NOT list these items, their fields or links again. Reply with one or two sentences: how many, and what stands out or needs a decision.]';
 /** Cards in a saved chat can show more than the AI reads; above this they show as a plain step. */
 const MAX_DISPLAY_CHARS = 400_000;
 const now = () => new Date().toISOString();
@@ -81,7 +89,8 @@ export async function executeCall<Ctx>(
     const data = await tool.handler(call.args ?? {}, ctx);
     onEvent({ type: 'tool_result', id: call.id, name: call.name, ok: true, data });
     const full = JSON.stringify(data ?? null);
-    const content = resultContent(data);
+    // Small models re-list results the app already shows; a note right next to the data works best.
+    const content = resultContent(data) + (SHOWN_AS_CARDS.has(call.name) ? SHOWN_NOTE : '');
     return {
       id: call.id, name: call.name, content, isError: false,
       // Keep the full result for the chat cards when the AI only got a shortened copy.

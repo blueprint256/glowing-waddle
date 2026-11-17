@@ -21,7 +21,10 @@ export default function BluePage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const { init, newChat, busy, detail, closeDetail, setOpen, conversationId, conversations } = useBlueStore();
-  const wideEnough = useMediaQuery('(min-width: 75em)'); // room for chats + chat + panel
+  // ≥1200px: chats + chat + panel side by side. ≥992px: chat + panel side by side.
+  // 768–991px: the panel slides over the chat from the right. Phones: it slides up from the bottom.
+  const wideEnough = useMediaQuery('(min-width: 75em)');
+  const sideBySide = useMediaQuery('(min-width: 62em)');
   const tablet = useMediaQuery('(min-width: 48em)');
   const [historyAnchor, setHistoryAnchor] = useState<HTMLElement | null>(null);
 
@@ -40,7 +43,7 @@ export default function BluePage() {
   }
 
   const title = conversations.find((c) => c.id === conversationId)?.title || 'New chat';
-  const showList = wideEnough || (tablet && !detail);
+  const showList = wideEnough || (sideBySide && !detail);
 
   return (
     <Box sx={{ display: 'flex', height: '100%', minHeight: 0 }}>
@@ -108,17 +111,26 @@ export default function BluePage() {
       </Box>
 
       {/* What you clicked in the chat */}
-      {detail && tablet && (
+      {detail && sideBySide && (
         <Box
           component="aside"
           aria-label="Details"
-          sx={{ width: { md: 360, lg: 420 }, flex: { md: '0 0 360px', lg: '0 0 420px' }, borderLeft: '1px solid var(--border)', minHeight: 0 }}
+          sx={{ width: { xs: 360, xl: 420 }, flex: { xs: '0 0 360px', xl: '0 0 420px' }, borderLeft: '1px solid var(--border)', minHeight: 0 }}
         >
           <BlueDetail />
         </Box>
       )}
-      {detail && !tablet && (
-        <Drawer anchor="bottom" open onClose={closeDetail} PaperProps={{ sx: { height: '88dvh', borderRadius: '12px 12px 0 0', bgcolor: 'var(--bg-panel)', backgroundImage: 'none' } }}>
+      {detail && !sideBySide && (
+        <Drawer
+          anchor={tablet ? 'right' : 'bottom'}
+          open
+          onClose={closeDetail}
+          PaperProps={{
+            sx: tablet
+              ? { width: 'min(440px, 92vw)', bgcolor: 'var(--bg-panel)', backgroundImage: 'none' }
+              : { height: '88dvh', borderRadius: '12px 12px 0 0', bgcolor: 'var(--bg-panel)', backgroundImage: 'none' }
+          }}
+        >
           <BlueDetail />
         </Drawer>
       )}
