@@ -265,7 +265,7 @@ export default function PublishingPage() {
         <Tab value="history" label="History" />
       </Tabs>
 
-      {pointed && !pointedShown && (
+      {pointed && !pointedShown && (tab === 'queue' ? attention !== null && upcoming !== null : tab === 'history' ? history !== null : true) && (
         <Section title="The item you opened">
           <PostList posts={[pointed]} onChanged={changed} highlight={pointed.id} />
         </Section>
