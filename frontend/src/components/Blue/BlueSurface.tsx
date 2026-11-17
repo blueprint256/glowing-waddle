@@ -3,11 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { Box, Button, Dialog, IconButton, Typography } from '@mui/material';
 import { Close as CloseIcon, OpenInNew as OpenIcon } from '@mui/icons-material';
 import { useBlueStore, type BlueDetailRef } from '../../store/blueStore';
+import { appPath } from '../../lib/paths';
+import { useOpenPost } from '../posts/PostPanelHost';
 
 /**
  * Where the chat is showing: the side panel next to another page, or the full-screen Blue page.
- * On the full-screen page, clicking a task, campaign, project or Library item opens it in the
- * right-hand panel instead of leaving the chat.
+ * On the full-screen page, clicking a post, campaign, theme or Library item opens it in the
+ * right-hand panel instead of leaving the chat. In the side panel, a post opens in the post panel
+ * over the current page; other links go to their page.
  */
 export type BlueSurface = 'panel' | 'page';
 
@@ -15,17 +18,12 @@ export const BlueSurfaceContext = createContext<BlueSurface>('panel');
 
 export const useBlueSurface = () => useContext(BlueSurfaceContext);
 
-const DETAIL_PATH = /^\/(tasks|library|campaigns|projects)\/([a-f0-9]{24})\/?$/i;
-const TYPES: Record<string, BlueDetailRef['type']> = { tasks: 'task', library: 'library', campaigns: 'campaign', projects: 'project' };
+const DETAIL_PATH = /^\/(posts|tasks|library|campaigns|projects)\/([a-f0-9]{24})\/?$/i;
+const TYPES: Record<string, BlueDetailRef['type']> = { posts: 'task', tasks: 'task', library: 'library', campaigns: 'campaign', projects: 'project' };
 
+/** The in-app address of a link from a chat card (old /tasks/ links become /posts/). */
 export function pathFrom(url?: string | null): string | null {
-  if (!url) return null;
-  try {
-    const u = new URL(url, window.location.origin);
-    return u.pathname + u.search;
-  } catch {
-    return null;
-  }
+  return appPath(url);
 }
 
 /** Returns a click handler for a link from a chat card (or undefined when there's nothing to open). */
@@ -33,11 +31,13 @@ export function useBlueOpen() {
   const navigate = useNavigate();
   const surface = useBlueSurface();
   const showDetail = useBlueStore((s) => s.showDetail);
+  const openPost = useOpenPost();
   return (url?: string | null, preview?: any) => {
     const path = pathFrom(url);
     if (!path) return undefined;
-    const m = surface === 'page' ? path.split('?')[0].match(DETAIL_PATH) : null;
-    if (m) return () => showDetail({ type: TYPES[m[1].toLowerCase()], id: m[2], preview });
+    const m = path.split(/[?#]/)[0].match(DETAIL_PATH);
+    if (m && surface === 'page') return () => showDetail({ type: TYPES[m[1].toLowerCase()], id: m[2], preview });
+    if (m && TYPES[m[1].toLowerCase()] === 'task') return () => openPost(m[2]);
     return () => navigate(path);
   };
 }

@@ -28,7 +28,8 @@ export interface PlannerParams {
   campaign?: unknown;
   theme?: unknown;
   status?: string;
-  group?: 'campaign' | 'theme' | 'none';
+  /** List view grouping (day is the default). */
+  group?: 'day' | 'campaign' | 'theme';
 }
 
 export const paths = {
@@ -51,7 +52,8 @@ export const paths = {
   libraryItem: (assetId: unknown) => `/library/${id(assetId)}`,
   inbox: (opts: { box?: string; item?: unknown } = {}) => `/inbox${query({ box: opts.box, item: opts.item ? id(opts.item) : undefined })}`,
   publishing: (tab?: PublishingTab) => `/publishing${query({ tab })}`,
-  publishingPost: (postId: unknown) => `/publishing${query({ post: id(postId) })}`,
+  /** A scheduled or published copy in Publishing (?item=, so it never clashes with the post panel's ?post=). */
+  publishingPost: (postId: unknown) => `/publishing${query({ item: id(postId) })}`,
   blue: (chatId?: unknown) => (chatId ? `/blue/${id(chatId)}` : '/blue'),
   settings: (section?: SettingsSection) => (section ? `/settings/${section}` : '/settings'),
   adminUsers: () => '/admin/users',

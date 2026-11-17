@@ -1,14 +1,12 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Link as RouterLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar, Box, Drawer, IconButton, Tooltip, Typography } from '@mui/material';
 import {
   Menu as MenuIcon,
-  Dashboard as DashboardIcon,
+  Today as TodayIcon,
   Campaign as CampaignIcon,
   People as PeopleIcon,
-  ListAlt as ListAltIcon,
-  CalendarMonth as CalendarIcon,
-  TableChart as TableChartIcon,
+  CalendarMonth as PlannerIcon,
   PhotoLibrary as PhotoLibraryIcon,
   Send as SendIcon,
   Inbox as InboxIcon,
@@ -25,6 +23,9 @@ import { UserRole } from '../../types';
 import { useBlueStore } from '../../store/blueStore';
 import { useInboxStore } from '../../store/inboxStore';
 import BluePanel, { BlueMark } from '../Blue/BluePanel';
+import PostPanelHost from '../posts/PostPanelHost';
+import ToastHost from '../ui/ToastHost';
+import { paths } from '../../lib/paths';
 
 /** Accent names map to --accent-<name>-bg / -fg in styles/tokens.css. */
 type Accent = 'green' | 'blue' | 'purple' | 'wine' | 'violet' | 'amber';
@@ -46,17 +47,15 @@ interface NavItem {
 }
 
 const NAV: NavItem[] = [
-  { text: 'Dashboard', icon: <DashboardIcon />, path: '/', accent: 'green', roles: ['all'] },
-  { text: 'Inbox', icon: <InboxIcon />, path: '/inbox', accent: 'amber', roles: ['all'], badge: 'inbox' },
-  { text: 'Campaigns', icon: <CampaignIcon />, path: '/campaigns', accent: 'violet', roles: ['all'], also: ['/projects/', '/tasks/'] },
-  { text: 'Details Sheet', icon: <ListAltIcon />, path: '/details-sheet', accent: 'blue', roles: ['all'] },
-  { text: 'Calendar', icon: <CalendarIcon />, path: '/calendar', accent: 'purple', roles: ['all'] },
-  { text: 'Tasks Sheet', icon: <TableChartIcon />, path: '/tasks-sheet', accent: 'amber', roles: ['all'] },
-  { text: 'Library', icon: <PhotoLibraryIcon />, path: '/library', accent: 'blue', roles: ['all'], library: true },
-  { text: 'Publishing', icon: <SendIcon />, path: '/publishing', accent: 'green', roles: ['all'], publishing: true },
-  { text: 'Settings', icon: <SettingsIcon />, path: '/settings', roles: ['all'] },
-  { text: 'Outreach', icon: <OutreachIcon />, path: '/admin/outreach', accent: 'purple', roles: [UserRole.SYSTEM_ADMIN], badge: 'outreach' },
-  { text: 'Users', icon: <PeopleIcon />, path: '/admin/users', accent: 'wine', roles: [UserRole.SYSTEM_ADMIN] }
+  { text: 'Today', icon: <TodayIcon />, path: paths.today(), accent: 'green', roles: ['all'] },
+  { text: 'Inbox', icon: <InboxIcon />, path: paths.inbox(), accent: 'amber', roles: ['all'], badge: 'inbox' },
+  { text: 'Planner', icon: <PlannerIcon />, path: '/planner', accent: 'purple', roles: ['all'], also: ['/posts/'] },
+  { text: 'Campaigns', icon: <CampaignIcon />, path: paths.campaigns(), accent: 'violet', roles: ['all'] },
+  { text: 'Library', icon: <PhotoLibraryIcon />, path: paths.library(), accent: 'blue', roles: ['all'], library: true },
+  { text: 'Publishing', icon: <SendIcon />, path: paths.publishing(), accent: 'green', roles: ['all'], publishing: true },
+  { text: 'Settings', icon: <SettingsIcon />, path: paths.settings(), roles: ['all'] },
+  { text: 'Outreach', icon: <OutreachIcon />, path: paths.adminOutreach(), accent: 'purple', roles: [UserRole.SYSTEM_ADMIN], badge: 'outreach' },
+  { text: 'Users', icon: <PeopleIcon />, path: paths.adminUsers(), accent: 'wine', roles: [UserRole.SYSTEM_ADMIN] }
 ];
 
 function isActive(item: NavItem, pathname: string) {
@@ -167,11 +166,6 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   );
   const initials = `${user?.firstName?.[0] ?? ''}${user?.lastName?.[0] ?? ''}`.toUpperCase() || 'U';
 
-  const go = (path: string) => {
-    navigate(path);
-    onNavigate?.();
-  };
-
   const handleLogout = async () => {
     await logout();
     navigate('/login');
@@ -190,7 +184,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           B
         </Box>
         <Typography noWrap sx={{ fontSize: 14, fontWeight: 600, color: 'var(--text-strong)' }}>
-          Campaign Mgmt
+          Blueprint
         </Typography>
       </Box>
 
@@ -203,9 +197,9 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           return (
             <Box
               key={item.path}
-              component="button"
-              type="button"
-              onClick={() => go(item.path)}
+              component={RouterLink}
+              to={item.path}
+              onClick={() => onNavigate?.()}
               aria-current={active ? 'page' : undefined}
               sx={{
                 all: 'unset', boxSizing: 'border-box', cursor: 'pointer',
@@ -263,8 +257,8 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           <Typography noWrap sx={{ fontSize: 12, fontWeight: 600, color: 'var(--text-strong)', lineHeight: 1.3 }}>
             {user?.firstName} {user?.lastName}
           </Typography>
-          <Typography noWrap sx={{ fontSize: 11, color: 'var(--text-subtle)', lineHeight: 1.3, textTransform: 'capitalize' }}>
-            {user?.role?.replace('_', ' ')}
+          <Typography noWrap sx={{ fontSize: 11, color: 'var(--text-subtle)', lineHeight: 1.3 }}>
+            {isAdmin ? 'Admin' : user?.email}
           </Typography>
         </Box>
         <Tooltip title={mode === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}>
@@ -310,7 +304,22 @@ export default function DashboardLayout() {
         <SidebarContent />
       </aside>
 
-      {/* <768px: drawer, opened from the floating button */}
+      {/* <768px: a slim top bar with the menu and Blue (nothing floats over the page) */}
+      <header className="bp-topbar">
+        <IconButton onClick={() => setDrawerOpen(true)} aria-label="Open the menu" size="small" sx={{ color: 'var(--text-strong)' }}>
+          <MenuIcon />
+        </IconButton>
+        <Typography component="span" sx={{ flex: 1, fontSize: 15, fontWeight: 700, color: 'var(--text-strong)' }}>
+          Blueprint
+        </Typography>
+        {blueAllowed && !flush && (
+          <IconButton onClick={toggleBlue} aria-label="Open Blue" size="small">
+            <BlueMark size={26} />
+          </IconButton>
+        )}
+      </header>
+
+      {/* <768px: drawer, opened from the top bar */}
       <Drawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
@@ -329,24 +338,9 @@ export default function DashboardLayout() {
 
       {blueAllowed && <BluePanel />}
 
-      <div className="bp-fab-bar">
-        <IconButton
-          onClick={() => setDrawerOpen(true)}
-          aria-label="Open navigation"
-          sx={{ width: 40, height: 40, borderRadius: 9999, bgcolor: 'var(--bg-fab)', color: '#fff', '&:hover': { bgcolor: 'var(--bg-fab)' } }}
-        >
-          <MenuIcon fontSize="small" />
-        </IconButton>
-        {blueAllowed && !flush && (
-          <IconButton
-            onClick={toggleBlue}
-            aria-label="Open Blue"
-            sx={{ width: 40, height: 40, borderRadius: 9999, bgcolor: 'var(--accent-blue-fg)', color: '#fff', '&:hover': { bgcolor: 'var(--accent-blue-fg)' } }}
-          >
-            <Box component="span" sx={{ fontWeight: 700, fontSize: 16 }}>B</Box>
-          </IconButton>
-        )}
-      </div>
+      {/* A post opened from anywhere (?post=<id>), and short confirmations */}
+      <PostPanelHost />
+      <ToastHost />
     </div>
   );
 }

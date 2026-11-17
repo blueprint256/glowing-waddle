@@ -1,41 +1,30 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, Button, Chip, CircularProgress, IconButton, MenuItem, Select, Tooltip, Typography } from '@mui/material';
-import {
-  Close as CloseIcon,
-  ArrowBack as BackIcon,
-  OpenInNew as OpenIcon,
-  Visibility as PreviewIcon,
-  Download as DownloadIcon,
-  CalendarMonth as CalendarIcon
-} from '@mui/icons-material';
-import api, { campaignAPI, projectAPI, taskAPI } from '../../services/api';
+import { Box, Button, Chip, CircularProgress, IconButton, Tooltip, Typography } from '@mui/material';
+import { Close as CloseIcon, ArrowBack as BackIcon, OpenInNew as OpenIcon, Download as DownloadIcon } from '@mui/icons-material';
+import { campaignAPI, projectAPI, taskAPI } from '../../services/api';
 import { libraryAPI, librarySrc, type LibraryItem } from '../../services/library';
 import { useBlueStore, type BlueDetailRef } from '../../store/blueStore';
-import SocialPreviewModal from '../SocialPreviewModal';
+import PostEditor from '../posts/PostEditor';
+import { useUnsavedGuard } from '../posts/UnsavedGuard';
+import { MetaChip, PostStatusChip } from '../ui/StatusChip';
+import { campaignStatusMeta, themeStatusMeta } from '../../lib/status';
+import { formatDay, formatDayRange } from '../../lib/dates';
+import { paths, refId } from '../../lib/paths';
 import { ImageLightbox } from './BlueSurface';
 
 /**
- * The right-hand panel of the full-screen Blue page: whatever you clicked in the chat (a task, a
- * Library item, a campaign or a project), with its image, details and the main actions, so you can
- * check or change it without leaving the conversation. Links inside open in the same panel (Back
- * returns); "Open page" goes to the item's normal screen.
+ * The right-hand panel of the full-screen Blue page: whatever you clicked in the chat (a post, a
+ * Library item, a campaign or a theme), so you can check or change it without leaving the
+ * conversation. A post opens in the full post editor. Links inside open in the same panel (Back
+ * returns); "Open page" goes to the item's own page.
  */
 
-const STATUS = ['Pending', 'In Progress', 'Completed'];
-
 function day(value?: string | null): string | null {
-  if (!value) return null;
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+  return value ? formatDay(value) || null : null;
 }
 
-function range(a?: string | null, b?: string | null) {
-  return [day(a), day(b)].filter(Boolean).join(' – ') || null;
-}
-
-const idOf = (v: any): string | undefined => (v && typeof v === 'object' ? v._id || v.id : v) || undefined;
+const idOf = (v: any): string | undefined => refId(v) || undefined;
 
 function Section({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -102,10 +91,6 @@ function Thumb({ src }: { src?: string | null }) {
   );
 }
 
-function SmallStatus({ status }: { status?: string }) {
-  if (!status) return null;
-  return <Chip size="small" label={status.replace(/_/g, ' ')} sx={{ height: 20, fontSize: 11, textTransform: 'capitalize' }} />;
-}
 
 /** Loads a record; keeps showing what the chat already knew while it loads. */
 function useRecord<T>(load: () => Promise<T>, deps: unknown[]) {
@@ -127,140 +112,6 @@ function useRecord<T>(load: () => Promise<T>, deps: unknown[]) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, version]);
   return { data, error, loading, reload: () => setVersion((v) => v + 1), setData };
-}
-
-// ---------------------------------------------------------------------------
-// Task
-// ---------------------------------------------------------------------------
-
-function TaskView({ id, preview, go }: { id: string; preview?: any; go: (ref: BlueDetailRef) => void }) {
-  const { data, error, loading, setData } = useRecord<any>(() => taskAPI.getById(id).then((r: any) => r.data.task), [id]);
-  const [saving, setSaving] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
-  const [posterBusy, setPosterBusy] = useState(false);
-  const bump = () => useBlueStore.setState((s) => ({ refreshKey: s.refreshKey + 1 }));
-
-  const t: any = data || {
-    name: preview?.name,
-    status: preview?.status,
-    taskDate: preview?.task_date,
-    content: preview?.content,
-    description: preview?.description,
-    designedImage: preview?.designed_image_url
-  };
-
-  const setStatus = async (status: string) => {
-    setSaving(true);
-    try {
-      const res = await taskAPI.update(id, { status });
-      setData(res.data.task || { ...t, status });
-      bump();
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const poster = async (action: 'adopt' | 'discard') => {
-    setPosterBusy(true);
-    try {
-      const res = await api.patch(`/tasks/${id}/${action}-poster`);
-      setData(res.data.task || { ...t, pendingGeneratedImage: undefined });
-      bump();
-    } finally {
-      setPosterBusy(false);
-    }
-  };
-
-  if (!t.name && loading) return <Loading />;
-  if (error && !t.name) return <Failed text={error} />;
-
-  const project = t.projectId && typeof t.projectId === 'object' ? t.projectId : preview?.project;
-  const campaign = t.campaignId && typeof t.campaignId === 'object' ? t.campaignId : preview?.campaign;
-
-  return (
-    <>
-      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-        <Typography sx={{ flex: 1, fontSize: 17, fontWeight: 600, color: 'var(--text-strong)', overflowWrap: 'anywhere' }}>{t.name}</Typography>
-        {loading && <CircularProgress size={14} sx={{ mt: 0.75, color: 'var(--text-muted)' }} />}
-      </Box>
-
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-        <Select
-          size="small"
-          value={STATUS.includes(t.status) ? t.status : ''}
-          onChange={(e) => setStatus(String(e.target.value))}
-          disabled={saving || !data}
-          sx={{ fontSize: 13, height: 30, minWidth: 140 }}
-          inputProps={{ 'aria-label': 'Status' }}
-        >
-          {STATUS.map((s) => (
-            <MenuItem key={s} value={s} sx={{ fontSize: 13 }}>
-              {s}
-            </MenuItem>
-          ))}
-        </Select>
-        {day(t.taskDate) && (
-          <Typography sx={{ fontSize: 13, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            <CalendarIcon sx={{ fontSize: 15 }} />
-            {day(t.taskDate)}
-          </Typography>
-        )}
-      </Box>
-
-      <BigImage src={t.designedImage} title={t.name} caption={t.content} />
-
-      {t.pendingGeneratedImage && (
-        <Section label="New AI poster (not used yet)">
-          <BigImage src={t.pendingGeneratedImage} title={`${t.name} — new poster`} />
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button size="small" variant="contained" disabled={posterBusy} onClick={() => poster('adopt')}>
-              Use this poster
-            </Button>
-            <Button size="small" variant="outlined" disabled={posterBusy} onClick={() => poster('discard')}>
-              Discard
-            </Button>
-          </Box>
-        </Section>
-      )}
-
-      {t.content && (
-        <Section label="Post copy">
-          <Body>{t.content}</Body>
-        </Section>
-      )}
-      {t.description && (
-        <Section label="Brief">
-          <Body>{t.description}</Body>
-        </Section>
-      )}
-
-      {(project || campaign) && (
-        <Section label="Part of">
-          {campaign && idOf(campaign) && (
-            <LinkRow label={<>Campaign · {campaign.name}</>} onClick={() => go({ type: 'campaign', id: idOf(campaign)!, preview: campaign })} />
-          )}
-          {project && idOf(project) && (
-            <LinkRow label={<>Project · {project.name}</>} onClick={() => go({ type: 'project', id: idOf(project)!, preview: project })} />
-          )}
-        </Section>
-      )}
-
-      {(t.content || t.designedImage) && (
-        <Box>
-          <Button size="small" startIcon={<PreviewIcon sx={{ fontSize: 16 }} />} onClick={() => setShowPreview(true)}>
-            Preview post
-          </Button>
-        </Box>
-      )}
-      {showPreview && (
-        <SocialPreviewModal
-          open={showPreview}
-          onClose={() => setShowPreview(false)}
-          task={{ _id: id, name: t.name, description: t.description, content: t.content, designedImage: t.designedImage, taskDate: t.taskDate }}
-        />
-      )}
-    </>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -346,8 +197,8 @@ function CampaignView({ id, preview, go }: { id: string; preview?: any; go: (ref
     <>
       <Typography sx={{ fontSize: 17, fontWeight: 600, color: 'var(--text-strong)' }}>{camp.name}</Typography>
       <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
-        <SmallStatus status={camp.archived ? 'archived' : camp.status} />
-        <Typography sx={{ fontSize: 13, color: 'var(--text-muted)' }}>{range(camp.startDate, camp.endDate)}</Typography>
+        <MetaChip meta={campaignStatusMeta(camp.archived ? 'archived' : camp.status)} />
+        <Typography sx={{ fontSize: 13, color: 'var(--text-muted)' }}>{formatDayRange(camp.startDate, camp.endDate)}</Typography>
       </Box>
       {camp.description && (
         <Section label="About">
@@ -359,17 +210,17 @@ function CampaignView({ id, preview, go }: { id: string; preview?: any; go: (ref
           <Body>{camp.coreMessages}</Body>
         </Section>
       )}
-      <Section label={`Projects${p.data ? ` (${p.data.length})` : ''}`}>
+      <Section label={`Themes${p.data ? ` (${p.data.length})` : ''}`}>
         {p.loading && !p.data ? (
           <Loading small />
         ) : (p.data || []).length === 0 ? (
-          <Typography sx={{ fontSize: 13, color: 'var(--text-muted)' }}>No projects yet.</Typography>
+          <Typography sx={{ fontSize: 13, color: 'var(--text-muted)' }}>No themes yet.</Typography>
         ) : (
           (p.data as any[]).map((proj) => (
             <LinkRow
               key={proj._id}
               label={proj.name}
-              right={<SmallStatus status={proj.status} />}
+              right={<MetaChip meta={themeStatusMeta(proj.status)} />}
               onClick={() => go({ type: 'project', id: proj._id, preview: { name: proj.name, status: proj.status } })}
             />
           ))
@@ -379,8 +230,9 @@ function CampaignView({ id, preview, go }: { id: string; preview?: any; go: (ref
   );
 }
 
-function ProjectView({ id, preview, go }: { id: string; preview?: any; go: (ref: BlueDetailRef) => void }) {
+function ProjectView({ id, preview, go, onCampaign }: { id: string; preview?: any; go: (ref: BlueDetailRef) => void; onCampaign: (id: string | null) => void }) {
   const pr = useRecord<any>(() => projectAPI.getById(id).then((r: any) => r.data.project), [id]);
+  useEffect(() => onCampaign(idOf(pr.data?.campaignId) || null), [pr.data, onCampaign]);
   const ts = useRecord<any[]>(() => taskAPI.getAll({ projectId: id, limit: 500 }).then((r: any) => r.data.tasks || []), [id]);
   const proj: any = pr.data || { name: preview?.name, status: preview?.status };
   if (!proj.name && pr.loading) return <Loading />;
@@ -390,8 +242,8 @@ function ProjectView({ id, preview, go }: { id: string; preview?: any; go: (ref:
     <>
       <Typography sx={{ fontSize: 17, fontWeight: 600, color: 'var(--text-strong)' }}>{proj.name}</Typography>
       <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
-        <SmallStatus status={proj.status} />
-        <Typography sx={{ fontSize: 13, color: 'var(--text-muted)' }}>{range(proj.startDate, proj.dueDate)}</Typography>
+        <MetaChip meta={themeStatusMeta(proj.status)} />
+        <Typography sx={{ fontSize: 13, color: 'var(--text-muted)' }}>{formatDayRange(proj.startDate, proj.dueDate)}</Typography>
       </Box>
       {campaign && (
         <LinkRow label={<>Campaign · {campaign.name}</>} onClick={() => go({ type: 'campaign', id: idOf(campaign)!, preview: campaign })} />
@@ -401,11 +253,11 @@ function ProjectView({ id, preview, go }: { id: string; preview?: any; go: (ref:
           <Body>{proj.description}</Body>
         </Section>
       )}
-      <Section label={`Tasks${ts.data ? ` (${ts.data.length})` : ''}`}>
+      <Section label={`Posts${ts.data ? ` (${ts.data.length})` : ''}`}>
         {ts.loading && !ts.data ? (
           <Loading small />
         ) : (ts.data || []).length === 0 ? (
-          <Typography sx={{ fontSize: 13, color: 'var(--text-muted)' }}>No tasks yet.</Typography>
+          <Typography sx={{ fontSize: 13, color: 'var(--text-muted)' }}>No posts yet.</Typography>
         ) : (
           (ts.data as any[]).map((t) => (
             <LinkRow
@@ -415,11 +267,11 @@ function ProjectView({ id, preview, go }: { id: string; preview?: any; go: (ref:
                   <Thumb src={t.designedImage} />
                   <Box sx={{ minWidth: 0 }}>
                     <Typography noWrap sx={{ fontSize: 13, color: 'var(--text-strong)' }}>{t.name}</Typography>
-                    <Typography noWrap sx={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{day(t.taskDate)}</Typography>
+                    <Typography noWrap sx={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{day(t.taskDate) || 'Not scheduled yet'}</Typography>
                   </Box>
                 </Box>
               }
-              right={<SmallStatus status={t.status} />}
+              right={<PostStatusChip status={t.status} />}
               onClick={() => go({ type: 'task', id: t._id, preview: { name: t.name, status: t.status, designed_image_url: t.designedImage } })}
             />
           ))
@@ -443,20 +295,16 @@ function Failed({ text }: { text: string }) {
   return <Typography sx={{ fontSize: 13, color: 'var(--danger-text)', py: 2 }}>{text}</Typography>;
 }
 
-const PAGE: Record<BlueDetailRef['type'], (id: string) => string> = {
-  task: (id) => `/tasks/${id}`,
-  library: (id) => `/library/${id}`,
-  campaign: (id) => `/campaigns/${id}`,
-  project: (id) => `/projects/${id}`
-};
-
-const LABEL: Record<BlueDetailRef['type'], string> = { task: 'Task', library: 'Library item', campaign: 'Campaign', project: 'Project' };
+const LABEL: Record<BlueDetailRef['type'], string> = { task: 'Post', library: 'Library item', campaign: 'Campaign', project: 'Theme' };
 
 export default function BlueDetail() {
   const navigate = useNavigate();
   const { detail, showDetail, closeDetail } = useBlueStore();
   const [stack, setStack] = useState<BlueDetailRef[]>([]);
+  const [themeCampaign, setThemeCampaign] = useState<string | null>(null);
   const inner = useRef(false);
+  const unsaved = useUnsavedGuard();
+  const bump = () => useBlueStore.setState((s) => ({ refreshKey: s.refreshKey + 1 }));
 
   // Opening something from the chat starts fresh; links inside the panel can go Back.
   useEffect(() => {
@@ -466,17 +314,29 @@ export default function BlueDetail() {
 
   if (!detail) return null;
 
-  const go = (ref: BlueDetailRef) => {
-    inner.current = true;
-    setStack((s) => [...s, detail]);
-    showDetail(ref);
-  };
-  const back = () => {
-    const prev = stack[stack.length - 1];
-    if (!prev) return;
-    inner.current = true;
-    setStack((s) => s.slice(0, -1));
-    showDetail(prev);
+  // Leaving a post with unsaved edits asks first.
+  const go = (ref: BlueDetailRef) =>
+    unsaved.guard(() => {
+      inner.current = true;
+      setStack((s) => [...s, detail]);
+      showDetail(ref);
+    });
+  const back = () =>
+    unsaved.guard(() => {
+      const prev = stack[stack.length - 1];
+      if (!prev) return;
+      inner.current = true;
+      setStack((s) => s.slice(0, -1));
+      showDetail(prev);
+    });
+  const close = () => unsaved.guard(closeDetail);
+
+  const pageOf = (ref: BlueDetailRef): string => {
+    if (ref.type === 'task') return paths.post(ref.id);
+    if (ref.type === 'library') return paths.libraryItem(ref.id);
+    if (ref.type === 'campaign') return paths.campaign(ref.id);
+    const campaign = themeCampaign || idOf(ref.preview?.campaign) || idOf(ref.preview?.campaignId);
+    return campaign ? paths.campaign(campaign, { theme: ref.id }) : paths.campaigns();
   };
 
   return (
@@ -490,21 +350,35 @@ export default function BlueDetail() {
           </Tooltip>
         )}
         <Typography sx={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', pl: stack.length ? 0 : 0.5 }}>{LABEL[detail.type]}</Typography>
-        <Button size="small" startIcon={<OpenIcon sx={{ fontSize: 16 }} />} onClick={() => navigate(PAGE[detail.type](detail.id))} sx={{ fontSize: 12 }}>
+        <Button size="small" startIcon={<OpenIcon sx={{ fontSize: 16 }} />} onClick={() => unsaved.guard(() => navigate(pageOf(detail)))} sx={{ fontSize: 12 }}>
           Open page
         </Button>
         <Tooltip title="Close">
-          <IconButton size="small" onClick={closeDetail} aria-label="Close panel">
+          <IconButton size="small" onClick={close} aria-label="Close panel">
             <CloseIcon fontSize="small" />
           </IconButton>
         </Tooltip>
       </Box>
       <Box key={`${detail.type}:${detail.id}`} sx={{ flex: 1, minHeight: 0, overflowY: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-        {detail.type === 'task' && <TaskView id={detail.id} preview={detail.preview} go={go} />}
+        {detail.type === 'task' && (
+          <PostEditor
+            taskId={detail.id}
+            variant="panel"
+            onDirtyChange={unsaved.setDirty}
+            registerSave={unsaved.registerSave}
+            onDeleted={() => {
+              window.dispatchEvent(new CustomEvent('post:deleted', { detail: detail.id }));
+              unsaved.reset();
+              bump();
+              closeDetail();
+            }}
+          />
+        )}
         {detail.type === 'library' && <LibraryView id={detail.id} preview={detail.preview} />}
         {detail.type === 'campaign' && <CampaignView id={detail.id} preview={detail.preview} go={go} />}
-        {detail.type === 'project' && <ProjectView id={detail.id} preview={detail.preview} go={go} />}
+        {detail.type === 'project' && <ProjectView id={detail.id} preview={detail.preview} go={go} onCampaign={setThemeCampaign} />}
       </Box>
+      {unsaved.dialog}
     </Box>
   );
 }

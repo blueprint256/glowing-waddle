@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Drawer, IconButton, Tooltip, Typography, useMediaQuery } from '@mui/material';
+import { Box, Drawer, IconButton, Tooltip, Typography, useMediaQuery } from '@mui/material';
 import { Close as CloseIcon, OpenInFull as FullPageIcon } from '@mui/icons-material';
 import PostEditor from './PostEditor';
+import { useUnsavedGuard } from './UnsavedGuard';
 import { paths } from '../../lib/paths';
 
 /**
@@ -51,9 +52,8 @@ export default function PostPanelHost() {
   const taskId = params.get('post');
   const valid = Boolean(taskId && /^[a-f0-9]{24}$/i.test(taskId));
   const [title, setTitle] = useState('');
-  const dirtyRef = useRef(false);
-  const saveRef = useRef<(() => Promise<boolean>) | null>(null);
-  const [asking, setAsking] = useState<null | (() => void)>(null);
+  const unsaved = useUnsavedGuard();
+  const { guard, reset } = unsaved;
 
   // Other parts of the app (messages, Blue, the AI image job) ask to open a post.
   useEffect(() => {
@@ -66,9 +66,9 @@ export default function PostPanelHost() {
   }, [openPost]);
 
   useEffect(() => {
-    dirtyRef.current = false;
+    reset();
     setTitle('');
-  }, [taskId]);
+  }, [taskId, reset]);
 
   const reallyClose = useCallback(() => {
     if ((location.state as any)?.postPanel) navigate(-1);
@@ -78,12 +78,6 @@ export default function PostPanelHost() {
       setParams(next, { replace: true });
     }
   }, [location.state, navigate, params, setParams]);
-
-  /** Runs `then` now, or after asking when there are unsaved changes. */
-  const guard = useCallback((then: () => void) => {
-    if (dirtyRef.current) setAsking(() => then);
-    else then();
-  }, []);
 
   const close = () => guard(reallyClose);
   const fullPage = () => guard(() => taskId && navigate(paths.post(taskId)));
@@ -125,15 +119,11 @@ export default function PostPanelHost() {
             taskId={taskId!}
             variant="panel"
             onLoaded={(t) => setTitle(t?.name || '')}
-            onDirtyChange={(d) => {
-              dirtyRef.current = d;
-            }}
-            registerSave={(save) => {
-              saveRef.current = save;
-            }}
+            onDirtyChange={unsaved.setDirty}
+            registerSave={unsaved.registerSave}
             onDeleted={() => {
               window.dispatchEvent(new CustomEvent('post:deleted', { detail: taskId }));
-              dirtyRef.current = false;
+              reset();
               reallyClose();
             }}
           />
@@ -141,39 +131,7 @@ export default function PostPanelHost() {
         </Box>
       </Drawer>
 
-      <Dialog open={Boolean(asking)} onClose={() => setAsking(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>Save your changes?</DialogTitle>
-        <DialogContent>
-          <Typography sx={{ fontSize: 14 }}>You changed this post’s title, caption or brief.</Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAsking(null)}>Keep editing</Button>
-          <Button
-            color="error"
-            onClick={() => {
-              const then = asking;
-              dirtyRef.current = false;
-              setAsking(null);
-              then?.();
-            }}
-          >
-            Discard
-          </Button>
-          <Button
-            variant="contained"
-            onClick={async () => {
-              const then = asking;
-              const ok = saveRef.current ? await saveRef.current() : true;
-              if (!ok) return;
-              dirtyRef.current = false;
-              setAsking(null);
-              then?.();
-            }}
-          >
-            Save
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {unsaved.dialog}
     </>
   );
 }

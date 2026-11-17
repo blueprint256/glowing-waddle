@@ -5,23 +5,22 @@ import { useAuthStore } from './store/authStore';
 import DashboardLayout from './components/Layout/DashboardLayout';
 import { getReturnTo } from './utils/returnTo';
 import { UserRole } from './types';
+import { paths } from './lib/paths';
+import { OldProjectRedirect, OldTaskRedirect } from './pages/Redirects';
 
 // Route-level code splitting: each page is its own chunk, fetched on first visit.
-// (Settings, DetailsSheet and Calendar are the heaviest — they no longer load at login.)
+// (Settings, the Planner and Blue are the heaviest — they no longer load at login.)
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const SignupPage = lazy(() => import('./pages/SignupPage'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const CampaignsList = lazy(() => import('./pages/Campaigns/CampaignsList'));
 const CampaignDetail = lazy(() => import('./pages/Campaigns/CampaignDetail'));
-const ProjectDetail = lazy(() => import('./pages/Projects/ProjectDetail'));
-const TaskDetail = lazy(() => import('./pages/Tasks/TaskDetail'));
+const PostPage = lazy(() => import('./pages/Posts/PostPage'));
+const PlannerPage = lazy(() => import('./pages/Planner/PlannerPage'));
 const UserManagement = lazy(() => import('./pages/Admin/UserManagement'));
 const OutreachPage = lazy(() => import('./pages/Admin/OutreachPage'));
 const InboxPage = lazy(() => import('./pages/Inbox/InboxPage'));
 const UserDetail = lazy(() => import('./pages/Admin/UserDetail'));
-const DetailsSheet = lazy(() => import('./pages/DetailsSheet'));
-const Calendar = lazy(() => import('./pages/Calendar'));
-const TasksSheet = lazy(() => import('./pages/TasksSheet'));
 const Settings = lazy(() => import('./pages/Settings'));
 const OAuthConsent = lazy(() => import('./pages/OAuth/OAuthConsent'));
 const LibraryPage = lazy(() => import('./pages/Library/LibraryPage'));
@@ -108,17 +107,24 @@ function App() {
         <Route index element={<Dashboard />} />
         <Route path="campaigns" element={<CampaignsList />} />
         <Route path="campaigns/:id" element={<CampaignDetail />} />
-        <Route path="projects/:id" element={<ProjectDetail />} />
-        <Route path="tasks/:id" element={<TaskDetail />} />
-        <Route path="details-sheet" element={<DetailsSheet />} />
-        <Route path="calendar" element={<Calendar />} />
-        <Route path="tasks-sheet" element={<TasksSheet />} />
+        <Route path="planner" element={<PlannerPage />} />
+        <Route path="posts/:id" element={<PostPage />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="settings/:section" element={<Settings />} />
         <Route path="library" element={<LibraryPage />} />
         <Route path="library/:id" element={<LibraryItemPage />} />
         <Route path="publishing" element={<PublishingPage />} />
         <Route path="inbox" element={<InboxPage />} />
         <Route path="blue" element={<BluePage />} />
+        <Route path="blue/:chatId" element={<BluePage />} />
+
+        {/* Old addresses (links in messages, chats, bookmarks) */}
+        <Route path="calendar" element={<Navigate to={paths.planner({ view: 'month' })} replace />} />
+        <Route path="tasks-sheet" element={<Navigate to={paths.planner({ view: 'list' })} replace />} />
+        <Route path="details-sheet" element={<Navigate to={paths.planner({ view: 'list', group: 'campaign' })} replace />} />
+        <Route path="dashboard" element={<Navigate to={paths.today()} replace />} />
+        <Route path="tasks/:id" element={<OldTaskRedirect />} />
+        <Route path="projects/:id" element={<OldProjectRedirect />} />
         <Route path="admin/users" element={<AdminRoute><UserManagement /></AdminRoute>} />
         <Route path="admin/users/:id" element={<AdminRoute><UserDetail /></AdminRoute>} />
         <Route path="admin/outreach" element={<AdminRoute><OutreachPage /></AdminRoute>} />

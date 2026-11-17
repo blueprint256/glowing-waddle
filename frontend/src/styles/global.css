@@ -35,17 +35,16 @@ img { max-width: 100%; }
 }
 @media (min-width: 48em) { .bp-panel { margin-left: 0; } }
 @media (min-width: 62em) { .bp-panel { margin: var(--panel-inset); margin-left: 0; } }
-.bp-page { padding: var(--sp-4) var(--sp-4) 80px; max-width: 1400px; margin: 0 auto; } /* bottom room for the mobile FAB */
+.bp-page { padding: var(--sp-4) var(--sp-4) var(--sp-8); max-width: 1400px; margin: 0 auto; }
 /* Full-bleed pages that manage their own scrolling (the Blue page). */
 .bp-panel--flush { overflow: hidden; }
 .bp-page--flush { padding: 0; max-width: none; height: 100%; }
-@media (max-width: 47.99em) { .bp-page--flush { padding-bottom: 72px; } }
 @media (min-width: 48em) { .bp-page { padding: var(--sp-6) var(--sp-8); } }
 
-/* Mobile floating controls (hamburger + theme), hidden ≥768px */
-.bp-fab-bar { position: fixed; left: 20px; right: 20px; bottom: 20px; z-index: var(--z-app); display: flex; justify-content: space-between; pointer-events: none; }
-.bp-fab-bar > * { pointer-events: auto; }
-@media (min-width: 48em) { .bp-fab-bar { display: none; } }
+/* <768px: slim top bar (menu, name, Blue) above the page; the shell stacks vertically. */
+.bp-topbar { display: flex; align-items: center; gap: var(--sp-2); height: 48px; flex: 0 0 48px; padding: 0 var(--sp-2); background: var(--bg-shell); }
+@media (max-width: 47.99em) { .bp-shell { flex-direction: column; } .bp-panel { margin-top: 0; } }
+@media (min-width: 48em) { .bp-topbar { display: none; } }
 
 /* Blue (in-app assistant): docked beside the panel on desktop, full screen on phones */
 .bp-blue {

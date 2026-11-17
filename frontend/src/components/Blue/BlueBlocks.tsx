@@ -1,28 +1,30 @@
 import { useState, type MouseEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, Button, Chip, CircularProgress, IconButton, Tooltip, Typography } from '@mui/material';
+import { Box, Button, CircularProgress, IconButton, Tooltip, Typography } from '@mui/material';
 import {
   CheckCircleOutline as DoneIcon,
   ErrorOutline as ErrorIcon,
   CalendarMonth as CalendarIcon,
   OpenInNew as OpenIcon,
-  Visibility as PreviewIcon,
   ChatBubbleOutline as CommentIcon,
   TaskAlt as MarkDoneIcon,
   ImageOutlined as ImageIcon
 } from '@mui/icons-material';
-import SocialPreviewModal from '../SocialPreviewModal';
 import BlueText from './BlueText';
 import type { BlueItem } from '../../services/blue';
 import { librarySrc } from '../../services/library';
 import { taskAPI } from '../../services/api';
 import { useBlueStore } from '../../store/blueStore';
 import { ImageLightbox, useBlueOpen, useBlueSurface } from './BlueSurface';
+import { MetaChip } from '../ui/StatusChip';
+import { campaignStatusMeta, postStatusMeta, publishStatusMeta, themeStatusMeta, toPostStatus, type StatusMeta } from '../../lib/status';
+import { announcePostChanged } from '../../store/aiJobsStore';
+import { paths } from '../../lib/paths';
 
 /**
  * Turns Blue's tool results into the chat's standard layouts:
- * - lists (tasks, posts, campaigns, projects, users) → compact tables, one row per item
- * - one item (a task, a Library item, a poster) → a card with the image large
+ * - lists (posts, scheduled copies, campaigns, themes, users) → compact tables, one row per item
+ * - one item (a post, a Library item, a new AI image) → a card with the image large
  * - images → a gallery; clicking shows the full image (side panel) or opens it on the right (full screen)
  * - numbers (AI usage, Inbox, setup) → small tiles
  * Every row and card opens the item in the app.
@@ -60,41 +62,31 @@ function libDate(value?: string): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 }
 
-const GREEN = { bg: 'var(--accent-green-bg)', fg: 'var(--accent-green-fg)' };
-const BLUE = { bg: 'var(--accent-blue-bg)', fg: 'var(--accent-blue-fg)' };
-const AMBER = { bg: 'var(--accent-amber-bg)', fg: 'var(--accent-amber-fg)' };
-const VIOLET = { bg: 'var(--accent-violet-bg)', fg: 'var(--accent-violet-fg)' };
-const RED = { bg: 'var(--danger-surface, var(--accent-amber-bg))', fg: 'var(--danger-text)' };
+type ChipKind = 'post' | 'campaign' | 'theme' | 'publish';
 
-const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
-  Pending: AMBER,
-  'In Progress': BLUE,
-  Completed: GREEN,
-  active: GREEN,
-  completed: GREEN,
-  in_progress: BLUE,
-  planning: VIOLET,
-  review: VIOLET,
-  paused: AMBER,
-  on_hold: AMBER,
-  scheduled: BLUE,
-  publishing: BLUE,
-  published: GREEN,
-  failed: RED,
-  manual_due: AMBER,
-  needs_action: AMBER,
-  cancelled: { bg: 'var(--bg-subtle)', fg: 'var(--text-muted)' }
+const PLAIN: Record<string, StatusMeta> = {
+  inactive: { label: 'Inactive', hint: '', bg: 'var(--bg-subtle)', fg: 'var(--text-muted)', dot: 'var(--text-faint)' },
+  reconnect: { label: 'Reconnect', hint: 'Sign in to this account again', bg: 'var(--st-attention-bg)', fg: 'var(--st-attention-fg)', dot: 'var(--st-attention-dot)' },
+  failed: { label: 'Failed', hint: '', bg: 'var(--st-attention-bg)', fg: 'var(--st-attention-fg)', dot: 'var(--st-attention-dot)' }
 };
 
-function StatusChip({ status }: { status?: string }) {
+/** The same status chips as the rest of the app, by what the status belongs to. */
+function StatusChip({ status, kind }: { status?: string; kind?: ChipKind }) {
   if (!status) return null;
-  const c = STATUS_COLORS[status] || { bg: 'var(--bg-subtle)', fg: 'var(--text-muted)' };
+  const meta =
+    kind === 'post'
+      ? postStatusMeta(status)
+      : kind === 'campaign'
+        ? campaignStatusMeta(status)
+        : kind === 'theme'
+          ? themeStatusMeta(status)
+          : kind === 'publish'
+            ? publishStatusMeta(status)
+            : PLAIN[status] || { label: status.replace(/_/g, ' '), hint: '', bg: 'var(--bg-subtle)', fg: 'var(--text-muted)', dot: 'var(--text-faint)' };
   return (
-    <Chip
-      size="small"
-      label={status.replace(/_/g, ' ')}
-      sx={{ height: 20, fontSize: 11, fontWeight: 600, bgcolor: c.bg, color: c.fg, textTransform: 'capitalize', flexShrink: 0, '& .MuiChip-label': { px: 0.75 } }}
-    />
+    <Box sx={{ flexShrink: 0 }}>
+      <MetaChip meta={meta} size="xs" />
+    </Box>
   );
 }
 
@@ -269,13 +261,15 @@ function TaskTable({ tasks, total, head }: { tasks: any[]; total?: number; head?
   const open = useBlueOpen();
   const [done, setDone] = useState<Record<string, 'saving' | 'done' | 'error'>>({});
   const { shown, hidden, showAll } = useMore(tasks);
-  if (!tasks.length) return <Step ok text="No tasks found" />;
+  if (!tasks.length) return <Step ok text="No posts found" />;
 
-  const markDone = async (t: any) => {
+  // Quick action: an Idea or Draft can be marked Ready from the chat.
+  const markReady = async (t: any) => {
     setDone((s) => ({ ...s, [t.id]: 'saving' }));
     try {
-      await taskAPI.update(t.id, { status: 'Completed' });
+      await taskAPI.update(t.id, { status: 'Ready' });
       setDone((s) => ({ ...s, [t.id]: 'done' }));
+      announcePostChanged(t.id);
       useBlueStore.setState((s) => ({ refreshKey: s.refreshKey + 1 }));
     } catch {
       setDone((s) => ({ ...s, [t.id]: 'error' }));
@@ -284,27 +278,27 @@ function TaskTable({ tasks, total, head }: { tasks: any[]; total?: number; head?
 
   return (
     <Table
-      head={head ?? `${total ?? tasks.length} task${(total ?? tasks.length) === 1 ? '' : 's'}`}
-      footer={<MoreFooter hidden={hidden} onShowAll={showAll} total={total} loaded={tasks.length} pageLabel="the Tasks Sheet" pagePath="/tasks-sheet" />}
+      head={head ?? `${total ?? tasks.length} post${(total ?? tasks.length) === 1 ? '' : 's'}`}
+      footer={<MoreFooter hidden={hidden} onShowAll={showAll} total={total} loaded={tasks.length} pageLabel="the Planner" pagePath={paths.planner({ view: 'list' })} />}
     >
       {shown.map((t) => {
         const state = done[t.id];
-        const status = state === 'done' ? 'Completed' : t.status;
+        const status = state === 'done' ? 'Ready' : toPostStatus(t.status);
         return (
           <Row key={t.id} onOpen={open(t.url, t)}>
             <Thumb src={t.designed_image_url} size={36} />
             <RowText primary={t.name} secondary={[day(t.task_date), t.project?.name].filter(Boolean).join(' · ') || undefined} />
-            <StatusChip status={status} />
-            {status !== 'Completed' && (
-              <Tooltip title={state === 'error' ? 'Couldn’t update. Try again' : 'Mark as completed'}>
+            <StatusChip status={status} kind="post" />
+            {(status === 'Idea' || status === 'Draft') && (
+              <Tooltip title={state === 'error' ? 'Couldn’t update. Try again' : 'Mark as ready'}>
                 <span>
                   <IconButton
                     size="small"
-                    aria-label="Mark as completed"
+                    aria-label="Mark as ready"
                     disabled={state === 'saving'}
                     onClick={(e) => {
                       e.stopPropagation();
-                      markDone(t);
+                      markReady(t);
                     }}
                     sx={{ color: state === 'error' ? 'var(--danger-text)' : 'var(--text-muted)' }}
                   >
@@ -327,12 +321,12 @@ function CampaignTable({ campaigns, total }: { campaigns: any[]; total?: number 
   return (
     <Table
       head={`${total ?? campaigns.length} campaign${(total ?? campaigns.length) === 1 ? '' : 's'}`}
-      footer={<MoreFooter hidden={hidden} onShowAll={showAll} total={total} loaded={campaigns.length} pageLabel="Campaigns" pagePath="/campaigns" />}
+      footer={<MoreFooter hidden={hidden} onShowAll={showAll} total={total} loaded={campaigns.length} pageLabel="Campaigns" pagePath={paths.campaigns()} />}
     >
       {shown.map((c) => (
         <Row key={c.id} onOpen={open(c.url, c)}>
           <RowText primary={c.name} secondary={range(c.start_date, c.end_date) || undefined} />
-          {c.archived ? <StatusChip status="archived" /> : <StatusChip status={c.status} />}
+          <StatusChip status={c.archived ? 'archived' : c.status} kind="campaign" />
         </Row>
       ))}
     </Table>
@@ -342,16 +336,16 @@ function CampaignTable({ campaigns, total }: { campaigns: any[]; total?: number 
 function ProjectTable({ projects, total, extra }: { projects: any[]; total?: number; extra?: (p: any) => string | undefined }) {
   const open = useBlueOpen();
   const { shown, hidden, showAll } = useMore(projects);
-  if (!projects.length) return <Step ok text="No projects found" />;
+  if (!projects.length) return <Step ok text="No themes found" />;
   return (
     <Table
-      head={`${total ?? projects.length} project${(total ?? projects.length) === 1 ? '' : 's'}`}
-      footer={<MoreFooter hidden={hidden} onShowAll={showAll} total={total} loaded={projects.length} pageLabel="Campaigns" pagePath="/campaigns" />}
+      head={`${total ?? projects.length} theme${(total ?? projects.length) === 1 ? '' : 's'}`}
+      footer={<MoreFooter hidden={hidden} onShowAll={showAll} total={total} loaded={projects.length} pageLabel="Campaigns" pagePath={paths.campaigns()} />}
     >
       {shown.map((p) => (
         <Row key={p.id} onOpen={open(p.url, p)}>
           <RowText primary={p.name} secondary={[p.campaign?.name, range(p.start_date, p.due_date), extra?.(p)].filter(Boolean).join(' · ') || undefined} />
-          <StatusChip status={p.status} />
+          <StatusChip status={p.status} kind="theme" />
         </Row>
       ))}
     </Table>
@@ -365,15 +359,15 @@ function PostTable({ posts, total, head }: { posts: any[]; total?: number; head?
   return (
     <Table
       head={head || `${total ?? posts.length} post${(total ?? posts.length) === 1 ? '' : 's'}`}
-      footer={<MoreFooter hidden={hidden} onShowAll={showAll} total={total} loaded={posts.length} pageLabel="Publishing" pagePath="/publishing" />}
+      footer={<MoreFooter hidden={hidden} onShowAll={showAll} total={total} loaded={posts.length} pageLabel="Publishing" pagePath={paths.publishing()} />}
     >
       {shown.map((p) => (
-        <Row key={p.id} onOpen={open(p.task?.id ? `/tasks/${p.task.id}` : p.url, p.task ? { id: p.task.id, name: p.task.name } : undefined)}>
+        <Row key={p.id} onOpen={open(p.task?.id ? paths.post(p.task.id) : p.url, p.task ? { id: p.task.id, name: p.task.name } : undefined)}>
           <RowText
             primary={`${p.platform}${p.account ? ` · ${p.account}` : ''}${p.test_account ? ' (test)' : ''}`}
             secondary={[dateTime(p.when), p.task?.name, p.problem].filter(Boolean).join(' · ') || undefined}
           />
-          <StatusChip status={p.status} />
+          <StatusChip status={p.status === 'manual_due' ? 'due' : p.status} kind="publish" />
         </Row>
       ))}
     </Table>
@@ -387,13 +381,13 @@ function UserTable({ users, total }: { users: any[]; total?: number }) {
   return (
     <Table
       head={`${total ?? users.length} user${(total ?? users.length) === 1 ? '' : 's'}`}
-      footer={<MoreFooter hidden={hidden} onShowAll={showAll} total={total} loaded={users.length} pageLabel="Users" pagePath="/admin/users" />}
+      footer={<MoreFooter hidden={hidden} onShowAll={showAll} total={total} loaded={users.length} pageLabel="Users" pagePath={paths.adminUsers()} />}
     >
       {shown.map((u) => (
-        <Row key={u.id} onOpen={open(`/admin/users/${u.id}`)}>
+        <Row key={u.id} onOpen={open(paths.adminUser(u.id))}>
           <RowText
             primary={`${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email}
-            secondary={[u.email, u.role?.replace('_', ' '), u.part === 'part_two' ? 'AI off' : 'AI on'].filter(Boolean).join(' · ')}
+            secondary={[u.email, u.role === 'system_admin' ? 'Admin' : null, u.part === 'part_two' ? 'AI off' : 'AI on'].filter(Boolean).join(' · ')}
           />
           {u.active === false && <StatusChip status="inactive" />}
         </Row>
@@ -434,14 +428,13 @@ function money(n?: number) {
 
 function TaskCard({ task, compact }: { task: any; compact?: boolean }) {
   const open = useBlueOpen();
-  const [preview, setPreview] = useState(false);
   const when = day(task.task_date);
   const where = [task.project?.name, task.campaign?.name].filter(Boolean).join(' · ');
   return (
     <Card onOpen={open(task.url, task)}>
       <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
         <Title>{task.name}</Title>
-        <StatusChip status={task.status} />
+        <StatusChip status={task.status} kind="post" />
       </Box>
       {(when || where) && (
         <Meta>
@@ -463,25 +456,11 @@ function TaskCard({ task, compact }: { task: any; compact?: boolean }) {
           {task.content}
         </Typography>
       )}
-      {(task.content || task.designed_image_url) && (
+      {task.url && (
         <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }} onClick={(e) => e.stopPropagation()}>
-          <Button size="small" startIcon={<PreviewIcon sx={{ fontSize: 16 }} />} onClick={() => setPreview(true)} sx={{ fontSize: 12, py: 0.25 }}>
-            Preview post
+          <Button size="small" startIcon={<OpenIcon sx={{ fontSize: 16 }} />} onClick={open(task.url, task)} sx={{ fontSize: 12, py: 0.25 }}>
+            Open post
           </Button>
-          {task.url && (
-            <Button size="small" startIcon={<OpenIcon sx={{ fontSize: 16 }} />} onClick={open(task.url, task)} sx={{ fontSize: 12, py: 0.25 }}>
-              Open
-            </Button>
-          )}
-        </Box>
-      )}
-      {preview && (
-        <Box onClick={(e) => e.stopPropagation()}>
-          <SocialPreviewModal
-            open={preview}
-            onClose={() => setPreview(false)}
-            task={{ _id: task.id, name: task.name, description: task.description, content: task.content, designedImage: task.designed_image_url, taskDate: task.task_date || undefined }}
-          />
         </Box>
       )}
     </Card>
@@ -495,7 +474,7 @@ function CampaignCard({ campaign, extra }: { campaign: any; extra?: string }) {
     <Card onOpen={open(campaign.url, campaign)} accent="var(--accent-violet-fg)">
       <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
         <Title>{campaign.name}</Title>
-        {campaign.archived ? <StatusChip status="archived" /> : <StatusChip status={campaign.status} />}
+        <StatusChip status={campaign.archived ? 'archived' : campaign.status} kind="campaign" />
       </Box>
       <Meta>{['Campaign', when, extra].filter(Boolean).join(' · ')}</Meta>
     </Card>
@@ -509,9 +488,9 @@ function ProjectCard({ project, extra }: { project: any; extra?: string }) {
     <Card onOpen={open(project.url, project)} accent="var(--accent-blue-fg)">
       <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
         <Title>{project.name}</Title>
-        <StatusChip status={project.status} />
+        <StatusChip status={project.status} kind="theme" />
       </Box>
-      <Meta>{['Project', project.campaign?.name, when, extra].filter(Boolean).join(' · ')}</Meta>
+      <Meta>{['Theme', project.campaign?.name, when, extra].filter(Boolean).join(' · ')}</Meta>
     </Card>
   );
 }
@@ -611,7 +590,7 @@ function LibraryItemCard({ item, versions }: { item: any; versions?: any[] }) {
 
 function PosterCard({ src, title, note, taskUrl }: { src?: string; title: string; note: string; taskUrl?: string }) {
   const open = useBlueOpen();
-  const taskId = taskUrl?.match(/tasks\/([a-f0-9]{24})/i)?.[1];
+  const taskId = taskUrl?.match(/(?:tasks|posts)\/([a-f0-9]{24})/i)?.[1];
   return (
     <Card onOpen={open(taskUrl, taskId ? { id: taskId } : undefined)}>
       <Title>{title}</Title>
@@ -636,7 +615,7 @@ function InboxCard({ data }: { data: any }) {
       {items.length > 0 && (
         <Table>
           {items.slice(0, ROWS).map((i: any) => (
-            <Row key={i.id} onOpen={open('/inbox')}>
+            <Row key={i.id} onOpen={open(paths.inbox({ item: i.id }))}>
               <RowText primary={i.title} secondary={i.actions?.length ? i.actions.map((a: any) => a.label).join(' · ') : i.body} />
             </Row>
           ))}
@@ -653,9 +632,9 @@ function ChannelsCard({ data }: { data: any }) {
   return (
     <Table head="Connected accounts">
       {accounts.map((a: any) => (
-        <Row key={a.id} onOpen={open('/publishing?tab=channels')}>
+        <Row key={a.id} onOpen={open(paths.publishing('accounts'))}>
           <RowText primary={`${a.platform} · ${a.name}`} secondary={a.test_account ? 'Test account' : undefined} />
-          {a.needs_reconnect && <StatusChip status="needs_action" />}
+          {a.needs_reconnect && <StatusChip status="reconnect" />}
         </Row>
       ))}
     </Table>
@@ -675,10 +654,10 @@ function Calendar({ data }: { data: any }) {
   const days = Object.keys(data.days || {}).sort();
   if (!days.length) return <Step ok text="Nothing scheduled in that period" />;
   return (
-    <Table head={`${data.total_tasks} task${data.total_tasks === 1 ? '' : 's'} · ${day(data.date_from, false)} – ${day(data.date_to, false)}`}>
+    <Table head={`${data.total_tasks} post${data.total_tasks === 1 ? '' : 's'} · ${day(data.date_from, false)} – ${day(data.date_to, false)}`}>
       {days.map((d) => (
         <Box key={d} sx={{ display: 'grid', gridTemplateColumns: '72px minmax(0,1fr)', gap: 1, px: 1.25, py: 0.75, '& + &': { borderTop: '1px solid var(--border)' } }}>
-          <Typography sx={{ fontSize: 12, fontWeight: 600, color: 'var(--text-strong)', pt: '6px' }}>{d === 'undated' ? 'No date' : day(d)}</Typography>
+          <Typography sx={{ fontSize: 12, fontWeight: 600, color: 'var(--text-strong)', pt: '6px' }}>{d === 'undated' ? 'Not scheduled' : day(d)}</Typography>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
             {data.days[d].map((t: any) => (
               <Box
@@ -688,7 +667,7 @@ function Calendar({ data }: { data: any }) {
               >
                 <Thumb src={t.designed_image_url} size={28} />
                 <Typography noWrap sx={{ fontSize: 12.5, flex: 1, minWidth: 0 }}>{t.name}</Typography>
-                <StatusChip status={t.status} />
+                <StatusChip status={t.status} kind="post" />
               </Box>
             ))}
           </Box>
@@ -706,11 +685,11 @@ const STEP_LABELS: Record<string, string> = {
   get_my_account: 'Checked your account',
   get_company_info: 'Read your company info',
   update_company_info: 'Updated your company info',
-  delete_task: 'Task deleted',
+  delete_task: 'Post deleted',
   delete_library_item: 'Moved to the trash',
-  cancel_post: 'Post cancelled',
+  cancel_post: 'Scheduled post cancelled',
   delete_comment: 'Comment deleted',
-  remove_user_from_project: 'Removed from the project',
+  remove_user_from_project: 'Removed from the theme',
   deactivate_user: 'Account deactivated'
 };
 
@@ -747,8 +726,8 @@ export function BlueToolItem({ item }: { item: ToolItem }) {
       const failed = (d.results || []).filter((r: any) => !r.created);
       return (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-          <Step ok={failed.length === 0} text={d.message || `Created ${created.length} tasks`} />
-          {created.length > 0 && <TaskTable tasks={created} head={`${created.length} new task${created.length === 1 ? '' : 's'}`} />}
+          <Step ok={failed.length === 0} text={d.message || `Created ${created.length} posts`} />
+          {created.length > 0 && <TaskTable tasks={created} head={`${created.length} new post${created.length === 1 ? '' : 's'}`} />}
           {failed.map((f: any) => (
             <Step key={f.index} ok={false} text={`${f.name}: ${f.error}`} />
           ))}
@@ -767,9 +746,9 @@ export function BlueToolItem({ item }: { item: ToolItem }) {
     case 'get_campaign':
       return d.campaign ? (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-          <CampaignCard campaign={d.campaign} extra={`${(d.projects || []).length} projects · ${d.total_tasks ?? 0} tasks`} />
+          <CampaignCard campaign={d.campaign} extra={`${(d.projects || []).length} themes · ${d.total_tasks ?? 0} posts`} />
           {(d.projects || []).length > 0 && (
-            <ProjectTable projects={d.projects} extra={(p) => (p.task_counts ? `${p.task_counts.total} tasks` : undefined)} />
+            <ProjectTable projects={d.projects} extra={(p) => (p.task_counts ? `${p.task_counts.total} posts` : undefined)} />
           )}
         </Box>
       ) : (
@@ -816,7 +795,7 @@ export function BlueToolItem({ item }: { item: ToolItem }) {
       return (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
           <Step ok text={d.message || 'Generated'} />
-          <ProjectTable projects={d.projects || []} extra={(p) => `${p.tasks_created ?? 0} tasks`} />
+          <ProjectTable projects={d.projects || []} extra={(p) => `${p.tasks_created ?? 0} posts`} />
         </Box>
       );
     case 'schedule_post':
@@ -839,14 +818,21 @@ export function BlueToolItem({ item }: { item: ToolItem }) {
     case 'refine_task_description':
       return (
         <Card>
-          <Meta>Suggested description</Meta>
+          <Meta>Suggested brief</Meta>
           <BlueText text={d.suggested_description || ''} />
         </Card>
       );
+    case 'improve_caption':
+      return (
+        <Card>
+          <Meta>{d.label ? `Suggested caption · ${d.label}` : 'Suggested caption'}</Meta>
+          <BlueText text={d.suggestion || ''} />
+        </Card>
+      );
     case 'generate_task_poster':
-      return <PosterCard src={d.pending_image_url} title="New AI poster" note="Open the task to use it or discard it." taskUrl={d.task_url} />;
+      return <PosterCard src={d.pending_image_url} title="New AI image" note="Open the post to use it or discard it." taskUrl={d.task_url} />;
     case 'adopt_task_poster':
-      return d.image_url ? <PosterCard src={d.image_url} title="Poster is now the task image" note={d.message || 'Saved'} /> : <Step ok text={d.message || 'Done'} />;
+      return d.image_url ? <PosterCard src={d.image_url} title="This is now the post’s image" note={d.message || 'Saved'} /> : <Step ok text={d.message || 'Done'} />;
     case 'ai_usage':
       return (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>

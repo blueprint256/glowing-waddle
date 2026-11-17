@@ -34,7 +34,8 @@ export const links = {
   library: (opts: { view?: 'review' } = {}) => `/library${query({ view: opts.view })}`,
   libraryItem: (assetId: unknown) => `/library/${id(assetId)}`,
   publishing: (tab?: PublishingTab) => `/publishing${query({ tab })}`,
-  publishingPost: (postId: unknown) => `/publishing${query({ post: id(postId) })}`,
+  /** A scheduled or published copy in Publishing (?item=, so it never clashes with the post panel's ?post=). */
+  publishingPost: (postId: unknown) => `/publishing${query({ item: id(postId) })}`,
   inbox: (opts: { box?: string; item?: unknown } = {}) => `/inbox${query({ box: opts.box, item: opts.item ? id(opts.item) : undefined })}`,
   blue: (chatId?: unknown) => (chatId ? `/blue/${id(chatId)}` : '/blue'),
   settings: (section?: SettingsSection) => (section ? `/settings/${section}` : '/settings'),
