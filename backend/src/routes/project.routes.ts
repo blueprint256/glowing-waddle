@@ -38,7 +38,7 @@ router.post('/', isAuthenticated, canCreateCampaign, validateProjectCreation, as
       if (campaign.createdBy.toString() !== req.user!._id.toString()) {
         return res.status(403).json({
           success: false,
-          message: 'Access denied: You can only create projects under campaigns you created'
+          message: 'Access denied: You can only create themes under campaigns you created'
         });
       }
     }
@@ -71,14 +71,14 @@ router.post('/', isAuthenticated, canCreateCampaign, validateProjectCreation, as
 
     res.status(201).json({
       success: true,
-      message: 'Project created successfully',
+      message: 'Theme created successfully',
       project: populatedProject
     });
   } catch (error: any) {
     console.error('Error creating project:', error);
     res.status(500).json({
       success: false,
-      message: 'Error creating project'
+      message: 'Error creating theme'
     });
   }
 });
@@ -184,7 +184,7 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
     console.error('Error fetching projects:', error);
     res.status(500).json({
       success: false,
-      message: 'Error fetching projects'
+      message: 'Error fetching themes'
     });
   }
 });
@@ -205,7 +205,7 @@ router.get('/:id', isAuthenticated, validateMongoId('id'), checkProjectOwnership
     if (!project) {
       return res.status(404).json({
         success: false,
-        message: 'Project not found'
+        message: 'Theme not found'
       });
     }
 
@@ -217,7 +217,7 @@ router.get('/:id', isAuthenticated, validateMongoId('id'), checkProjectOwnership
     console.error('Error fetching project:', error);
     res.status(500).json({
       success: false,
-      message: 'Error fetching project'
+      message: 'Error fetching theme'
     });
   }
 });
@@ -233,7 +233,7 @@ router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), va
     if (!project) {
       return res.status(404).json({
         success: false,
-        message: 'Project not found'
+        message: 'Theme not found'
       });
     }
 
@@ -265,14 +265,14 @@ router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), va
 
     res.json({
       success: true,
-      message: 'Project updated successfully',
+      message: 'Theme updated successfully',
       project: updatedProject
     });
   } catch (error: any) {
     console.error('Error updating project:', error);
     res.status(500).json({
       success: false,
-      message: 'Error updating project'
+      message: 'Error updating theme'
     });
   }
 });
@@ -333,7 +333,7 @@ router.post('/:id/assignments',
       if (!project) {
         return res.status(404).json({
           success: false,
-          message: 'Project not found'
+          message: 'Theme not found'
         });
       }
 
@@ -345,7 +345,7 @@ router.post('/:id/assignments',
       if (existingAssignment) {
         return res.status(400).json({
           success: false,
-          message: 'User is already assigned to this project'
+          message: 'User is already assigned to this theme'
         });
       }
 
@@ -374,14 +374,14 @@ router.post('/:id/assignments',
 
       res.json({
         success: true,
-        message: 'User assigned to project successfully',
+        message: 'User assigned to theme successfully',
         project: updatedProject
       });
     } catch (error: any) {
       console.error('Error assigning user to project:', error);
       res.status(500).json({
         success: false,
-        message: 'Error assigning user to project'
+        message: 'Error assigning user to theme'
       });
     }
   }
@@ -405,7 +405,7 @@ router.delete('/:id/assignments/:userId',
       if (!project) {
         return res.status(404).json({
           success: false,
-          message: 'Project not found'
+          message: 'Theme not found'
         });
       }
 
@@ -428,13 +428,13 @@ router.delete('/:id/assignments/:userId',
 
       res.json({
         success: true,
-        message: 'User removed from project successfully'
+        message: 'User removed from theme successfully'
       });
     } catch (error: any) {
       console.error('Error removing user from project:', error);
       res.status(500).json({
         success: false,
-        message: 'Error removing user from project'
+        message: 'Error removing user from theme'
       });
     }
   }

@@ -530,7 +530,7 @@ router.post('/:id/generate-tasks', isAuthenticated, async (req: Request, res: Re
 
       res.json({
         success: true,
-        message: 'Tasks generated successfully with AI',
+        message: 'Posts generated successfully with AI',
         content: result.content,
         compiledPrompt: result.compiledPrompt,
         usage: result.usage,
@@ -571,7 +571,7 @@ router.post('/:id/generate-tasks', isAuthenticated, async (req: Request, res: Re
     console.error('Error in generate-tasks:', error);
     res.status(500).json({
       success: false,
-      message: 'Error generating tasks',
+      message: 'Error generating posts',
       error: error.message
     });
   }

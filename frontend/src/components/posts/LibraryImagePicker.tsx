@@ -80,7 +80,7 @@ export default function LibraryImagePicker({
           autoFocus
           fullWidth
           size="small"
-          placeholder="Search pictures: “cold brew poster”, “Women’s Day”…"
+          placeholder="Search pictures: “cold brew picture”, “Women’s Day”…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}

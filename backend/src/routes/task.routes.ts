@@ -60,7 +60,7 @@ router.post('/', isAuthenticated, canManageTasks, validateTaskCreate, async (req
     if (!project) {
       return res.status(404).json({
         success: false,
-        message: 'Project not found'
+        message: 'Theme not found'
       });
     }
 
@@ -78,7 +78,7 @@ router.post('/', isAuthenticated, canManageTasks, validateTaskCreate, async (req
       if (campaign.createdBy.toString() !== req.user!._id.toString()) {
         return res.status(403).json({
           success: false,
-          message: 'Access denied: You can only create tasks under campaigns you created'
+          message: 'Access denied: You can only create posts under campaigns you created'
         });
       }
     }
@@ -112,14 +112,14 @@ router.post('/', isAuthenticated, canManageTasks, validateTaskCreate, async (req
 
     res.status(201).json({
       success: true,
-      message: 'Task created successfully',
+      message: 'Post created successfully',
       task: populatedTask
     });
   } catch (error: any) {
     console.error('Error creating task:', error);
     res.status(500).json({
       success: false,
-      message: 'Error creating task'
+      message: 'Error creating post'
     });
   }
 });
@@ -298,7 +298,7 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
     console.error('Error fetching tasks:', error);
     res.status(500).json({
       success: false,
-      message: 'Error fetching tasks'
+      message: 'Error fetching posts'
     });
   }
 });
@@ -340,7 +340,7 @@ router.get('/:id', isAuthenticated, validateMongoId('id'), checkTaskOwnership, a
     console.error('Error fetching task:', error);
     res.status(500).json({
       success: false,
-      message: 'Error fetching task'
+      message: 'Error fetching post'
     });
   }
 });
@@ -356,7 +356,7 @@ router.put('/:id', isAuthenticated, canManageTasks, validateMongoId('id'), valid
     if (!task) {
       return res.status(404).json({
         success: false,
-        message: 'Task not found'
+        message: 'Post not found'
       });
     }
 
@@ -431,14 +431,14 @@ router.put('/:id', isAuthenticated, canManageTasks, validateMongoId('id'), valid
 
     res.json({
       success: true,
-      message: 'Task updated successfully',
+      message: 'Post updated successfully',
       task: updatedTask
     });
   } catch (error: any) {
     console.error('Error updating task:', error);
     res.status(500).json({
       success: false,
-      message: 'Error updating task'
+      message: 'Error updating post'
     });
   }
 });
@@ -461,7 +461,7 @@ router.post('/:id/upload-image', isAuthenticated, canManageTasks, validateMongoI
     if (!task) {
       return res.status(404).json({
         success: false,
-        message: 'Task not found'
+        message: 'Post not found'
       });
     }
 
@@ -594,7 +594,7 @@ router.post('/:id/generate-poster', isAuthenticated, canManageTasks, validateMon
     if (!task) {
       return res.status(404).json({
         success: false,
-        message: 'Task not found'
+        message: 'Post not found'
       });
     }
 
@@ -727,7 +727,7 @@ router.post('/:id/generate-poster', isAuthenticated, canManageTasks, validateMon
 
     res.json({
       success: true,
-      message: 'Poster generated successfully',
+      message: 'AI image generated successfully',
       generatedImageUrl: permanentImageUrl,
       compiledPrompts: result.compiledPrompts
     });
@@ -760,7 +760,7 @@ router.patch('/:id/adopt-poster', isAuthenticated, canManageTasks, validateMongo
     if (!task) {
       return res.status(404).json({
         success: false,
-        message: 'Task not found'
+        message: 'Post not found'
       });
     }
 
@@ -796,7 +796,7 @@ router.patch('/:id/adopt-poster', isAuthenticated, canManageTasks, validateMongo
 
     res.json({
       success: true,
-      message: 'Poster adopted successfully',
+      message: 'AI image adopted successfully',
       task: updatedTask
     });
 
@@ -820,7 +820,7 @@ router.patch('/:id/discard-poster', isAuthenticated, canManageTasks, validateMon
     if (!task) {
       return res.status(404).json({
         success: false,
-        message: 'Task not found'
+        message: 'Post not found'
       });
     }
 
@@ -855,7 +855,7 @@ router.patch('/:id/discard-poster', isAuthenticated, canManageTasks, validateMon
 
     res.json({
       success: true,
-      message: 'Poster discarded successfully',
+      message: 'AI image discarded successfully',
       task: updatedTask
     });
 
@@ -879,7 +879,7 @@ router.delete('/:id', isAuthenticated, canManageTasks, validateMongoId('id'), ch
     if (!task) {
       return res.status(404).json({
         success: false,
-        message: 'Task not found'
+        message: 'Post not found'
       });
     }
 
@@ -906,7 +906,7 @@ router.delete('/:id', isAuthenticated, canManageTasks, validateMongoId('id'), ch
     console.error('Error deleting task:', error);
     res.status(500).json({
       success: false,
-      message: 'Error deleting task'
+      message: 'Error deleting post'
     });
   }
 });

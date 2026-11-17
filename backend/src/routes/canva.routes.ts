@@ -232,7 +232,7 @@ router.post('/edits/:id/import', isAuthenticated, async (req: Request, res: Resp
       await task.save();
       void queueTaskImage(task.campaignId, task._id, url, req.user!._id, 'Edited in Canva');
       await CanvaEdit.updateOne({ _id: edit._id }, { $set: { status: 'imported', importedAt: new Date() } });
-      res.json({ success: true, message: 'The task image was updated from Canva', imageUrl: url, taskId: task._id });
+      res.json({ success: true, message: 'The post image was updated from Canva', imageUrl: url, taskId: task._id });
     } catch (error: any) {
       await CanvaEdit.updateOne({ _id: edit._id }, { $set: { status: 'failed', error: String(error?.message || 'Import failed').slice(0, 300) } });
       throw error;

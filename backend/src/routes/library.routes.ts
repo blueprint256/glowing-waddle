@@ -341,7 +341,7 @@ router.post('/import-app', isAuthenticated, requireLibrary, async (req: Request,
     if (running) throw new LibraryError(409, 'An import of your app files is already running');
     const batchId = `app${Date.now().toString(36)}`;
     await LibraryJob.create({ type: 'import_app', ownerId, payload: { batchId } });
-    res.status(202).json({ success: true, batchId, message: 'Importing your existing task images, logos and files. They will appear in a few minutes.' });
+    res.status(202).json({ success: true, batchId, message: 'Importing your existing post images, logos and files. They will appear in a few minutes.' });
   } catch (error) {
     fail(res, error, 'Could not start the import');
   }
@@ -530,7 +530,7 @@ router.post('/collections/campaign', isAuthenticated, requireLibrary, canCreateC
     const items = await LibraryAsset.find(filter).select('capturedAt links tags');
     if (!items.length) throw new LibraryError(404, 'No Library items found for this event');
     const dates = items.map((i) => i.capturedAt?.getTime()).filter((d): d is number => typeof d === 'number').sort((a, b) => a - b);
-    const tags = [...new Set(items.flatMap((i) => i.tags || []))].slice(0, 10);
+    const tags: string[] = [...new Set<string>(items.flatMap((i: { tags?: string[] }) => i.tags || []))].slice(0, 10);
     const name = typeof req.body?.name === 'string' && req.body.name.trim() ? req.body.name.trim().slice(0, 200) : `${event}${Number.isInteger(year) ? ` ${year}` : ''}`;
     const campaign = await Campaign.create({
       name,
@@ -538,7 +538,8 @@ router.post('/collections/campaign', isAuthenticated, requireLibrary, canCreateC
       status: CampaignStatus.COMPLETED,
       startDate: dates.length ? new Date(dates[0]) : undefined,
       endDate: dates.length ? new Date(dates[dates.length - 1]) : undefined,
-      hashtags: tags.map((t) => `#${t.replace(/[^\p{L}\p{N}_]/gu, '')}`).filter((t) => t.length > 1),
+      // Stored without '#', like every other campaign (the app adds it when showing them).
+      hashtags: tags.map((t) => t.replace(/[^\p{L}\p{N}_]/gu, '')).filter((t) => t.length > 0),
       createdBy: ownerId
     });
     const unlinked = items.filter((i) => !i.links?.campaignId && !i.links?.taskId && !i.links?.projectId).map((i) => i._id);

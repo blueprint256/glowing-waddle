@@ -83,7 +83,7 @@ router.post('/', isAuthenticated, canManageTasks, upload.single('file'), async (
     if (!taskId && !projectId && !campaignId) {
       return res.status(400).json({
         success: false,
-        message: 'Asset must be associated with a task, project, or campaign'
+        message: 'Asset must be associated with a post, theme, or campaign'
       });
     }
 
@@ -96,7 +96,7 @@ router.post('/', isAuthenticated, canManageTasks, upload.single('file'), async (
         if (!task) {
           return res.status(404).json({
             success: false,
-            message: 'Task not found'
+            message: 'Post not found'
           });
         }
         targetCampaignId = task.campaignId;
@@ -105,7 +105,7 @@ router.post('/', isAuthenticated, canManageTasks, upload.single('file'), async (
         if (!project) {
           return res.status(404).json({
             success: false,
-            message: 'Project not found'
+            message: 'Theme not found'
           });
         }
         targetCampaignId = project.campaignId;

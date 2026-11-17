@@ -22,7 +22,7 @@ async function resolveTarget(
 ): Promise<{ ok: true; target: CommentTarget } | { ok: false; status: number; message: string }> {
   const pick = (['taskId', 'projectId', 'campaignId'] as const).find((f) => source[f]);
   if (!pick) {
-    return { ok: false, status: 400, message: 'Specify the task, project or campaign (taskId, projectId or campaignId)' };
+    return { ok: false, status: 400, message: 'Specify the post, theme or campaign (taskId, projectId or campaignId)' };
   }
   const rawId = source[pick];
   if (typeof rawId !== 'string' || !mongoose.isValidObjectId(rawId)) {
@@ -32,11 +32,11 @@ async function resolveTarget(
   let campaignId: unknown;
   if (pick === 'taskId') {
     const task = await Task.findById(rawId).select('campaignId');
-    if (!task) return { ok: false, status: 404, message: 'Task not found' };
+    if (!task) return { ok: false, status: 404, message: 'Post not found' };
     campaignId = task.campaignId;
   } else if (pick === 'projectId') {
     const project = await Project.findById(rawId).select('campaignId');
-    if (!project) return { ok: false, status: 404, message: 'Project not found' };
+    if (!project) return { ok: false, status: 404, message: 'Theme not found' };
     campaignId = project.campaignId;
   } else {
     campaignId = rawId;

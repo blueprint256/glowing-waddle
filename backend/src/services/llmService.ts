@@ -204,29 +204,24 @@ export function compileSuperPrompt(promptTemplate: string, params: SuperPromptPa
     compiledPrompt = compiledPrompt.replace(/\{companyInfo\}/g, () => companyInfoStr);
   }
 
-  // Replace individual company fields
-  if (params.companyInfo?.companyName) {
-    compiledPrompt = compiledPrompt.replace(/\{companyName\}/g, () => String(params.companyInfo.companyName));
-  }
-  if (params.companyInfo?.sector) {
-    compiledPrompt = compiledPrompt.replace(/\{sector\}/g, () => String(params.companyInfo.sector));
-  }
-  if (params.companyInfo?.brandTone) {
-    compiledPrompt = compiledPrompt.replace(/\{brandTone\}/g, () => String(params.companyInfo.brandTone));
-  }
-
-  // Replace brand asset placeholders
-  if (params.companyInfo?.brandGuidelines) {
-    compiledPrompt = compiledPrompt.replace(/\{brandGuidelines\}/g, () => String(params.companyInfo.brandGuidelines));
-  }
-  if (params.companyInfo?.primaryLogoUrl) {
-    compiledPrompt = compiledPrompt.replace(/\{primaryLogo\}/g, () => String(params.companyInfo.primaryLogoUrl));
-  }
-  if (params.companyInfo?.secondaryLogoUrl) {
-    compiledPrompt = compiledPrompt.replace(/\{secondaryLogo\}/g, () => String(params.companyInfo.secondaryLogoUrl));
-  }
-  if (params.companyInfo?.tertiaryLogoUrl) {
-    compiledPrompt = compiledPrompt.replace(/\{tertiaryLogo\}/g, () => String(params.companyInfo.tertiaryLogoUrl));
+  // Replace individual company fields (values are read once, so the replacers below don't depend
+  // on narrowing inside callbacks).
+  const company = params.companyInfo || {};
+  const companyFields: [RegExp, unknown][] = [
+    [/\{companyName\}/g, company.companyName],
+    [/\{sector\}/g, company.sector],
+    [/\{brandTone\}/g, company.brandTone],
+    // Brand assets
+    [/\{brandGuidelines\}/g, company.brandGuidelines],
+    [/\{primaryLogo\}/g, company.primaryLogoUrl],
+    [/\{secondaryLogo\}/g, company.secondaryLogoUrl],
+    [/\{tertiaryLogo\}/g, company.tertiaryLogoUrl]
+  ];
+  for (const [pattern, value] of companyFields) {
+    if (value) {
+      const text = String(value);
+      compiledPrompt = compiledPrompt.replace(pattern, () => text);
+    }
   }
 
   // Replace {campaignDetails} with formatted campaign information
@@ -236,29 +231,35 @@ export function compileSuperPrompt(promptTemplate: string, params: SuperPromptPa
   }
 
   // Replace individual campaign fields
-  if (params.campaignDetails?.name) {
-    compiledPrompt = compiledPrompt.replace(/\{campaignName\}/g, () => String(params.campaignDetails.name));
-  }
-  if (params.campaignDetails?.coreMessages) {
-    compiledPrompt = compiledPrompt.replace(/\{coreMessages\}/g, () => String(params.campaignDetails.coreMessages));
-  }
-  if (params.campaignDetails?.hashtags) {
-    compiledPrompt = compiledPrompt.replace(/\{hashtags\}/g, () => params.campaignDetails.hashtags.join(', '));
+  const campaign = params.campaignDetails || {};
+  const campaignFields: [RegExp, unknown][] = [
+    [/\{campaignName\}/g, campaign.name],
+    [/\{coreMessages\}/g, campaign.coreMessages],
+    [/\{hashtags\}/g, Array.isArray(campaign.hashtags) && campaign.hashtags.length ? campaign.hashtags.join(', ') : '']
+  ];
+  for (const [pattern, value] of campaignFields) {
+    if (value) {
+      const text = String(value);
+      compiledPrompt = compiledPrompt.replace(pattern, () => text);
+    }
   }
 
   // Replace {taskDescription} if provided
   if (params.taskDescription) {
-    compiledPrompt = compiledPrompt.replace(/\{taskDescription\}/g, () => String(params.taskDescription));
+    const brief = String(params.taskDescription);
+    compiledPrompt = compiledPrompt.replace(/\{taskDescription\}/g, () => brief);
   }
 
   // Replace {baseImage} if provided (URL of the task's base/original image)
   if (params.baseImage) {
-    compiledPrompt = compiledPrompt.replace(/\{baseImage\}/g, () => String(params.baseImage));
+    const image = String(params.baseImage);
+    compiledPrompt = compiledPrompt.replace(/\{baseImage\}/g, () => image);
   }
 
   // Replace {previousOutput} if provided (for multi-step chains)
   if (params.previousOutput !== undefined) {
-    compiledPrompt = compiledPrompt.replace(/\{previousOutput\}/g, () => String(params.previousOutput));
+    const previous = String(params.previousOutput);
+    compiledPrompt = compiledPrompt.replace(/\{previousOutput\}/g, () => previous);
   }
 
   // Replace any custom placeholders

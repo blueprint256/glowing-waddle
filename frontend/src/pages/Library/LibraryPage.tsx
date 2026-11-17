@@ -521,7 +521,7 @@ export default function LibraryPage() {
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1.5 }}>
             <TextField
               size="small"
-              placeholder={status.semanticSearch ? 'Search by words or meaning, e.g. "pink women\'s day poster"' : 'Search titles, text in images, captions, tags…'}
+              placeholder={status.semanticSearch ? 'Search by words or meaning, e.g. "pink women\'s day picture"' : 'Search titles, text in images, captions, tags…'}
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
               sx={{ flex: 1, minWidth: 220 }}

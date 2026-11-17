@@ -1267,7 +1267,7 @@ const libraryTools: Tool[] = [
 const PLATFORM_IDS = ['x', 'linkedin', 'facebook', 'instagram', 'tiktok', 'youtube'];
 /** Posting to real accounts can't be undone, so assistants ask the user first. */
 const PUBLISH = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true };
-const canUsePublishingTools = (ctx: ToolContext) => ctx.user.canUsePublishing;
+const canUsePublishingTools = (ctx: ToolContext): boolean => Boolean(ctx.user.canUsePublishing);
 
 function shapePublishPost(p: any, appUrl: string) {
   return clean({

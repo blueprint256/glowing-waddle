@@ -290,7 +290,7 @@ export default function PublishDialog({ open, taskId, onClose, onDone }: Props) 
               <Box>
                 <Typography sx={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', mb: 1 }}>Files</Typography>
                 {media.length === 0 ? (
-                  <Typography sx={{ fontSize: 'var(--fs-sm)', color: 'var(--text-muted)' }}>This task has no pictures yet. Text-only posts work on X, LinkedIn and Facebook.</Typography>
+                  <Typography sx={{ fontSize: 'var(--fs-sm)', color: 'var(--text-muted)' }}>This post has no pictures yet. Text-only posts work on X, LinkedIn and Facebook.</Typography>
                 ) : (
                   <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                     {media.map((m, i) => (

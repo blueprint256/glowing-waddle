@@ -11,10 +11,10 @@ import type { BlueItem } from '../../services/blue';
 import { UserRole } from '../../types';
 
 const STARTERS = [
-  'What’s on my calendar this week?',
-  'Which tasks are still pending?',
-  'Plan a 5-day campaign with daily social posts',
-  'Show my latest posters from the Library'
+  'What’s going out this week?',
+  'Which posts are still in Draft?',
+  'Plan a 5-day campaign with a post every day',
+  'Show my latest pictures from the Library'
 ];
 
 export function BlueMark({ size = 22 }: { size?: number }) {

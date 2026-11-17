@@ -98,7 +98,7 @@ export default function OAuthConsent() {
   };
 
   const appName = request?.clientName || 'Claude';
-  const roleLabel = request?.user.role === UserRole.SYSTEM_ADMIN ? 'System Admin' : 'campaign owner';
+  const roleLabel = request?.user.role === UserRole.SYSTEM_ADMIN ? 'admin' : 'client';
 
   return (
     <Box sx={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', bgcolor: 'var(--bg-shell)', py: 4 }}>
@@ -147,9 +147,9 @@ export default function OAuthConsent() {
                     <Typography variant="subtitle2" gutterBottom>{appName} will be able to:</Typography>
                     <Stack spacing={1.25} sx={{ mt: 1 }}>
                       {[
-                        'View your campaigns, projects, tasks, calendar and comments',
-                        'Create and change campaigns, projects, tasks and comments for you',
-                        `Act with your permissions as a ${roleLabel} (no more than you can do in the app)`
+                        'View your campaigns, themes, posts, Planner and comments',
+                        'Create and change campaigns, themes, posts and comments for you',
+                        `Act with your permissions as ${roleLabel === 'admin' ? 'an admin' : 'a client'} (no more than you can do in the app)`
                       ].map((item) => (
                         <Box key={item} sx={{ display: 'flex', gap: 1.25, alignItems: 'flex-start' }}>
                           <CheckIcon fontSize="small" sx={{ color: 'var(--success)', mt: '2px' }} />

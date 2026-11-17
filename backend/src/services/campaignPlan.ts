@@ -72,7 +72,7 @@ export async function draftCampaignPlan(campaign: ICampaign, opts: PlanOptions, 
   if (!themes.length || !themes.some((t) => t.posts.length)) throw new AIError(502, 'The AI didn’t suggest any posts. Try again, perhaps with a note on what you want.');
 
   // A theme the AI named exactly like an existing one adds to it.
-  const byName = new Map(existing.map((p) => [p.name.trim().toLowerCase(), String(p._id)]));
+  const byName = new Map<string, string>(existing.map((p: { name: string; _id: unknown }) => [String(p.name).trim().toLowerCase(), String(p._id)]));
   for (const t of themes) t.existingId = byName.get(t.name.toLowerCase()) || null;
   return { themes, from, to, source };
 }
