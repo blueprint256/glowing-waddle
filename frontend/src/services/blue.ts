@@ -85,7 +85,8 @@ function clientContext() {
   } catch {
     timeZone = undefined;
   }
-  return { timeZone, path: window.location.pathname };
+  // With the query, so Blue knows about an open post (?post=) or a chosen theme (?theme=).
+  return { timeZone, path: window.location.pathname + window.location.search };
 }
 
 /** POST and stream Blue's events until the run finishes. */

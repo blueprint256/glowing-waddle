@@ -215,7 +215,7 @@ async function main() {
     assert.equal(body.result.protocolVersion, '2025-06-18');
     assert.deepEqual(body.result.capabilities, { tools: { listChanged: false } });
     assert.equal(body.result.serverInfo.name, 'blueprint-campaigns');
-    assert.ok(body.result.instructions.includes('Campaign → Projects → Tasks'));
+    assert.ok(body.result.instructions.includes('Campaign → Themes → Posts'));
     const unknown = (await handlePost({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '1999-01-01' } }, { tools: TOOLS, ctx: hybrid })).body as any;
     assert.equal(unknown.result.protocolVersion, LATEST_PROTOCOL_VERSION);
   });
@@ -270,7 +270,7 @@ async function main() {
     const del = tools.find((t: any) => t.name === 'delete_task');
     assert.equal(del.annotations.destructiveHint, true);
     assert.equal(del.annotations.openWorldHint, false);
-    assert.equal(del.annotations.title, 'Delete task');
+    assert.equal(del.annotations.title, 'Delete post (task)');
   });
   await test('calling a hidden or unknown tool is a protocol error', async () => {
     const hidden = await call(hybrid, 'list_users', {});

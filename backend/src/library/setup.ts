@@ -47,7 +47,7 @@ export async function loadLibrarySetup(): Promise<LibrarySetup> {
   else if (!configuredProviders.includes(provider)) setup.aiProblem = `The Library is set to use ${provider}, but no ${provider} API key is configured.`;
   else {
     const model = config.libraryModel || (config.libraryProvider ? undefined : config.blueModel) || BLUE_DEFAULT_MODELS[provider];
-    if (!model) setup.aiProblem = `Choose a ${provider} model for the Library in Settings.`;
+    if (!model) setup.aiProblem = `Choose a ${provider} model for the Library in Settings › AI.`;
     else {
       setup.provider = provider;
       setup.model = model;

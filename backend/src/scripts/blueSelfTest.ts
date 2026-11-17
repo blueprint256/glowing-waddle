@@ -330,8 +330,13 @@ async function main() {
     const now = new Date('2026-11-16T22:30:00Z'); // 01:30 on the 17th in Kampala
     assert.equal(formatToday('Africa/Kampala', now).iso, '2026-11-17');
     assert.equal(formatToday('Not/AZone', now).zone, 'UTC');
-    assert.match(describePage(`/tasks/${ID(5)}`)!, /task with id/);
-    assert.match(describePage('/calendar')!, /calendar/);
+    assert.match(describePage(`/tasks/${ID(5)}`)!, /post with id/);
+    assert.match(describePage(`/posts/${ID(5)}`)!, /post with id .*get_task/);
+    assert.match(describePage(`/projects/${ID(6)}`)!, /theme with id .*get_project/);
+    assert.match(describePage(`/planner?view=month&post=${ID(7)}`)!, new RegExp(`post with id ${ID(7)} open`));
+    assert.match(describePage(`/campaigns/${ID(8)}?theme=${ID(9)}`)!, new RegExp(`theme ${ID(9)} selected`));
+    assert.match(describePage('/calendar')!, /Planner/);
+    assert.match(describePage('/settings/brand')!, /Settings/);
     assert.equal(describePage('/nope'), null);
     const p = buildSystemPrompt({ user: { name: 'Ada', role: 'hybrid', part: 'part_two', canUseAI: false }, timeZone: 'Africa/Kampala', path: '/calendar', now });
     assert.match(p, /Tuesday,? 17 November 2026/);

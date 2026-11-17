@@ -113,7 +113,7 @@ export async function startConnect(user: IUser, ownerId: Id, provider: string, r
   if (!PROVIDERS.includes(provider as ProviderId)) throw new PublishingError(400, 'Unknown platform');
   const setup = await loadPublishingSetup();
   const s = setup.providers[provider as ProviderId];
-  if (!s.ready) throw new PublishingError(409, `${ADAPTERS[provider as ProviderId].name} isn't switched on yet. A System Admin adds its app keys in Settings → Publishing.`);
+  if (!s.ready) throw new PublishingError(409, `${ADAPTERS[provider as ProviderId].name} isn't switched on yet. A System Admin adds its app keys in Settings › Integrations.`);
   const { verifier, challenge } = pkcePair();
   const state = crypto.randomBytes(24).toString('base64url');
   await PublishingConnect.create({ state, userId: user._id, ownerId, provider, codeVerifier: verifier, returnTo });

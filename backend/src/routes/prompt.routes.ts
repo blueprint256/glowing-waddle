@@ -3,8 +3,55 @@ import { Prompt } from '../models/Prompt';
 import { isAuthenticated } from '../middleware/auth';
 import { isSystemAdmin } from '../middleware/rbac';
 import { validateMongoId } from '../middleware/validation';
+import mongoose from 'mongoose';
+import { Task } from '../models/Task';
+import { PLACEHOLDERS, checkPlaceholders } from '../lib/placeholders';
+import { compileSuperPrompt } from '../services/llmService';
+import { CAPTION_STYLES, postContext } from '../services/postAI';
 
 const router = express.Router();
+
+/**
+ * Prompt editor helpers (decision 22): the list of {placeholders}, a check for names that don't
+ * exist, and a preview of the prompt filled in with a real post. Defined before '/:id'.
+ */
+router.get('/placeholders', isAuthenticated, isSystemAdmin, (_req: Request, res: Response) => {
+  res.json({ success: true, placeholders: PLACEHOLDERS });
+});
+
+router.post('/check', isAuthenticated, isSystemAdmin, (req: Request, res: Response) => {
+  const template = typeof req.body?.template === 'string' ? req.body.template : '';
+  res.json({ success: true, ...checkPlaceholders(template) });
+});
+
+router.post('/preview', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
+  try {
+    const template = typeof req.body?.template === 'string' ? req.body.template : '';
+    const taskId = typeof req.body?.taskId === 'string' ? req.body.taskId : '';
+    if (!template.trim()) return res.status(400).json({ success: false, message: 'Write the prompt first.' });
+    if (!mongoose.isValidObjectId(taskId)) return res.status(400).json({ success: false, message: 'Choose a post to preview with.' });
+    const task = await Task.findById(taskId);
+    if (!task) return res.status(404).json({ success: false, message: 'Post not found' });
+    const { campaign, companyInfo } = await postContext(task, req.user!._id as mongoose.Types.ObjectId);
+    const attached = (task.attachedImages || []) as string[];
+    const data: Record<string, unknown> = {
+      taskName: task.name,
+      taskDescription: task.description || '',
+      taskContent: task.content || '',
+      instruction: CAPTION_STYLES.improve.instruction,
+      platform: '',
+      ...(task.designedImage ? { baseImage: task.designedImage } : {}),
+      ...Object.fromEntries(attached.map((url, i) => [`attachedImage${i + 1}`, url])),
+      ...(campaign ? { campaignDetails: campaign } : {}),
+      ...(companyInfo ? { companyInfo } : {})
+    };
+    const compiled = compileSuperPrompt(template, data as any);
+    res.json({ success: true, compiled, post: { id: task._id, name: task.name }, ...checkPlaceholders(template) });
+  } catch (error) {
+    console.error('Error previewing prompt:', error);
+    res.status(500).json({ success: false, message: 'Couldn’t preview the prompt.' });
+  }
+});
 
 /**
  * @route   GET /api/prompts

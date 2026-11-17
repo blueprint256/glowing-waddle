@@ -30,6 +30,7 @@ import { promptAPI, commandMappingAPI, chainAPI } from '../../services/api';
 import { LLM_MODELS } from './settingsShared';
 import { notify } from '../../store/toastStore';
 import { useConfirm } from '../../components/ui/useConfirm';
+import PromptTextEditor from '../../components/Settings/PromptTextEditor';
 
 /**
  * Settings → Prompts (admins): the prompts, multi-step chains and commands behind the app's AI
@@ -488,10 +489,10 @@ export default function PromptsSection() {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Box>
           <Typography variant="h6" gutterBottom>
-            Prompt Management
+            Prompts
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Manage LLM prompts for dynamic content generation
+            Instructions for the AI, with placeholders the app fills in.
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 2 }}>
@@ -596,10 +597,10 @@ export default function PromptsSection() {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Box>
           <Typography variant="h6" gutterBottom>
-            Chain Management
+            Multi-step chains
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Create multi-step LLM chains with different models for each step
+            Several prompts run one after another, each step can use a different model.
           </Typography>
         </Box>
       </Box>
@@ -697,10 +698,10 @@ export default function PromptsSection() {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Box>
           <Typography variant="h6" gutterBottom>
-            Command Mappings
+            Commands
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Map commands to prompts for dynamic LLM execution
+            Which prompt or chain each AI feature runs: improve-caption, refine-task-description (Improve brief), generate-campaign (Plan with AI), generate-poster (AI images). Without one, a feature uses its built-in prompt (AI images need one).
           </Typography>
         </Box>
         <Button
@@ -841,28 +842,14 @@ export default function PromptsSection() {
             helperText="Unique identifier for this prompt"
             required
           />
-          <TextField
-            fullWidth
-            label="Prompt Details"
+          <PromptTextEditor
+            label="Prompt"
             value={promptForm.details}
-            onChange={(e) => setPromptForm({ ...promptForm, details: e.target.value })}
-            margin="normal"
-            multiline
-            rows={10}
-            placeholder="Enter your prompt template here. Use placeholders like {companyInfo}, {campaignDetails}, {companyName}, etc."
-            helperText="The prompt text with placeholders that will be replaced with actual data"
+            onChange={(details) => setPromptForm({ ...promptForm, details })}
+            rows={12}
+            placeholder="Write the instructions for the AI. Insert placeholders such as {brand}, {campaign}, {brief} or {caption}; the app fills them in."
             required
           />
-          <Alert severity="info" sx={{ mt: 2 }}>
-            <Typography variant="body2">
-              <strong>Available Placeholders:</strong><br />
-              <strong>Company:</strong> {'{companyInfo}'} (full object), {'{companyName}'}, {'{sector}'}, {'{brandTone}'}, {'{brandGuidelines}'}<br />
-              <strong>Campaign:</strong> {'{campaignDetails}'} (full object), {'{campaignName}'}, {'{coreMessages}'}, {'{hashtags}'}<br />
-              <strong>Task:</strong> {'{taskDescription}'}, {'{baseImage}'} (URL of task's original image)<br />
-              <strong>Brand Assets:</strong> {'{primaryLogo}'}, {'{secondaryLogo}'}, {'{tertiaryLogo}'} (logo URLs)<br />
-              <strong>Multi-step Chains:</strong> {'{previousOutput}'} (output from previous step in a chain)
-            </Typography>
-          </Alert>
         </Box>
       </DialogContent>
       <DialogActions>
@@ -928,16 +915,12 @@ export default function PromptsSection() {
                 required
               />
 
-              <TextField
-                fullWidth
-                label="Prompt Text"
+              <PromptTextEditor
+                label="Prompt for this step"
                 value={step.prompt}
-                onChange={(e) => handleChainStepChange(index, 'prompt', e.target.value)}
-                margin="normal"
-                multiline
+                onChange={(v) => handleChainStepChange(index, 'prompt', v)}
                 rows={6}
-                placeholder="Enter the prompt for this step. Use {previousOutput} to reference output from the previous step."
-                helperText="The prompt text with placeholders. Use {previousOutput} to reference output from the previous step."
+                helperText="{previousOutput} is the answer of the step before."
                 required
               />
 

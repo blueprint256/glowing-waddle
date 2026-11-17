@@ -618,7 +618,7 @@ router.post('/:id/generate-poster', isAuthenticated, canManageTasks, validateMon
       console.log('❌ No command mapping found for:', commandName);
       return res.status(400).json({
         success: false,
-        message: `No prompt configured for "${commandName}" command. Please configure it in Settings → Command Mappings.`
+        message: `AI images aren’t set up yet. An admin sets up the “${commandName}” command in Settings › Prompts.`
       });
     }
 

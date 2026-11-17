@@ -40,7 +40,7 @@ export async function getProviderKey(provider: LLMProvider): Promise<string> {
         if (process.env.OPENAI_API_KEY) {
           return process.env.OPENAI_API_KEY;
         }
-        throw new Error('OpenAI API key not configured. Please configure it in Settings → Integrations.');
+        throw new Error('OpenAI API key not configured. An admin adds it in Settings › AI.');
 
       case 'anthropic':
         if (config.anthropicApiKey) {
@@ -49,7 +49,7 @@ export async function getProviderKey(provider: LLMProvider): Promise<string> {
         if (process.env.ANTHROPIC_API_KEY) {
           return process.env.ANTHROPIC_API_KEY;
         }
-        throw new Error('Anthropic API key not configured. Please configure it in Settings → Integrations.');
+        throw new Error('Anthropic API key not configured. An admin adds it in Settings › AI.');
 
       case 'grok':
         if (config.grokApiKey) {
@@ -58,7 +58,7 @@ export async function getProviderKey(provider: LLMProvider): Promise<string> {
         if (process.env.GROK_API_KEY) {
           return process.env.GROK_API_KEY;
         }
-        throw new Error('Grok API key not configured. Please configure it in Settings → Integrations.');
+        throw new Error('Grok API key not configured. An admin adds it in Settings › AI.');
 
       case 'gemini':
         if (config.geminiApiKey) {
@@ -67,7 +67,7 @@ export async function getProviderKey(provider: LLMProvider): Promise<string> {
         if (process.env.GEMINI_API_KEY) {
           return process.env.GEMINI_API_KEY;
         }
-        throw new Error('Gemini API key not configured. Please configure it in Settings → Integrations.');
+        throw new Error('Gemini API key not configured. An admin adds it in Settings › AI.');
 
       default:
         throw new Error(`Unknown provider: ${provider}`);

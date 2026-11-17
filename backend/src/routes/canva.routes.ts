@@ -123,7 +123,7 @@ async function loadImage(url: string): Promise<Buffer> {
 router.post('/edits', isAuthenticated, async (req: Request, res: Response) => {
   try {
     const s = await loadCanvaSettings();
-    if (!s.ready) throw new PublishingError(409, 'Canva is not set up yet. A System Admin adds the Canva app keys in Settings.');
+    if (!s.ready) throw new PublishingError(409, 'Canva is not set up yet. A System Admin adds the Canva app keys in Settings › Integrations.');
     const target = req.body?.target === 'task' ? 'task' : 'library';
     let image: Buffer;
     let title: string;

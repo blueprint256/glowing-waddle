@@ -217,7 +217,7 @@ async function runAndStream(
       const system = buildSystemPrompt({
         user: { name: ctx.user.name, role: ctx.user.role, part: ctx.user.accessMode, canUseAI: ctx.user.canUseAI, canUseLibrary: ctx.user.canUseLibrary, canUsePublishing: ctx.user.canUsePublishing },
         timeZone: typeof req.body?.timeZone === 'string' ? req.body.timeZone : undefined,
-        path: typeof req.body?.path === 'string' ? req.body.path : undefined
+        path: typeof req.body?.path === 'string' ? req.body.path.slice(0, 300) : undefined
       });
       const trimmed = trimHistory(messages);
       const dropped = messages.length - trimmed.length;

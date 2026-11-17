@@ -794,8 +794,8 @@ export function BlueToolItem({ item }: { item: ToolItem }) {
     case 'generate_campaign_content':
       return (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-          <Step ok text={d.message || 'Generated'} />
-          <ProjectTable projects={d.projects || []} extra={(p) => `${p.tasks_created ?? 0} posts`} />
+          <Step ok text={d.message || 'Planned'} />
+          <ProjectTable projects={d.themes || d.projects || []} extra={(p) => `${p.posts_created ?? p.tasks_created ?? 0} posts`} />
         </Box>
       );
     case 'schedule_post':
@@ -825,8 +825,8 @@ export function BlueToolItem({ item }: { item: ToolItem }) {
     case 'improve_caption':
       return (
         <Card>
-          <Meta>{d.label ? `Suggested caption · ${d.label}` : 'Suggested caption'}</Meta>
-          <BlueText text={d.suggestion || ''} />
+          <Meta>{d.style ? `Suggested caption · ${d.style}` : 'Suggested caption'}</Meta>
+          <BlueText text={d.suggested_caption || ''} />
         </Card>
       );
     case 'generate_task_poster':

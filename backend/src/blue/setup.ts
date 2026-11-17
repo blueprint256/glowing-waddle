@@ -44,7 +44,7 @@ export async function loadBlueSetup(): Promise<BlueSetup> {
 
   const provider = (config.blueProvider as BlueProviderName | undefined) || configuredProviders[0];
   if (!provider) {
-    setup.problem = 'No AI provider is set up for Blue yet. A System Admin can add an Anthropic, OpenAI or Grok key in Settings.';
+    setup.problem = 'No AI provider is set up for Blue yet. A System Admin can add an Anthropic, OpenAI or Grok key in Settings › AI.';
     return setup;
   }
   if (!configuredProviders.includes(provider)) {
@@ -53,7 +53,7 @@ export async function loadBlueSetup(): Promise<BlueSetup> {
   }
   const model = config.blueModel || BLUE_DEFAULT_MODELS[provider];
   if (!model) {
-    setup.problem = `Choose a ${provider} model for Blue in Settings.`;
+    setup.problem = `Choose a ${provider} model for Blue in Settings › AI.`;
     return setup;
   }
   setup.provider = provider;

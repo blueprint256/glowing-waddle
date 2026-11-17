@@ -29,7 +29,7 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
 };
 
 /**
- * Settings → LLM Settings (System Admin): which AI powers Blue, on/off for everyone, daily limit.
+ * Settings › AI (System Admin): which AI powers Blue, on/off for everyone, daily limit.
  * Per-user access is switched in Admin → Users.
  */
 export default function BlueSettingsCard() {
@@ -116,8 +116,8 @@ export default function BlueSettingsCard() {
               }}
               helperText={
                 settings?.configuredProviders.length
-                  ? 'Only providers with an API key (Settings → Integrations) can be used.'
-                  : 'Add an Anthropic, OpenAI or Grok API key in Settings → Integrations first.'
+                  ? 'Only providers with an API key (Settings › AI) can be used.'
+                  : 'Add an Anthropic, OpenAI or Grok API key above first.'
               }
             >
               <MenuItem value="">

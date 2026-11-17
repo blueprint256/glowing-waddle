@@ -29,7 +29,7 @@ interface LibrarySettings {
 }
 
 /**
- * Settings → LLM Settings (System Admin): the Library (Aggregator) on/off for everyone, which AI reads
+ * Settings › AI (System Admin): the Library (Aggregator) on/off for everyone, which AI reads
  * uploads, the monthly per-user AI allowance and search by meaning. Per-user access is in Admin → Users.
  */
 export default function LibrarySettingsCard() {
@@ -145,7 +145,7 @@ export default function LibrarySettingsCard() {
               label={
                 settings?.semanticAvailable
                   ? 'Search by meaning (uses OpenAI embeddings, very low cost)'
-                  : 'Search by meaning needs an OpenAI API key (Settings → Integrations)'
+                  : 'Search by meaning needs an OpenAI API key (above)'
               }
             />
 

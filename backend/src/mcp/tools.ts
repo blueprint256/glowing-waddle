@@ -368,7 +368,7 @@ const campaignTools: Tool[] = [
   {
     name: 'get_campaign',
     title: 'Get campaign',
-    description: 'Full details of one campaign, including its projects with task counts per status.',
+    description: 'Full details of one campaign, including its themes (projects) with post counts per status.',
     inputSchema: obj({ campaign_id: id('Campaign ID.') }, ['campaign_id']),
     annotations: READ,
     handler: async (args, ctx) => {
@@ -452,8 +452,8 @@ const projectStatus: JsonSchema = { type: 'string', enum: PROJECT_STATUSES, desc
 const projectTools: Tool[] = [
   {
     name: 'list_projects',
-    title: 'List projects',
-    description: 'List projects the user can see, optionally within one campaign (newest first).',
+    title: 'List themes (projects)',
+    description: 'List the themes (called projects in these tools) the user can see, optionally within one campaign (newest first). A theme is a strand of a campaign, e.g. "Launch week".',
     inputSchema: obj({
       campaign_id: id('Only projects in this campaign.'),
       status: statusList(PROJECT_STATUSES, 'projects'),
@@ -481,8 +481,8 @@ const projectTools: Tool[] = [
   },
   {
     name: 'get_project',
-    title: 'Get project',
-    description: 'Full details of one project with its tasks (ordered by date) and its comments.',
+    title: 'Get theme (project)',
+    description: 'Full details of one theme (project) with its posts (tasks, ordered by day) and its comments.',
     inputSchema: obj({ project_id: id('Project ID.') }, ['project_id']),
     annotations: READ,
     handler: async (args, ctx) => {
@@ -500,8 +500,8 @@ const projectTools: Tool[] = [
   },
   {
     name: 'create_project',
-    title: 'Create project',
-    description: 'Create a project inside a campaign. Status defaults to "planning".',
+    title: 'Create theme (project)',
+    description: 'Create a theme (project) inside a campaign, e.g. "Launch week" or "Customer stories". Status defaults to "planning".',
     inputSchema: obj(
       {
         campaign_id: id('Campaign the project belongs to.'),
@@ -528,8 +528,8 @@ const projectTools: Tool[] = [
   },
   {
     name: 'update_project',
-    title: 'Update project',
-    description: 'Change a project. Only the fields you pass are changed.',
+    title: 'Update theme (project)',
+    description: 'Change a theme (project). Only the fields you pass are changed.',
     inputSchema: obj(
       {
         project_id: id('Project ID.'),
@@ -592,13 +592,13 @@ const taskStatus: JsonSchema = {
   description: 'Post status: Idea, Draft, Ready, or Published (posted by hand). Scheduled and Needs attention are set by Publishing.'
 };
 const taskContent = text(
-  'The deliverable text of the task, e.g. the social post copy (caption, hashtags, call to action). This is what the app shows in social previews.',
+  'The caption: the text that gets published (with hashtags and call to action). This is what the app shows in social previews.',
   50000
 );
 const newTaskFields = {
-  name: name('Task name.'),
-  description: text('What needs to be done (brief/instructions).'),
-  task_date: date('The day the task should happen (shows on the calendar).'),
+  name: name('Post title (only the user sees it).'),
+  description: text('The brief: what the post should achieve and show.'),
+  task_date: date('The day the post goes out (places it in the Planner).'),
   content: taskContent,
   status: taskStatus
 };
@@ -607,8 +607,8 @@ const taskMapping = { name: 'name', description: 'description', status: 'status'
 const taskTools: Tool[] = [
   {
     name: 'list_tasks',
-    title: 'List tasks',
-    description: 'List tasks the user can see, ordered by task date. Filter by project, campaign, status, date range or text.',
+    title: 'List posts (tasks)',
+    description: 'List the posts (called tasks in these tools) the user can see, ordered by day. Filter by theme (project), campaign, status, date range or text.',
     inputSchema: obj({
       project_id: id('Only tasks in this project.'),
       campaign_id: id('Only tasks in this campaign.'),
@@ -639,7 +639,7 @@ const taskTools: Tool[] = [
   {
     name: 'get_calendar',
     title: 'Get calendar',
-    description: 'Tasks scheduled between two dates, grouped by day (same data as the app\'s calendar). Dates are grouped by their UTC date.',
+    description: 'Posts (tasks) planned between two dates, grouped by day (same data as the app\'s Planner). Dates are grouped by their UTC date.',
     inputSchema: obj(
       {
         date_from: date('First day (inclusive).'),
@@ -676,8 +676,8 @@ const taskTools: Tool[] = [
   },
   {
     name: 'get_task',
-    title: 'Get task',
-    description: 'Full details of one task, including its content and comments.',
+    title: 'Get post (task)',
+    description: 'Full details of one post (task): title, brief, caption (content), day, status, and its comments.',
     inputSchema: obj({ task_id: id('Task ID.') }, ['task_id']),
     annotations: READ,
     handler: async (args, ctx) => {
@@ -690,8 +690,8 @@ const taskTools: Tool[] = [
   },
   {
     name: 'create_task',
-    title: 'Create task',
-    description: 'Create a task in a project. Put the finished post copy in "content". Status defaults to "Draft".',
+    title: 'Create post (task)',
+    description: 'Create a post (task) in a theme (project). Put the brief in "description" and the finished caption in "content". Status defaults to "Draft".',
     inputSchema: obj({ project_id: id('Project the task belongs to.'), ...newTaskFields }, ['project_id', 'name']),
     annotations: CREATE,
     handler: async (args, ctx) => {
@@ -703,8 +703,8 @@ const taskTools: Tool[] = [
   },
   {
     name: 'create_tasks',
-    title: 'Create several tasks',
-    description: 'Create up to 50 tasks in one project in one go (e.g. a content calendar). Each task is created separately; the result lists which succeeded.',
+    title: 'Create several posts (tasks)',
+    description: 'Create up to 50 posts (tasks) in one theme (project) in one go (e.g. a month of content). Each is created separately; the result lists which succeeded.',
     inputSchema: obj(
       {
         project_id: id('Project the tasks belong to.'),
@@ -753,13 +753,14 @@ const taskTools: Tool[] = [
   },
   {
     name: 'update_task',
-    title: 'Update task',
-    description: 'Change a task: name, description, status, date or content. Only the fields you pass are changed.',
+    title: 'Update post (task)',
+    description: 'Change a post (task): title, brief (description), status, day, caption (content), or move it to another theme with project_id. Only the fields you pass are changed. A post that is Scheduled or Needs attention can\'t change status until it\'s cancelled or fixed in Publishing.',
     inputSchema: obj(
       {
-        task_id: id('Task ID.'),
-        name: name('New task name.'),
-        description: text('Task description.', 20000, true),
+        task_id: id('Post (task) ID.'),
+        project_id: id('Move the post to this theme (project), in this or another of the user\'s campaigns.'),
+        name: name('New post title.'),
+        description: text('The brief.', 20000, true),
         status: taskStatus,
         task_date: date('Task date.', true),
         content: { ...taskContent, type: ['string', 'null'] }
@@ -768,16 +769,16 @@ const taskTools: Tool[] = [
     ),
     annotations: UPDATE,
     handler: async (args, ctx) => {
-      const body = pick(args, taskMapping);
-      requireSomeField(body, 'name, description, status, task_date, content');
+      const body = { ...pick(args, taskMapping), ...(args.project_id ? { projectId: args.project_id } : {}) };
+      requireSomeField(body, 'name, description, status, task_date, content, project_id');
       const res = await ctx.api.request('PUT', `/api/tasks/${args.task_id}`, { body });
       return { message: res.message, task: shapeTask(res.task, ctx.appUrl) };
     }
   },
   {
     name: 'delete_task',
-    title: 'Delete task',
-    description: 'Permanently delete a task and its comments. This cannot be undone, so confirm with the user first.',
+    title: 'Delete post (task)',
+    description: 'Permanently delete a post (task) and its comments; anything scheduled for it is cancelled. This cannot be undone, so confirm with the user first.',
     inputSchema: obj({ task_id: id('Task ID.') }, ['task_id']),
     annotations: DESTRUCTIVE,
     handler: async (args, ctx) => {
@@ -798,7 +799,7 @@ const commentTools: Tool[] = [
   {
     name: 'list_comments',
     title: 'List comments',
-    description: 'Comments on a campaign, project or task (newest first).',
+    description: 'Comments on a campaign, theme (project) or post (task), newest first.',
     inputSchema: obj({ target_type: targetType, target_id: id('ID of the campaign, project or task.') }, ['target_type', 'target_id']),
     annotations: READ,
     handler: async (args, ctx) => {
@@ -809,7 +810,7 @@ const commentTools: Tool[] = [
   {
     name: 'add_comment',
     title: 'Add comment',
-    description: 'Post a comment on a campaign, project or task, as the user. Optionally reply to another comment.',
+    description: 'Add a comment on a campaign, theme (project) or post (task), as the user. Optionally reply to another comment.',
     inputSchema: obj(
       {
         target_type: targetType,
@@ -865,39 +866,62 @@ const commentTools: Tool[] = [
 const aiTools: Tool[] = [
   {
     name: 'generate_campaign_content',
-    title: 'Generate campaign content (app AI)',
+    title: 'Plan a campaign with the app AI',
     description:
-      'Run one of the app\'s configured AI commands on a campaign. It creates projects and tasks in the campaign automatically, exactly like "Generate Campaign" in the app. Only use this when the user explicitly asks for the app\'s own AI generation; otherwise write the projects and tasks yourself with create_project / create_tasks.',
+      'Run the app\'s Plan with AI on a campaign: it drafts themes and posts (titles, briefs, captions, days) with the brand and campaign details and creates them straight away. In the app people review the draft first, so only use this when the user explicitly asks for the app\'s own AI planning; otherwise plan the posts yourself with create_project / create_tasks. Confirm the period with the user first.',
     inputSchema: obj(
       {
         campaign_id: id('Campaign ID.'),
-        command: { type: 'string', minLength: 1, maxLength: 200, description: 'Name of the AI command configured by the administrator. If unsure, try one: an unknown name returns the list of available commands.' }
+        notes: text('What the posts should focus on (optional).', 2000),
+        date_from: date('First day to plan (default: the campaign start, or today if it already started).'),
+        date_to: date('Last day to plan (default: the campaign end, or four weeks).'),
+        posts_per_week: { type: 'integer', minimum: 1, maximum: 14, description: 'About how many posts a week (optional).' },
+        command: { type: 'string', minLength: 1, maxLength: 200, description: 'Only if the user names one: an AI command set up by the administrator. Leave out to use the standard plan.' }
       },
-      ['campaign_id', 'command']
+      ['campaign_id']
     ),
     annotations: CREATE,
     isAvailable: canUseAI,
     handler: async (args, ctx) => {
       const res = await ctx.api.request('POST', `/api/campaigns/${args.campaign_id}/generate`, {
-        body: { command: args.command },
-        timeoutMs: 180000
+        body: { command: args.command, notes: args.notes, from: args.date_from, to: args.date_to, perWeek: args.posts_per_week },
+        timeoutMs: 240000
       });
       return {
         message: res.message,
-        projects: (res.projects || []).map((p: any, i: number) => ({ ...shapeProject(p, ctx.appUrl), tasks_created: res.taskCounts?.[i] }))
+        themes: (res.projects || []).map((p: any, i: number) => ({ ...shapeProject(p, ctx.appUrl), posts_created: res.taskCounts?.[i] }))
       };
     }
   },
   {
     name: 'refine_task_description',
-    title: 'Refine task description (app AI)',
-    description: 'Ask the app\'s AI to rewrite a task\'s description. Returns a suggestion only; nothing is saved until you call update_task.',
+    title: 'Improve a post\'s brief (app AI)',
+    description: 'Ask the app\'s AI to rewrite a post\'s brief (the task description). Returns a suggestion only; nothing is saved until you call update_task.',
     inputSchema: obj({ task_id: id('Task ID.') }, ['task_id']),
     annotations: READ,
     isAvailable: canUseAI,
     handler: async (args, ctx) => {
       const res = await ctx.api.request('POST', `/api/tasks/${args.task_id}/refine-description`, { timeoutMs: 120000 });
       return { original_description: res.originalDescription, suggested_description: res.refinedDescription };
+    }
+  },
+  {
+    name: 'improve_caption',
+    title: 'Improve a post\'s caption (app AI)',
+    description:
+      'Ask the app\'s AI to improve a post\'s caption, the same as "Improve caption" in the app. Styles: improve (default), shorter, playful, professional, fix (spelling only), cta (add a call to action), hashtags, x / linkedin / instagram (fit that platform), write (when there\'s no caption yet). Returns a suggestion only; save it with update_task (content) after the user agrees.',
+    inputSchema: obj(
+      {
+        task_id: id('Post (task) ID.'),
+        style: { type: 'string', enum: ['improve', 'shorter', 'playful', 'professional', 'fix', 'cta', 'hashtags', 'x', 'linkedin', 'instagram', 'write'], description: 'How to change it.' }
+      },
+      ['task_id']
+    ),
+    annotations: READ,
+    isAvailable: canUseAI,
+    handler: async (args, ctx) => {
+      const res = await ctx.api.request('POST', `/api/tasks/${args.task_id}/improve-caption`, { body: { style: args.style || 'improve' }, timeoutMs: 120000 });
+      return { original_caption: res.original, suggested_caption: res.suggestion, style: res.label };
     }
   }
 ];
@@ -1284,7 +1308,7 @@ const publishingTools: Tool[] = [
   },
   {
     name: 'schedule_post',
-    title: 'Schedule or publish a task',
+    title: 'Schedule or publish a post',
     description:
       "Publish a task's caption and image to connected accounts now or at a set time, and/or add 'post by hand' reminders for platforms without a connection. The caption defaults to the task's content. Always confirm the accounts, caption and time with the user first: posts to real accounts are public.",
     inputSchema: obj(
@@ -1626,9 +1650,9 @@ const aiAdminTools: Tool[] = [
   },
   {
     name: 'generate_task_poster',
-    title: 'Generate a poster for a task (app AI)',
+    title: 'Create an AI image for a post (app AI)',
     description:
-      "Run the app's generate-poster command on a task. The image is saved as a pending poster: adopt it with adopt_task_poster (it becomes the task image and a new Library version) or discard it. Costs an image generation; confirm with the user first.",
+      "Make an image for a post (task) with the app's AI. It's saved as a pending image: adopt it with adopt_task_poster (it becomes the post's image and a new Library version) or discard it. Uses one of the account's monthly AI images; confirm with the user first.",
     inputSchema: obj({ task_id: id('Task ID.') }, ['task_id']),
     annotations: CREATE,
     isAvailable: canUseAI,
@@ -1639,8 +1663,8 @@ const aiAdminTools: Tool[] = [
   },
   {
     name: 'adopt_task_poster',
-    title: 'Use or discard a generated poster',
-    description: 'Keep the pending AI poster as the task image (adopt) or throw it away (discard).',
+    title: 'Use or discard a pending AI image',
+    description: 'Keep the pending AI image as the post\'s image (adopt) or throw it away (discard).',
     inputSchema: obj({ task_id: id('Task ID.'), action: { type: 'string', enum: ['adopt', 'discard'], description: 'adopt or discard' } }, ['task_id', 'action']),
     annotations: UPDATE,
     isAvailable: canUseAI,
@@ -1665,19 +1689,19 @@ export const TOOLS: Tool[] = [
   ...adminTools
 ];
 
-export const SERVER_INSTRUCTIONS = `This connector works with the user's Blueprint campaign-management app, acting as the user with exactly their permissions.
+export const SERVER_INSTRUCTIONS = `This connector works with the user's Blueprint app (planning and publishing social media posts), acting as the user with exactly their permissions.
 
-Structure: Campaign → Projects → Tasks. A task is one deliverable (usually a social post) with a name, a description (the brief), a task_date (when it goes out; drives the calendar), a status (Pending / In Progress / Completed) and content (the finished post copy that the app previews on social layouts). Comments can be attached to campaigns, projects and tasks.
+Structure: Campaign → Themes → Posts. In the tools a theme is a "project" and a post is a "task" (older names for the same things); talk to the user about themes and posts. A post has a title (name), a brief (description), a day (task_date, which places it in the Planner), a status and a caption (content, the text that gets published and shown in the app's social previews). Statuses: Idea, Draft and Ready are set by the user; Scheduled, Published and Needs attention follow Publishing automatically and can't be set by hand. Comments can be attached to campaigns, themes and posts.
 
 How to work:
 - Use list_campaigns / get_campaign / get_project / list_tasks to find ids before changing anything. Never invent ids.
 - Use get_my_account or get_company_info to write in the user's brand voice.
-- To plan content, create the campaign and projects, then add tasks with create_tasks (dated, with finished content).
+- To plan content, create the campaign and its themes (create_project), then add posts with create_tasks (each with a day, a brief and a finished caption).
 - Updates only change the fields you pass.
 - archive_campaign, delete_task, delete_comment, remove_user_from_project and deactivate_user remove things: confirm with the user first.
 - Every result includes a "url" the user can open in the app.
-- Images cannot be added through this connector yet; tell the user to upload them in the app.
-- Projects cannot be deleted (the app does not allow it either).
+- Pictures can't be uploaded through this connector; tell the user to add them on the post in the app (Upload, From the Library, or Create image with AI).
+- Themes can be deleted only in the app, and only when they have no posts.
 - The Inbox (list_inbox) holds reminders that need the user (posts due by hand, failed posts, accounts to reconnect) and messages from the Blueprint team; inbox_action runs an item's action after the user agrees.
-- Publishing: list_publishing_channels shows connected accounts; schedule_post publishes a task now or later (always confirm accounts, caption and time with the user first); accounts that aren't connected can get "post by hand" reminders.
-- The Library holds the user's past and present work (posters, photos, captions, logos, files) with full version history. To find something, call library_overview first to see which years, months and events exist, then search_library with a date range and/or words. Never guess item ids.`;
+- Publishing: list_publishing_channels shows connected accounts; schedule_post publishes a post now or later (always confirm accounts, caption and time with the user first); accounts that aren't connected can get "post by hand" reminders.
+- The Library holds the user's past and present work (pictures, captions, logos, files) with full version history. To find something, call library_overview first to see which years, months and events exist, then search_library with a date range and/or words. Never guess item ids.`;
