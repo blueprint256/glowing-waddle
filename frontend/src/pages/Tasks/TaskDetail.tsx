@@ -165,10 +165,11 @@ export default function TaskDetail() {
   };
 
   const handleDeleteTask = async () => {
-    if (!window.confirm('Are you sure you want to delete this task?')) return;
+    if (!window.confirm('Delete this task? Any of its posts that haven’t gone out yet will be cancelled.')) return;
 
     try {
-      await taskAPI.delete(id!);
+      const res = await taskAPI.delete(id!);
+      if (res.data?.cancelledPosts) alert(res.data.message);
       navigate(-1); // Go back to previous page
     } catch (error: any) {
       console.error('Error deleting task:', error);
@@ -328,7 +329,7 @@ export default function TaskDetail() {
                   <Grid item xs={12} md={6}>
                     <Typography variant="subtitle2" color="text.secondary">Task Date</Typography>
                     <Typography variant="body1">
-                      {new Date(task.taskDate).toLocaleDateString()}
+                      {new Date(task.taskDate).toLocaleDateString(undefined, { timeZone: 'UTC' })}
                     </Typography>
                   </Grid>
                 )}

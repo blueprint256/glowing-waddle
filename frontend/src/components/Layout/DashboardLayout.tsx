@@ -11,6 +11,8 @@ import {
   TableChart as TableChartIcon,
   PhotoLibrary as PhotoLibraryIcon,
   Send as SendIcon,
+  Inbox as InboxIcon,
+  Forum as OutreachIcon,
   Settings as SettingsIcon,
   Logout as LogoutIcon,
   DarkMode as DarkModeIcon,
@@ -20,6 +22,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
 import { UserRole } from '../../types';
 import { useBlueStore } from '../../store/blueStore';
+import { useInboxStore } from '../../store/inboxStore';
 import BluePanel, { BlueMark } from '../Blue/BluePanel';
 
 /** Accent names map to --accent-<name>-bg / -fg in styles/tokens.css. */
@@ -37,10 +40,13 @@ interface NavItem {
   library?: boolean;
   /** Hidden when the user's publishing access is switched off. */
   publishing?: boolean;
+  /** Shows a count: Inbox items needing attention, or unread support conversations (admins). */
+  badge?: 'inbox' | 'outreach';
 }
 
 const NAV: NavItem[] = [
   { text: 'Dashboard', icon: <DashboardIcon />, path: '/', accent: 'green', roles: ['all'] },
+  { text: 'Inbox', icon: <InboxIcon />, path: '/inbox', accent: 'amber', roles: ['all'], badge: 'inbox' },
   { text: 'Campaigns', icon: <CampaignIcon />, path: '/campaigns', accent: 'violet', roles: ['all'], also: ['/projects/', '/tasks/'] },
   { text: 'Details Sheet', icon: <ListAltIcon />, path: '/details-sheet', accent: 'blue', roles: ['all'] },
   { text: 'Calendar', icon: <CalendarIcon />, path: '/calendar', accent: 'purple', roles: ['all'] },
@@ -48,6 +54,7 @@ const NAV: NavItem[] = [
   { text: 'Library', icon: <PhotoLibraryIcon />, path: '/library', accent: 'blue', roles: ['all'], library: true },
   { text: 'Publishing', icon: <SendIcon />, path: '/publishing', accent: 'green', roles: ['all'], publishing: true },
   { text: 'Settings', icon: <SettingsIcon />, path: '/settings', roles: ['all'] },
+  { text: 'Outreach', icon: <OutreachIcon />, path: '/admin/outreach', accent: 'purple', roles: [UserRole.SYSTEM_ADMIN], badge: 'outreach' },
   { text: 'Users', icon: <PeopleIcon />, path: '/admin/users', accent: 'wine', roles: [UserRole.SYSTEM_ADMIN] }
 ];
 
@@ -104,6 +111,26 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { user, logout } = useAuthStore();
   const { mode, toggle } = useThemeStore();
   const blueAllowed = user?.assistantEnabled !== false;
+  const isAdmin = user?.role === UserRole.SYSTEM_ADMIN;
+  const inboxSummary = useInboxStore((s) => s.summary);
+  const supportUnread = useInboxStore((s) => s.supportUnread);
+  const refreshInbox = useInboxStore((s) => s.refresh);
+  const inboxCount = inboxSummary.badge;
+
+  // Badge counts: on load, every minute while the tab is visible, and when returning to the tab.
+  useEffect(() => {
+    if (!user) return;
+    refreshInbox(isAdmin);
+    const tick = () => {
+      if (document.visibilityState === 'visible') refreshInbox(isAdmin);
+    };
+    const timer = setInterval(tick, 60_000);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, [user?._id, isAdmin, refreshInbox]);
 
   const items = NAV.filter(
     (i) => (i.roles.includes('all') || (user && i.roles.includes(user.role))) && (!i.library || user?.libraryEnabled !== false) && (!i.publishing || user?.publishingEnabled !== false)
@@ -172,9 +199,21 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
               >
                 {item.icon}
               </Box>
-              <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                 {item.text}
               </Box>
+              {item.badge && (item.badge === 'inbox' ? inboxCount : supportUnread) > 0 && (
+                <Box
+                  component="span"
+                  aria-label={`${item.badge === 'inbox' ? inboxCount : supportUnread} new`}
+                  sx={{
+                    minWidth: 18, height: 18, px: '5px', borderRadius: '9px', display: 'grid', placeItems: 'center',
+                    fontSize: 11, fontWeight: 700, bgcolor: 'var(--primary-bg)', color: 'var(--primary-fg)'
+                  }}
+                >
+                  {Math.min(99, item.badge === 'inbox' ? inboxCount : supportUnread)}
+                </Box>
+              )}
             </Box>
           );
         })}

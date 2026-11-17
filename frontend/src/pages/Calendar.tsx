@@ -17,6 +17,8 @@ import {
   Select,
   FormControl,
   InputLabel,
+  FormControlLabel,
+  Switch,
   Chip
 } from '@mui/material';
 import {
@@ -29,6 +31,8 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 import '../styles/calendar.css';
 import { useAuthStore } from '../store/authStore';
 import { taskAPI } from '../services/api';
+import { useNavigate } from 'react-router-dom';
+import { publishingAPI, type Post } from '../services/publishing';
 import { Task, TaskStatus, UserRole, Campaign, Project } from '../types';
 import FilterToolbar, { FilterOptions } from '../components/FilterToolbar';
 
@@ -39,12 +43,25 @@ interface CalendarEvent {
   title: string;
   start: Date;
   end: Date;
+  allDay?: boolean;
   resource: Task;
+  /** Set for publishing events (scheduled or published posts). */
+  post?: Post;
+}
+
+/** Task dates are stored as midnight UTC; show them on that calendar day wherever the user is. */
+function taskDay(iso: string): Date {
+  const d = new Date(iso);
+  return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
 }
 
 export default function CalendarView() {
   const { user } = useAuthStore();
+  const navigate = useNavigate();
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [showPosts, setShowPosts] = useState(true);
+  const publishingOn = user?.publishingEnabled !== false;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<View>('month');
@@ -73,7 +90,7 @@ export default function CalendarView() {
       setError(null);
 
       // Build query parameters from filters
-      const params: any = { limit: 10000 };
+      const params: any = {};
 
       if (filters.search) {
         params.search = filters.search;
@@ -97,7 +114,7 @@ export default function CalendarView() {
         params.createdBy = filters.createdBy.join(',');
       }
 
-      const res = await taskAPI.getAll(params);
+      const res = await taskAPI.getAll({ ...params, limit: 5000 });
       setTasks(res.data.tasks || []);
     } catch (error: any) {
       console.error('Error loading tasks:', error);
@@ -107,13 +124,28 @@ export default function CalendarView() {
     }
   };
 
-  // Convert tasks to calendar events
+  // Scheduled and published posts for the months around the one on screen.
+  useEffect(() => {
+    if (!publishingOn || !showPosts) {
+      setPosts([]);
+      return;
+    }
+    const from = new Date(date.getFullYear(), date.getMonth() - 1, 1);
+    const to = new Date(date.getFullYear(), date.getMonth() + 2, 0);
+    const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    publishingAPI
+      .list({ from: iso(from), to: iso(to), limit: 100 })
+      .then((r) => setPosts(r.posts.filter((p) => !['cancelled', 'draft'].includes(p.status))))
+      .catch(() => setPosts([]));
+  }, [date, publishingOn, showPosts]);
+
+  // Convert tasks (and posts) to calendar events
   const events: CalendarEvent[] = useMemo(() => {
-    return tasks
+    const taskEvents: CalendarEvent[] = tasks
       .filter((task) => task.taskDate)
       .map((task) => {
-        const startDate = new Date(task.taskDate!);
-        const endDate = new Date(task.taskDate!);
+        const startDate = taskDay(task.taskDate!);
+        const endDate = taskDay(task.taskDate!);
         endDate.setHours(23, 59, 59);
 
         return {
@@ -121,13 +153,33 @@ export default function CalendarView() {
           title: task.name,
           start: startDate,
           end: endDate,
+          allDay: true,
           resource: task
         };
       });
-  }, [tasks]);
+    const postEvents: CalendarEvent[] = posts
+      .filter((p) => p.scheduledAt || p.publishedAt)
+      .map((p) => {
+        const start = new Date(p.publishedAt || p.scheduledAt!);
+        return {
+          id: `post-${p.id}`,
+          title: `${p.platformName}${p.channel?.name ? ` · ${p.channel.name}` : p.mode === 'manual' ? ' (by hand)' : ''}: ${p.task?.name || p.text.slice(0, 40)}`,
+          start,
+          end: new Date(start.getTime() + 30 * 60_000),
+          resource: {} as Task,
+          post: p
+        };
+      });
+    return [...taskEvents, ...postEvents];
+  }, [tasks, posts]);
 
   // Get color based on task status
   const getEventStyle = (event: CalendarEvent) => {
+    if (event.post) {
+      const p = event.post;
+      const color = p.status === 'published' ? '#2f9e44' : p.status === 'failed' ? '#e03131' : p.status === 'due' ? '#f08c00' : '#7048e8';
+      return { style: { backgroundColor: 'transparent', color, border: `1px dashed ${color}`, borderRadius: '4px', fontSize: '0.8rem', padding: '1px 4px' } };
+    }
     const task = event.resource;
     let backgroundColor = '#6366F1'; // Default blue-purple
 
@@ -158,6 +210,10 @@ export default function CalendarView() {
   };
 
   const handleSelectEvent = (event: CalendarEvent) => {
+    if (event.post) {
+      navigate(event.post.task ? `/tasks/${event.post.task.id}` : '/publishing');
+      return;
+    }
     setSelectedEvent(event.resource);
     setEditedTask(event.resource);
     setEditModalOpen(true);
@@ -268,6 +324,14 @@ export default function CalendarView() {
             Week
           </ToggleButton>
         </ToggleButtonGroup>
+
+        {publishingOn && (
+          <FormControlLabel
+            sx={{ ml: 2, mr: 'auto' }}
+            control={<Switch size="small" checked={showPosts} onChange={(e) => setShowPosts(e.target.checked)} />}
+            label="Show posts"
+          />
+        )}
 
         {/* Status Legend */}
         <Box sx={{ display: 'flex', gap: 2 }}>

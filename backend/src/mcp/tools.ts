@@ -1349,6 +1349,62 @@ const publishingTools: Tool[] = [
   }
 ];
 
+// ---------------------------------------------------------------------------
+// Inbox: reminders and messages that need the user
+// ---------------------------------------------------------------------------
+
+const inboxTools: Tool[] = [
+  {
+    name: 'list_inbox',
+    title: 'Check the Inbox',
+    description:
+      "What needs the user's attention: reminders that need a decision (posts due by hand, failed posts, accounts to reconnect, Library reviews), unread updates (upcoming posts, messages from the Blueprint team) and unread conversations. Each item lists the actions it accepts.",
+    inputSchema: obj({ box: { type: 'string', enum: ['action', 'update', 'message'], description: 'Only one box. Default: needs action + unread updates.' } }),
+    annotations: READ,
+    handler: async (args, ctx) => {
+      const boxes = args.box ? [args.box as string] : ['action', 'update'];
+      const [summary, ...lists] = await Promise.all([
+        ctx.api.request('GET', '/api/inbox/summary'),
+        ...boxes.map((box) => ctx.api.request('GET', '/api/inbox/items', { query: { box, limit: 20 } }))
+      ]);
+      const items = lists.flatMap((l: any) => l.items).filter((i: any) => args.box || i.box === 'action' || !i.read);
+      return {
+        counts: { needs_action: summary.action, unread_updates: summary.updates, unread_messages: summary.messages },
+        items: items.map((i: any) =>
+          clean({
+            id: i.id,
+            box: i.box,
+            title: i.title,
+            text: i.body ? String(i.body).slice(0, 300) : undefined,
+            from: i.fromName,
+            actions: i.actions?.filter((a: any) => !a.link).map((a: any) => clean({ id: a.id, label: a.label, needs_value: a.input ? a.input.label : undefined })),
+            open_in_app: `${ctx.appUrl}/inbox?box=${i.box}&item=${i.id}`
+          })
+        )
+      };
+    }
+  },
+  {
+    name: 'inbox_action',
+    title: 'Act on an Inbox item',
+    description:
+      'Run one of the actions an Inbox item offers (e.g. publish_now, mark_posted with the live link as value, retry, cancel_post, keep, snooze, dismiss). Confirm with the user first: some actions publish publicly.',
+    inputSchema: obj(
+      {
+        item_id: id('Inbox item id from list_inbox.'),
+        action: { type: 'string', minLength: 1, maxLength: 40, description: 'Action id from the item, or "dismiss" / "snooze".' },
+        value: { type: 'string', maxLength: 500, description: 'Extra value some actions take (the live post link for mark_posted; hours for snooze).' }
+      },
+      ['item_id', 'action']
+    ),
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
+    handler: async (args, ctx) => {
+      const res = await ctx.api.request('POST', `/api/inbox/items/${args.item_id}/actions/${encodeURIComponent(String(args.action))}`, { body: { value: args.value } });
+      return { message: res.message };
+    }
+  }
+];
+
 export const TOOLS: Tool[] = [
   ...accountTools,
   ...campaignTools,
@@ -1357,6 +1413,7 @@ export const TOOLS: Tool[] = [
   ...commentTools,
   ...libraryTools,
   ...publishingTools,
+  ...inboxTools,
   ...aiTools,
   ...adminTools
 ];
@@ -1374,5 +1431,6 @@ How to work:
 - Every result includes a "url" the user can open in the app.
 - Images cannot be added through this connector yet; tell the user to upload them in the app.
 - Projects cannot be deleted (the app does not allow it either).
+- The Inbox (list_inbox) holds reminders that need the user (posts due by hand, failed posts, accounts to reconnect) and messages from the Blueprint team; inbox_action runs an item's action after the user agrees.
 - Publishing: list_publishing_channels shows connected accounts; schedule_post publishes a task now or later (always confirm accounts, caption and time with the user first); accounts that aren't connected can get "post by hand" reminders.
 - The Library holds the user's past and present work (posters, photos, captions, logos, files) with full version history. To find something, call library_overview first to see which years, months and events exist, then search_library with a date range and/or words. Never guess item ids.`;

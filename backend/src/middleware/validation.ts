@@ -61,6 +61,7 @@ export const validateUserUpdate = [
     .withMessage('libraryEnabled must be true or false'),
   body('publishingEnabled').optional().custom((value) => typeof value === 'boolean')
     .withMessage('publishingEnabled must be true or false'),
+  body('tags').optional().isArray({ max: 30 }).withMessage('tags must be a list of up to 30 labels'),
   handleValidationErrors
 ];
 

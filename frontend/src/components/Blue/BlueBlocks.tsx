@@ -221,6 +221,30 @@ function PublishPostsCard({ posts, title }: { posts: any[]; title?: string }) {
   );
 }
 
+function InboxCard({ data }: { data: any }) {
+  const open = useOpen();
+  const items: any[] = data.items || [];
+  return (
+    <Card onOpen={open('/inbox')}>
+      <Title>
+        Inbox · {data.counts?.needs_action || 0} need{data.counts?.needs_action === 1 ? 's' : ''} you
+        {data.counts?.unread_updates ? ` · ${data.counts.unread_updates} unread` : ''}
+      </Title>
+      {items.length ? (
+        items.slice(0, LIST_LIMIT).map((i: any) => (
+          <Meta key={i.id}>
+            <strong>{i.title}</strong>
+            {i.actions?.length ? ` — ${i.actions.map((a: any) => a.label).join(' · ')}` : ''}
+          </Meta>
+        ))
+      ) : (
+        <Meta>Nothing waiting.</Meta>
+      )}
+      {items.length > LIST_LIMIT && <Meta>…and {items.length - LIST_LIMIT} more</Meta>}
+    </Card>
+  );
+}
+
 function ChannelsCard({ data }: { data: any }) {
   const open = useOpen();
   return (
@@ -520,6 +544,8 @@ export function BlueToolItem({ item }: { item: ToolItem }) {
       return <PublishPostsCard posts={d.posts || []} title={d.message} />;
     case 'list_posts':
       return <PublishPostsCard posts={d.posts || []} />;
+    case 'list_inbox':
+      return <InboxCard data={d} />;
     case 'list_publishing_channels':
       return <ChannelsCard data={d} />;
     case 'search_library':

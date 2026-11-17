@@ -27,7 +27,9 @@ export enum AuditAction {
   CHANNEL_DISCONNECTED = 'channel_disconnected',
   POST_SCHEDULED = 'post_scheduled',
   POST_FAILED = 'post_failed',
-  PUBLISHING_SETTINGS_UPDATED = 'publishing_settings_updated'
+  PUBLISHING_SETTINGS_UPDATED = 'publishing_settings_updated',
+  MESSAGE_SENT = 'message_sent',
+  MESSAGE_WITHDRAWN = 'message_withdrawn'
 }
 
 export interface IAuditLog extends Document {

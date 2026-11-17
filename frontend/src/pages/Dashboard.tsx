@@ -19,6 +19,8 @@ import {
 import { Add as AddIcon } from '@mui/icons-material';
 import { useAuthStore } from '../store/authStore';
 import { campaignAPI, taskAPI } from '../services/api';
+import { useInboxStore } from '../store/inboxStore';
+import { publishingAPI } from '../services/publishing';
 import { Campaign, Task, UserRole } from '../types';
 
 export default function Dashboard() {
@@ -26,6 +28,8 @@ export default function Dashboard() {
   const { user } = useAuthStore();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [recentTasks, setRecentTasks] = useState<Task[]>([]);
+  const [upcomingPosts, setUpcomingPosts] = useState<number | null>(null);
+  const inbox = useInboxStore((s) => s.summary);
 
   useEffect(() => {
     loadData();
@@ -35,10 +39,17 @@ export default function Dashboard() {
     try {
       const [campaignsRes, tasksRes] = await Promise.all([
         campaignAPI.getAll(),
-        taskAPI.getAll()
+        // Newest 5 tasks (the default order is by task date, which would show the oldest).
+        taskAPI.getAll({ sort: 'recent', limit: 5 })
       ]);
       setCampaigns(campaignsRes.data.campaigns || []);
       setRecentTasks((tasksRes.data.tasks || []).slice(0, 5));
+      if (user?.publishingEnabled !== false) {
+        publishingAPI
+          .status()
+          .then((s) => setUpcomingPosts(s.counts?.upcoming ?? null))
+          .catch(() => setUpcomingPosts(null));
+      }
     } catch (error) {
       console.error('Error loading dashboard data:', error);
     }
@@ -86,12 +97,16 @@ export default function Dashboard() {
           </Card>
         </Grid>
         <Grid item xs={12} md={4}>
-          <Card>
+          <Card sx={{ cursor: 'pointer' }} onClick={() => navigate('/inbox')}>
             <CardContent>
               <Typography color="textSecondary" gutterBottom>
-                Recent Tasks
+                Needs your attention
               </Typography>
-              <Typography variant="h3">{recentTasks.length}</Typography>
+              <Typography variant="h3">{inbox.action}</Typography>
+              <Typography variant="body2" color="textSecondary">
+                {inbox.updates + inbox.messages > 0 ? `${inbox.updates + inbox.messages} unread in your Inbox` : 'Inbox'}
+                {upcomingPosts ? ` · ${upcomingPosts} post${upcomingPosts === 1 ? '' : 's'} scheduled` : ''}
+              </Typography>
             </CardContent>
           </Card>
         </Grid>
@@ -134,7 +149,7 @@ export default function Dashboard() {
                       </TableCell>
                       <TableCell>
                         {task.taskDate
-                          ? new Date(task.taskDate).toLocaleDateString()
+                          ? new Date(task.taskDate).toLocaleDateString(undefined, { timeZone: 'UTC' })
                           : 'Not scheduled'}
                       </TableCell>
                     </TableRow>

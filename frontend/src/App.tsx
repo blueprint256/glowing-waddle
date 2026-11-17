@@ -4,6 +4,7 @@ import { Box, CircularProgress } from '@mui/material';
 import { useAuthStore } from './store/authStore';
 import DashboardLayout from './components/Layout/DashboardLayout';
 import { getReturnTo } from './utils/returnTo';
+import { UserRole } from './types';
 
 // Route-level code splitting: each page is its own chunk, fetched on first visit.
 // (Settings, DetailsSheet and Calendar are the heaviest — they no longer load at login.)
@@ -15,6 +16,8 @@ const CampaignDetail = lazy(() => import('./pages/Campaigns/CampaignDetail'));
 const ProjectDetail = lazy(() => import('./pages/Projects/ProjectDetail'));
 const TaskDetail = lazy(() => import('./pages/Tasks/TaskDetail'));
 const UserManagement = lazy(() => import('./pages/Admin/UserManagement'));
+const OutreachPage = lazy(() => import('./pages/Admin/OutreachPage'));
+const InboxPage = lazy(() => import('./pages/Inbox/InboxPage'));
 const UserDetail = lazy(() => import('./pages/Admin/UserDetail'));
 const DetailsSheet = lazy(() => import('./pages/DetailsSheet'));
 const Calendar = lazy(() => import('./pages/Calendar'));
@@ -47,10 +50,30 @@ function ProtectedRoute({ children }: { children: JSX.Element }) {
   return isAuthenticated ? children : <Navigate to="/login" replace />;
 }
 
+/** Admin pages: the server enforces this too; this just avoids showing a broken page to other users. */
+function AdminRoute({ children }: { children: JSX.Element }) {
+  const { user } = useAuthStore();
+  return user?.role === UserRole.SYSTEM_ADMIN ? children : <Navigate to="/" replace />;
+}
+
 function App() {
   const { checkAuth } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // A 401 from any API call means the session ended: re-check once, which sends the user to login.
+  useEffect(() => {
+    let checking = false;
+    const onExpired = () => {
+      if (checking || !useAuthStore.getState().isAuthenticated) return;
+      checking = true;
+      checkAuth().finally(() => {
+        checking = false;
+      });
+    };
+    window.addEventListener('auth:expired', onExpired);
+    return () => window.removeEventListener('auth:expired', onExpired);
+  }, [checkAuth]);
 
   useEffect(() => {
     checkAuth().then(() => {
@@ -70,6 +93,8 @@ function App() {
       <Route path="/signup" element={<SignupPage />} />
       {/* Claude connector consent screen (handles its own sign-in redirect) */}
       <Route path="/oauth/consent" element={<OAuthConsent />} />
+      {/* Unknown addresses go home instead of showing an empty page */}
+      <Route path="*" element={<Navigate to="/" replace />} />
 
       <Route
         path="/"
@@ -91,8 +116,10 @@ function App() {
         <Route path="library" element={<LibraryPage />} />
         <Route path="library/:id" element={<LibraryItemPage />} />
         <Route path="publishing" element={<PublishingPage />} />
-        <Route path="admin/users" element={<UserManagement />} />
-        <Route path="admin/users/:id" element={<UserDetail />} />
+        <Route path="inbox" element={<InboxPage />} />
+        <Route path="admin/users" element={<AdminRoute><UserManagement /></AdminRoute>} />
+        <Route path="admin/users/:id" element={<AdminRoute><UserDetail /></AdminRoute>} />
+        <Route path="admin/outreach" element={<AdminRoute><OutreachPage /></AdminRoute>} />
       </Route>
     </Routes>
     </Suspense>

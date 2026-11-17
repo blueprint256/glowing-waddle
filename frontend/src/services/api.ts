@@ -23,7 +23,12 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
-    // Handle errors gracefully
+    // Session expired or signed out elsewhere: tell the app once, so it can send the user to the login
+    // page instead of every screen showing its own error. (Sign-in calls themselves are ignored.)
+    const url: string = error?.config?.url || '';
+    if (error?.response?.status === 401 && !url.includes('/auth/')) {
+      window.dispatchEvent(new CustomEvent('auth:expired'));
+    }
     return Promise.reject(error);
   }
 );

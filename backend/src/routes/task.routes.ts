@@ -11,6 +11,7 @@ import { checkTaskOwnership } from '../middleware/ownership';
 import { validateMongoId, validateTaskCreate, validateTaskUpdate } from '../middleware/validation';
 import { Comment } from '../models/Comment';
 import { queueTaskImage } from '../library/hooks';
+import { onTaskDeleted } from '../services/lifecycle';
 import { logAudit } from '../utils/auditLogger';
 import { AuditAction } from '../models/AuditLog';
 import { searchRegex } from '../utils/regex';
@@ -211,8 +212,9 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
     }
 
     // Pagination parameters
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 1000; // Higher default for flat views
+    // Bounded so one request can't ask for the whole database (Calendar asks for up to 5000).
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(5000, Math.max(1, parseInt(req.query.limit as string) || 1000)); // Higher default for flat views
     const skip = (page - 1) * limit;
 
     // Get total count for pagination metadata
@@ -223,7 +225,8 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
       .populate('campaignId', 'name')
       .populate('createdBy', 'firstName lastName')
       .populate('lastModifiedBy', 'firstName lastName')
-      .sort({ taskDate: 1, createdAt: -1 })
+      // sort=recent: newest first (Dashboard "Recent tasks"); default: by task date.
+      .sort(req.query.sort === 'recent' ? { createdAt: -1 } : { taskDate: 1, createdAt: -1 })
       .skip(skip)
       .limit(limit);
 
@@ -760,19 +763,22 @@ router.delete('/:id', isAuthenticated, canManageTasks, validateMongoId('id'), ch
 
     await Task.findByIdAndDelete(req.params.id);
     await Comment.deleteMany({ taskId: task._id });
+    // Stop its scheduled posts and unlink Library items/Canva edits (see services/lifecycle.ts).
+    const { cancelledPosts } = await onTaskDeleted(task._id as any, req.user!._id as any);
 
     await logAudit({
       action: AuditAction.TASK_DELETED,
       userId: req.user!._id,
       targetType: 'Task',
       targetId: task._id,
-      metadata: { name: task.name, projectId: task.projectId },
+      metadata: { name: task.name, projectId: task.projectId, cancelledPosts },
       req
     });
 
     res.json({
       success: true,
-      message: 'Task deleted successfully'
+      message: cancelledPosts ? `Task deleted. ${cancelledPosts} scheduled post${cancelledPosts === 1 ? ' was' : 's were'} cancelled.` : 'Task deleted successfully',
+      cancelledPosts
     });
   } catch (error: any) {
     console.error('Error deleting task:', error);

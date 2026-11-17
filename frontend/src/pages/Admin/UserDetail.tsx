@@ -5,6 +5,7 @@ import {
   Typography,
   Paper,
   Grid,
+  Autocomplete,
   Chip,
   Breadcrumbs,
   Link,
@@ -37,6 +38,9 @@ export default function UserDetail() {
   const [blueMessage, setBlueMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [savingLibrary, setSavingLibrary] = useState(false);
   const [savingPublishing, setSavingPublishing] = useState(false);
+  const [tagsDraft, setTagsDraft] = useState<string[] | null>(null);
+  const [savingTags, setSavingTags] = useState(false);
+  const [tagsMessage, setTagsMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [publishingMessage, setPublishingMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [libraryMessage, setLibraryMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [connectorMessage, setConnectorMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -94,6 +98,23 @@ export default function UserDetail() {
       setConnectorMessage({ type: 'error', text: e.response?.data?.message || 'Failed to update connector access' });
     } finally {
       setSavingConnector(false);
+    }
+  };
+
+  const saveTags = async () => {
+    if (!tagsDraft) return;
+    try {
+      setSavingTags(true);
+      setTagsMessage(null);
+      const res = await userAPI.update(id!, { tags: tagsDraft });
+      const saved: string[] = res.data?.user?.tags || tagsDraft;
+      setUser((u) => (u ? { ...u, tags: saved } : u));
+      setTagsDraft(null);
+      setTagsMessage({ type: 'success', text: 'Tags saved' });
+    } catch (e: any) {
+      setTagsMessage({ type: 'error', text: e.response?.data?.message || 'Failed to save tags' });
+    } finally {
+      setSavingTags(false);
     }
   };
 
@@ -319,6 +340,39 @@ export default function UserDetail() {
                 {libraryMessage && (
                   <Alert severity={libraryMessage.type} sx={{ mt: 2 }}>
                     {libraryMessage.text}
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Tags for Outreach targeting */}
+          <Grid item xs={12} md={6}>
+            <Card variant="outlined" sx={{ height: '100%' }}>
+              <CardContent>
+                <Typography variant="h6" gutterBottom color="primary">
+                  Tags
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  Labels for sending Outreach messages to groups (e.g. “pharmacy”, “nutrition”, “vip”). Only admins see them.
+                </Typography>
+                <Autocomplete
+                  multiple
+                  freeSolo
+                  size="small"
+                  options={[] as string[]}
+                  value={tagsDraft ?? user.tags ?? []}
+                  onChange={(_e, value) => setTagsDraft(value.map((v) => v.trim().toLowerCase()).filter(Boolean))}
+                  renderInput={(params) => <TextField {...params} placeholder="Type a tag and press Enter" />}
+                />
+                {tagsDraft && (
+                  <Button size="small" variant="contained" sx={{ mt: 1 }} onClick={saveTags} disabled={savingTags}>
+                    {savingTags ? 'Saving…' : 'Save tags'}
+                  </Button>
+                )}
+                {tagsMessage && (
+                  <Alert severity={tagsMessage.type} sx={{ mt: 2 }}>
+                    {tagsMessage.text}
                   </Alert>
                 )}
               </CardContent>

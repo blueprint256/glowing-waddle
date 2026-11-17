@@ -1,3 +1,4 @@
+import { onUserDeactivated } from '../services/lifecycle';
 import express, { Request, Response } from 'express';
 import multer from 'multer';
 import mongoose from 'mongoose';
@@ -76,6 +77,7 @@ router.post('/', isAuthenticated, canManageUsers, validateUserCreation, async (r
         assistantEnabled: user.assistantEnabled,
         libraryEnabled: user.libraryEnabled,
         publishingEnabled: user.publishingEnabled,
+        tags: user.tags || [],
         isActive: user.isActive
       }
     });
@@ -194,7 +196,7 @@ router.get('/:id', isAuthenticated, validateMongoId('id'), async (req: Request, 
  */
 router.put('/:id', isAuthenticated, canManageUsers, validateMongoId('id'), validateUserUpdate, async (req: Request, res: Response) => {
   try {
-    const { email, firstName, lastName, role, isActive, accessMode, mcpEnabled, assistantEnabled, libraryEnabled, publishingEnabled } = req.body;
+    const { email, firstName, lastName, role, isActive, accessMode, mcpEnabled, assistantEnabled, libraryEnabled, publishingEnabled, tags } = req.body;
 
     const user = await User.findById(req.params.id);
     if (!user) {
@@ -216,6 +218,11 @@ router.put('/:id', isAuthenticated, canManageUsers, validateMongoId('id'), valid
     if (typeof assistantEnabled === 'boolean') user.assistantEnabled = assistantEnabled;
     if (typeof libraryEnabled === 'boolean') user.libraryEnabled = libraryEnabled;
     if (typeof publishingEnabled === 'boolean') user.publishingEnabled = publishingEnabled;
+    if (Array.isArray(tags)) {
+      // Labels for targeting Inbox messages: lower-case, unique, short.
+      user.tags = [...new Set(tags.filter((t: unknown) => typeof t === 'string').map((t: string) => t.trim().toLowerCase().slice(0, 40)).filter(Boolean))].slice(0, 30) as string[];
+    }
+    const deactivating = isActive === false && user.isActive !== false;
     if (typeof isActive === 'boolean') user.isActive = isActive;
 
     // Email must stay unique (a duplicate would otherwise surface as a generic 500).
@@ -231,6 +238,9 @@ router.put('/:id', isAuthenticated, canManageUsers, validateMongoId('id'), valid
     // Turning the connector off (or deactivating the account) disconnects Claude immediately.
     if (!canUseConnector(user)) {
       await revokeUserTokens(user._id as mongoose.Types.ObjectId);
+    }
+    if (deactivating) {
+      await onUserDeactivated(user._id as mongoose.Types.ObjectId, req.user!._id as mongoose.Types.ObjectId);
     }
 
     // Log update
@@ -257,6 +267,7 @@ router.put('/:id', isAuthenticated, canManageUsers, validateMongoId('id'), valid
         assistantEnabled: user.assistantEnabled,
         libraryEnabled: user.libraryEnabled,
         publishingEnabled: user.publishingEnabled,
+        tags: user.tags || [],
         isActive: user.isActive
       }
     });
@@ -478,6 +489,7 @@ router.delete('/:id', isAuthenticated, canManageUsers, validateMongoId('id'), as
     user.isActive = false;
     await user.save();
     await revokeUserTokens(user._id as mongoose.Types.ObjectId);
+    await onUserDeactivated(user._id as mongoose.Types.ObjectId, req.user!._id as mongoose.Types.ObjectId);
 
     // Log deletion
     await logAudit({

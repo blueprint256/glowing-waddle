@@ -34,6 +34,8 @@ import blueRoutes from './routes/blue.routes';
 import libraryRoutes from './routes/library.routes';
 import publishingRoutes from './routes/publishing.routes';
 import canvaRoutes from './routes/canva.routes';
+import inboxRoutes from './routes/inbox.routes';
+import { startInboxWorker } from './inbox/rules';
 import { startPublishingWorker } from './publishing/worker';
 import { startLibraryWorker } from './library/worker';
 import mcpRouter from './mcp/router';
@@ -163,6 +165,7 @@ app.use('/api', connectedAppsRoutes); // /api/oauth/requests/*, /api/connected-a
 app.use('/api/blue', blueRoutes); // Blue, the in-app assistant
 app.use('/api/library', libraryRoutes); // Library (Aggregator)
 app.use('/api/publishing', publishingRoutes); // Publishing (social posting)
+app.use('/api/inbox', inboxRoutes); // Inbox + admin Outreach
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/campaigns', campaignRoutes);
@@ -217,12 +220,23 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 });
 
 // Start server
+// Production safety: secrets left at their development defaults would let anyone forge sessions or
+// read stored platform tokens. Warn loudly (not fatal, so an existing deployment keeps running).
+if (process.env.NODE_ENV === 'production') {
+  const weak: string[] = [];
+  if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET === 'your-super-secret-key-change-in-production') weak.push('SESSION_SECRET');
+  if (!process.env.ENCRYPTION_KEY || process.env.ENCRYPTION_KEY === 'default-32-char-encryption-key!!') weak.push('ENCRYPTION_KEY');
+  if (!process.env.MCP_PUBLIC_URL) weak.push('MCP_PUBLIC_URL (needed for Claude, platform sign-ins and Canva)');
+  if (weak.length) console.warn(`⚠️  SECURITY: set these environment variables before going live: ${weak.join(', ')}`);
+}
+
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 API: http://localhost:${PORT}`);
   startLibraryWorker();
   startPublishingWorker();
+  startInboxWorker();
 });
 
 export default app;

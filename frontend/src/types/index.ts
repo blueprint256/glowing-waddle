@@ -52,6 +52,8 @@ export interface User {
   libraryEnabled?: boolean;
   /** Publishing (scheduling/posting) access; set by a System Admin. Treated as enabled when absent. */
   publishingEnabled?: boolean;
+  /** Admin labels for targeting Outreach messages. */
+  tags?: string[];
   isActive: boolean;
   authProvider?: 'local' | 'google';
   companyInfo?: CompanyInfo;

@@ -1,4 +1,5 @@
 import express, { Request, Response } from 'express';
+import { onCampaignArchived } from '../services/lifecycle';
 import { Campaign, CampaignStatus } from '../models/Campaign';
 import { User, UserRole } from '../models/User';
 import { Project, ProjectStatus } from '../models/Project';
@@ -128,8 +129,8 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
     }
 
     // Pagination parameters
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 1000; // Higher default for comprehensive views
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(5000, Math.max(1, parseInt(req.query.limit as string) || 1000)); // Higher default for comprehensive views
     const skip = (page - 1) * limit;
 
     // Get total count for pagination metadata
@@ -297,6 +298,8 @@ router.put('/:id/archive', isAuthenticated, canCreateCampaign, validateMongoId('
     // Archive campaign
     campaign.archived = true;
     await campaign.save();
+    // Posts of an archived campaign that haven't gone out are cancelled (see services/lifecycle.ts).
+    const { cancelledPosts } = await onCampaignArchived(campaign._id as any, req.user!._id as any);
 
     // Log archive action
     await logAudit({
@@ -313,7 +316,8 @@ router.put('/:id/archive', isAuthenticated, canCreateCampaign, validateMongoId('
 
     res.json({
       success: true,
-      message: 'Campaign archived successfully',
+      message: cancelledPosts ? `Campaign archived. ${cancelledPosts} scheduled post${cancelledPosts === 1 ? ' was' : 's were'} cancelled.` : 'Campaign archived successfully',
+      cancelledPosts,
       campaign: archivedCampaign
     });
   } catch (error: any) {
@@ -412,6 +416,8 @@ router.delete('/:id', isAuthenticated, validateMongoId('id'), async (req: Reques
     // Archive campaign (soft delete)
     campaign.archived = true;
     await campaign.save();
+    // Posts of an archived campaign that haven't gone out are cancelled (see services/lifecycle.ts).
+    const { cancelledPosts } = await onCampaignArchived(campaign._id as any, req.user!._id as any);
 
     // Log deletion
     await logAudit({
@@ -424,7 +430,8 @@ router.delete('/:id', isAuthenticated, validateMongoId('id'), async (req: Reques
 
     res.json({
       success: true,
-      message: 'Campaign archived successfully'
+      message: cancelledPosts ? `Campaign archived. ${cancelledPosts} scheduled post${cancelledPosts === 1 ? ' was' : 's were'} cancelled.` : 'Campaign archived successfully',
+      cancelledPosts
     });
   } catch (error: any) {
     console.error('Error deleting campaign:', error);

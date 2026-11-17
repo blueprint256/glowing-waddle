@@ -551,3 +551,7 @@ The Library brings a client's past and present work into the app: posters, photo
 ## Publishing and Edit in Canva
 
 Tasks can be published to X, LinkedIn, Facebook, Instagram, TikTok and YouTube, now or on a schedule, from the task page or by asking Blue. The full engine is built (scheduling, retries, status, each platform's posting rules). Each platform is switched on in Settings by pasting the keys of the developer app it approved. Until then, "post by hand" reminders and test accounts work with no approvals. **Edit in Canva** sends a task image or Library picture to the user's own Canva and brings the edited design back as a new version. See [docs/PUBLISHING.md](docs/PUBLISHING.md).
+
+## Inbox and Outreach
+
+Every user has an **Inbox** for reminders that need a decision (posts due by hand, failed posts, accounts to reconnect, Library reviews), updates (posts going out tomorrow, messages from the Blueprint team) and conversations with the team. Items are answered with buttons or a typed reply ("yes", "remind me later"), and reminders close themselves when dealt with elsewhere. System Admins get **Outreach**: message users by sector, tags, part or name (now or scheduled), offer "Create a post from this", see who read and acted, answer support conversations, and keep templates. See [docs/INBOX.md](docs/INBOX.md) and the system review in [docs/SYSTEM_REVIEW.md](docs/SYSTEM_REVIEW.md).

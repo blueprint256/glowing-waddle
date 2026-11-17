@@ -200,7 +200,7 @@ const SocialPreviewModal: React.FC<SocialPreviewModalProps> = ({
           {formatCaption()}
         </Typography>
         <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-          {task.taskDate ? new Date(task.taskDate).toLocaleDateString() : 'Just now'}
+          {task.taskDate ? new Date(task.taskDate).toLocaleDateString(undefined, { timeZone: 'UTC' }) : 'Just now'}
         </Typography>
       </Box>
     </Paper>
@@ -342,7 +342,7 @@ const SocialPreviewModal: React.FC<SocialPreviewModalProps> = ({
               Your Name
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              {task.taskDate ? new Date(task.taskDate).toLocaleDateString() : 'Just now'} · 🌎
+              {task.taskDate ? new Date(task.taskDate).toLocaleDateString(undefined, { timeZone: 'UTC' }) : 'Just now'} · 🌎
             </Typography>
           </Box>
           <Box sx={{ ml: 'auto' }}>
@@ -442,7 +442,7 @@ const SocialPreviewModal: React.FC<SocialPreviewModalProps> = ({
                   @yourusername
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  · {task.taskDate ? new Date(task.taskDate).toLocaleDateString() : 'now'}
+                  · {task.taskDate ? new Date(task.taskDate).toLocaleDateString(undefined, { timeZone: 'UTC' }) : 'now'}
                 </Typography>
               </Box>
 
@@ -542,7 +542,7 @@ const SocialPreviewModal: React.FC<SocialPreviewModalProps> = ({
               Your Professional Title
             </Typography>
             <Typography variant="caption" color="text.secondary" display="block">
-              {task.taskDate ? new Date(task.taskDate).toLocaleDateString() : 'Just now'} · 🌎
+              {task.taskDate ? new Date(task.taskDate).toLocaleDateString(undefined, { timeZone: 'UTC' }) : 'Just now'} · 🌎
             </Typography>
           </Box>
           <Box>

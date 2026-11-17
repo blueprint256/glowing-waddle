@@ -75,6 +75,10 @@ export interface IUser extends Document {
   /** Library (Aggregator) access, toggled by a System Admin. Default true. */
   libraryEnabled: boolean;
   publishingEnabled: boolean;
+  /** Labels a System Admin gives users to target Inbox messages (e.g. "pharmacy", "vip"). */
+  tags: string[];
+  /** Inbox reminder types this user turned off (only optional ones, e.g. "post_upcoming"). */
+  inboxMuted: string[];
   isActive: boolean;
   companyInfo?: {
     companyName?: string;
@@ -166,6 +170,14 @@ const userSchema = new Schema<IUser>(
     publishingEnabled: {
       type: Boolean,
       default: true
+    },
+    tags: {
+      type: [String],
+      default: []
+    },
+    inboxMuted: {
+      type: [String],
+      default: []
     },
     isActive: {
       type: Boolean,

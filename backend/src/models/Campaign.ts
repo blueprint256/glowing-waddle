@@ -75,5 +75,7 @@ const campaignSchema = new Schema<ICampaign>(
 // Indexes for performance
 campaignSchema.index({ status: 1 });
 campaignSchema.index({ createdAt: -1 });
+// Ownership checks and "my campaigns" lists filter by creator.
+campaignSchema.index({ createdBy: 1, archived: 1, createdAt: -1 });
 
 export const Campaign = mongoose.model<ICampaign>('Campaign', campaignSchema);
