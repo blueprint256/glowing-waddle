@@ -844,7 +844,7 @@ export function BlueToolItem({ item }: { item: ToolItem }) {
         </Card>
       );
     case 'generate_task_poster':
-      return <PosterCard src={d.pending_image_url} title="New poster (not used yet)" note="Keep it or discard it on the task, or ask me to." taskUrl={d.task_url} />;
+      return <PosterCard src={d.pending_image_url} title="New AI poster" note="Open the task to use it or discard it." taskUrl={d.task_url} />;
     case 'adopt_task_poster':
       return d.image_url ? <PosterCard src={d.image_url} title="Poster is now the task image" note={d.message || 'Saved'} /> : <Step ok text={d.message || 'Done'} />;
     case 'ai_usage':

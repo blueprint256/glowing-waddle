@@ -40,7 +40,7 @@ function Link({ url, label, open }: { url: string; label: ReactNode; open: Opene
 
 function inline(text: string, open: Opener): ReactNode[] {
   const parts: ReactNode[] = [];
-  const re = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)\s]+\)|https?:\/\/[^\s)]+)/g;
+  const re = /(\*\*[^*]+\*\*|`[^`]+`|!?\[[^\]]*\]\([^)\s]+\)|https?:\/\/[^\s)]+)/g;
   let last = 0;
   let m: RegExpExecArray | null;
   let key = 0;
@@ -48,9 +48,9 @@ function inline(text: string, open: Opener): ReactNode[] {
     if (m.index > last) parts.push(text.slice(last, m.index));
     const token = m[0];
     if (token.startsWith('**')) parts.push(<strong key={key++}>{token.slice(2, -2)}</strong>);
-    else if (token.startsWith('[')) {
-      const lm = token.match(/^\[([^\]]+)\]\(([^)\s]+)\)$/);
-      parts.push(lm ? <Link key={key++} url={lm[2]} label={lm[1]} open={open} /> : token);
+    else if (token.startsWith('[') || token.startsWith('![')) {
+      const lm = token.match(/^!?\[([^\]]*)\]\(([^)\s]+)\)$/);
+      parts.push(lm ? <Link key={key++} url={lm[2]} label={lm[1] || 'link'} open={open} /> : token);
     } else if (/^https?:\/\//.test(token)) {
       const url = token.replace(/[.,;:!?]+$/, '');
       parts.push(<Link key={key++} url={url} label={url} open={open} />);
