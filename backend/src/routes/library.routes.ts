@@ -20,7 +20,7 @@ import { AuditAction } from '../models/AuditLog';
 import { loadLibrarySetup, invalidateLibrarySetup } from '../library/setup';
 import { embedTexts } from '../library/vision';
 import { parseDay } from '../library/dates';
-import { buildSearchText } from '../library/search';
+import { buildSearchText, mergeTags } from '../library/search';
 import { BLUE_PROVIDERS } from '../blue/setup';
 import {
   LibraryError,
@@ -364,7 +364,7 @@ router.patch('/items/:id', isAuthenticated, requireLibrary, async (req: Request,
     if (b.category !== undefined) asset.category = String(b.category || 'other').slice(0, 40);
     if (b.tags !== undefined) {
       if (!Array.isArray(b.tags)) throw new LibraryError(400, 'tags must be a list');
-      asset.tags = [...new Set(b.tags.map((t: unknown) => String(t).toLowerCase().trim()).filter(Boolean))].slice(0, 30) as string[];
+      asset.tags = mergeTags([b.tags], 30);
     }
     if (b.capturedAt !== undefined) {
       const d = parseDay(b.capturedAt);

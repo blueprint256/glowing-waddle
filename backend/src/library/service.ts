@@ -14,7 +14,7 @@ import { inspectImage, hammingDistance, sha256 } from './media';
 import { extractText } from './text';
 import { dateFromFilename, chooseCapturedAt } from './dates';
 import { listZip, importableEntries, readZipEntry, ZipError } from './zip';
-import { buildSearchText, reciprocalRankFusion, cosine } from './search';
+import { buildSearchText, reciprocalRankFusion, cosine, mergeTags, normalizeTag } from './search';
 import { buildOverview, OverviewRow, LibraryOverview } from './overview';
 import { searchRegex } from '../utils/regex';
 
@@ -363,7 +363,7 @@ async function ingestOne(input: IngestInput & { mime: string }): Promise<IngestR
     });
     const title = titleFromFilename(name);
     const folder = folderOf(relativePath);
-    const tags = (input.tags || []).map((t) => t.toLowerCase().trim()).filter(Boolean).slice(0, 20);
+    const tags = mergeTags([input.tags || []], 20);
     const similar = dhash ? await findSimilarImage(input.ownerId, dhash, String(assetId)) : null;
 
     await LibraryAsset.create({
@@ -537,7 +537,7 @@ export async function resolveReview(asset: ILibraryAsset, action: unknown): Prom
   target.versionCount += versions.length;
   target.latestVersionNumber = number;
   if (last) target.currentVersionId = last;
-  target.tags = [...new Set([...(target.tags || []), ...(asset.tags || [])])].slice(0, 30);
+  target.tags = mergeTags([target.tags || [], asset.tags || []], 30);
   if (!target.links?.taskId && asset.links?.taskId) target.links = asset.links;
   await target.save();
   await LibraryAsset.deleteOne({ _id: asset._id });
@@ -648,7 +648,8 @@ export function buildFilter(ownerId: Id, p: SearchParams): Record<string, unknow
   if (p.kind) filter.kind = p.kind;
   if (p.category) filter.category = p.category;
   if (p.event) filter.event = escapeExact(p.event);
-  if (p.tags?.length) filter.tags = { $all: p.tags.map((t) => t.toLowerCase()) };
+  // Matches both the new spelling ("cold brew") and older saved ones ("cold_brew").
+  if (p.tags?.length) filter.$and = p.tags.map(normalizeTag).filter(Boolean).map((t) => ({ tags: { $in: [t, t.replace(/ /g, '_'), t.replace(/ /g, '-')] } }));
   if (p.from || p.to) filter.capturedAt = { ...(p.from ? { $gte: p.from } : {}), ...(p.to ? { $lte: p.to } : {}) };
   if (p.campaignId && mongoose.isValidObjectId(p.campaignId)) filter['links.campaignId'] = oid(p.campaignId);
   if (p.projectId && mongoose.isValidObjectId(p.projectId)) filter['links.projectId'] = oid(p.projectId);

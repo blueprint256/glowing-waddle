@@ -51,9 +51,9 @@ router.get('/', isAuthenticated, isSystemAdmin, async (req: Request, res: Respon
 /**
  * @route   GET /api/command-mappings/command/:commandName
  * @desc    Get command mapping by command name (used for LLM execution)
- * @access  Private (Authenticated users can look up commands)
+ * @access  Private (System Admin only: prompt texts are the admin's own work)
  */
-router.get('/command/:commandName', isAuthenticated, async (req: Request, res: Response) => {
+router.get('/command/:commandName', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
   try {
     const mapping = await CommandMapping.findOne({ command: req.params.commandName })
       .populate('promptId', 'name details')

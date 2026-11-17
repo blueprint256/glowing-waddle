@@ -47,7 +47,7 @@ router.get('/', isAuthenticated, isSystemAdmin, async (req: Request, res: Respon
  * @desc    Get prompt by name
  * @access  Private (authenticated users)
  */
-router.get('/name/:name', isAuthenticated, async (req: Request, res: Response) => {
+router.get('/name/:name', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
   try {
     const prompt = await Prompt.findOne({ name: req.params.name });
 

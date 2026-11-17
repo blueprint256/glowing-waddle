@@ -1,4 +1,5 @@
 import { parseDay } from './dates';
+import { mergeTags } from './search';
 
 /**
  * The AI "understanding" step: what we ask a vision model about each file, and how we read its answer.
@@ -90,7 +91,7 @@ export function parseAnalysis(raw: string): Analysis | null {
     category,
     description: str(json.description, 600),
     textInImage: typeof json.text_in_image === 'string' ? json.text_in_image.trim().slice(0, 1500) : '',
-    tags: list(json.tags, 12, 40, true),
+    tags: mergeTags([Array.isArray(json.tags) ? json.tags.filter((t: unknown) => typeof t === 'string') : []], 12),
     event: str(json.event, 80),
     contentDate: parseDay(json.content_date),
     colors: list(json.colors, 5, 30, true),

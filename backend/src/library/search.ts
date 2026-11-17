@@ -3,6 +3,21 @@
  * Keyword search uses MongoDB's text index; "search by meaning" uses embeddings when available.
  * The two ranked lists are merged with Reciprocal Rank Fusion.
  */
+/** One spelling per tag: "Cold_Brew", "cold-brew" and "cold  brew" all become "cold brew". */
+export function normalizeTag(tag: unknown): string {
+  return String(tag ?? '').toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
+}
+
+/** Merges tag lists without duplicates (by normalized spelling), keeping order, up to max. */
+export function mergeTags(lists: unknown[][], max: number): string[] {
+  const out: string[] = [];
+  for (const list of lists) for (const t of list || []) {
+    const n = normalizeTag(t);
+    if (n && !out.includes(n)) out.push(n);
+  }
+  return out.slice(0, max);
+}
+
 export function cosine(a: number[], b: number[]): number {
   if (!a?.length || a.length !== b?.length) return 0;
   let dot = 0;

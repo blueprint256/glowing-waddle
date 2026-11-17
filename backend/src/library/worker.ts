@@ -13,7 +13,7 @@ import { getObjectBuffer, objectKeyFromUrl, downloadImageFromUrl } from '../util
 import { loadLibrarySetup } from './setup';
 import { buildAnalysisPrompt, parseAnalysis } from './analysis';
 import { runVision, embedTexts } from './vision';
-import { buildSearchText, embeddingText } from './search';
+import { buildSearchText, embeddingText, mergeTags } from './search';
 import { ingest, aiUsedThisMonth, invalidateOwner, purgeExpiredTrash } from './service';
 
 /**
@@ -118,7 +118,7 @@ async function analyze(job: ILibraryJob): Promise<boolean> {
     asset.description = analysis.description;
     asset.colors = analysis.colors;
     asset.language = analysis.language;
-    asset.tags = [...new Set([...(asset.tags || []), ...analysis.tags])].slice(0, 24);
+    asset.tags = mergeTags([asset.tags || [], analysis.tags], 24);
     if (!asset.event && analysis.event) asset.event = analysis.event;
     if (asset.kind === 'image') asset.textContent = analysis.textInImage;
     if (['file_modified', 'upload'].includes(asset.dateSource) && analysis.contentDate) {
@@ -272,6 +272,17 @@ async function tick() {
   }
 }
 
+/** One-time tidy-up: older items have tags in two spellings ("cold_brew" and "cold brew"). */
+async function tidyTags() {
+  const items = await LibraryAsset.find({ tags: { $regex: /[_-]|[A-Z]|\s{2}/ } }).select('tags').limit(5000);
+  for (const item of items) {
+    const tags = mergeTags([item.tags || []], 30);
+    if (tags.join('|') !== (item.tags || []).join('|')) {
+      await LibraryAsset.updateOne({ _id: item._id }, { $set: { tags } });
+    }
+  }
+}
+
 export function startLibraryWorker() {
   if (started || process.env.LIBRARY_WORKER === 'off') return;
   started = true;
@@ -282,6 +293,7 @@ export function startLibraryWorker() {
       { $set: { status: 'queued', runAfter: new Date() } }
     ).catch(() => undefined);
   setTimeout(recover, 5000);
+  setTimeout(() => tidyTags().catch((e) => console.error('[library] Tag tidy-up failed:', e)), 8000);
   setInterval(() => {
     tick().catch((e) => console.error('[library] Worker error:', e));
   }, POLL_MS);
