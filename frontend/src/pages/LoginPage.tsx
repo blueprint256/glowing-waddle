@@ -135,6 +135,8 @@ export default function LoginPage() {
               Sign in with Google
             </Button>
 
+            {/* Demo logins are only shown when VITE_SHOW_DEMO_LOGINS=true (never on a shared or live app). */}
+            {import.meta.env.VITE_SHOW_DEMO_LOGINS === 'true' && (
             <Box sx={{ mt: 3 }}>
               <Typography variant="caption" color="text.secondary">
                 Demo credentials:
@@ -149,6 +151,7 @@ export default function LoginPage() {
                 Marketer: marketer@example.com / password123
               </Typography>
             </Box>
+            )}
 
             <Box sx={{ mt: 3, textAlign: 'center' }}>
               <Typography variant="body2" color="text.secondary">
