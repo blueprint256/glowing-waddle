@@ -298,6 +298,7 @@ router.get('/posts/:id/files/:index', isAuthenticated, requirePublishing, async 
     const post = await loadPostForUser(req.user!, req.params.id);
     const url = await postDownloadUrl(post, Number(req.params.index));
     res.set('Cache-Control', 'private, no-store');
+    res.set('Cross-Origin-Resource-Policy', 'cross-origin'); // the app may run on another address than the API (e.g. localhost:3000 vs :5000); without this, browsers refuse to show the image
     res.redirect(302, url);
   } catch (error) {
     fail(res, error, 'Could not open the file');

@@ -264,6 +264,7 @@ router.get('/items/:id/file', isAuthenticated, requireLibrary, async (req: Reque
       url = await signedObjectUrl(version.s3Key, { contentType: version.mime });
     }
     res.set('Cache-Control', 'private, max-age=1800');
+    res.set('Cross-Origin-Resource-Policy', 'cross-origin'); // the app may run on another address than the API (e.g. localhost:3000 vs :5000); without this, browsers refuse to show the image
     res.redirect(302, url);
   } catch (error) {
     fail(res, error, 'Could not open this file');

@@ -262,9 +262,11 @@ router.get('/:id/download', isAuthenticated, async (req: Request, res: Response)
       // For private S3 buckets, generate signed URL
       try {
         const signedUrl = await getSignedDownloadUrl(asset.path);
+        res.set('Cross-Origin-Resource-Policy', 'cross-origin'); // the app may run on another address than the API (e.g. localhost:3000 vs :5000); without this, browsers refuse to show the image
         res.redirect(signedUrl);
       } catch (error) {
         // If signed URL fails, try direct location (for public buckets)
+        res.set('Cross-Origin-Resource-Policy', 'cross-origin');
         res.redirect(asset.location);
       }
     } else {
