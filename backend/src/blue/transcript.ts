@@ -23,7 +23,7 @@ export function toTranscript(messages: NeutralMessage[], pending?: PendingAction
         } else {
           let data: unknown;
           try {
-            data = JSON.parse(r.content);
+            data = JSON.parse(r.display ?? r.content);
           } catch {
             data = undefined; // truncated result: show as a done step without a card
           }

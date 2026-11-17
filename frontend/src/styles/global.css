@@ -36,6 +36,10 @@ img { max-width: 100%; }
 @media (min-width: 48em) { .bp-panel { margin-left: 0; } }
 @media (min-width: 62em) { .bp-panel { margin: var(--panel-inset); margin-left: 0; } }
 .bp-page { padding: var(--sp-4) var(--sp-4) 80px; max-width: 1400px; margin: 0 auto; } /* bottom room for the mobile FAB */
+/* Full-bleed pages that manage their own scrolling (the Blue page). */
+.bp-panel--flush { overflow: hidden; }
+.bp-page--flush { padding: 0; max-width: none; height: 100%; }
+@media (max-width: 47.99em) { .bp-page--flush { padding-bottom: 72px; } }
 @media (min-width: 48em) { .bp-page { padding: var(--sp-6) var(--sp-8); } }
 
 /* Mobile floating controls (hamburger + theme), hidden ≥768px */

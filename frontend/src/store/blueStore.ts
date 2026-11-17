@@ -46,6 +46,14 @@ function writeLast(id: string | null) {
   }
 }
 
+/** Something from the chat opened in the right-hand panel of the full-screen Blue page. */
+export interface BlueDetailRef {
+  type: 'task' | 'library' | 'campaign' | 'project';
+  id: string;
+  /** What the chat card already knows, shown instantly while the full record loads. */
+  preview?: any;
+}
+
 interface BlueState {
   open: boolean;
   expanded: boolean;
@@ -57,6 +65,7 @@ interface BlueState {
   loading: boolean;
   /** Bumped after Blue changes data, so the page behind the panel reloads. */
   refreshKey: number;
+  detail: BlueDetailRef | null;
 
   setOpen: (open: boolean) => void;
   toggle: () => void;
@@ -69,6 +78,8 @@ interface BlueState {
   deleteConversation: (id: string) => Promise<void>;
   send: (text: string) => Promise<void>;
   confirm: (approve: boolean) => Promise<void>;
+  showDetail: (detail: BlueDetailRef) => void;
+  closeDetail: () => void;
 }
 
 export const useBlueStore = create<BlueState>((set, get) => {
@@ -145,6 +156,10 @@ export const useBlueStore = create<BlueState>((set, get) => {
     busy: false,
     loading: false,
     refreshKey: 0,
+    detail: null,
+
+    showDetail: (detail) => set({ detail }),
+    closeDetail: () => set({ detail: null }),
 
     setOpen: (open) => {
       writeFlag(OPEN_KEY, open);
@@ -196,7 +211,7 @@ export const useBlueStore = create<BlueState>((set, get) => {
       set({ loading: true });
       try {
         const res = await blueAPI.get(id);
-        set({ conversationId: id, items: res.data.conversation.items || [] });
+        set({ conversationId: id, items: res.data.conversation.items || [], detail: null });
         writeLast(id);
       } catch {
         writeLast(null);
@@ -208,7 +223,7 @@ export const useBlueStore = create<BlueState>((set, get) => {
 
     newChat: () => {
       writeLast(null);
-      set({ conversationId: null, items: [] });
+      set({ conversationId: null, items: [], detail: null });
     },
 
     deleteConversation: async (id) => {

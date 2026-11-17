@@ -13,6 +13,8 @@ export interface ToolResult {
   /** JSON of the tool's data, or an error sentence when isError. */
   content: string;
   isError: boolean;
+  /** Full JSON for the chat cards when `content` had to be shortened for the AI (big lists). */
+  display?: string;
 }
 
 export type NeutralMessage =

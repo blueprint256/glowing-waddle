@@ -16,7 +16,8 @@ import {
   Settings as SettingsIcon,
   Logout as LogoutIcon,
   DarkMode as DarkModeIcon,
-  LightMode as LightModeIcon
+  LightMode as LightModeIcon,
+  OpenInFull as FullScreenIcon
 } from '@mui/icons-material';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
@@ -67,24 +68,32 @@ function isActive(item: NavItem, pathname: string) {
   );
 }
 
-/** Blue toggle, shown above Dashboard in the sidebar. */
+/** Blue, shown above Dashboard in the sidebar: the button opens the side panel, the icon opens Blue full screen. */
 function BlueToggle({ onNavigate }: { onNavigate?: () => void }) {
-  const { open, toggle } = useBlueStore();
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const { open: panelOpen, toggle, setOpen } = useBlueStore();
+  const onPage = pathname === '/blue';
+  const open = panelOpen || onPage;
   return (
-    <Tooltip title="Ask Blue to do things for you (Ctrl+J)" placement="right">
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
+    <Tooltip title={onPage ? 'Back to the side panel' : 'Ask Blue to do things for you (Ctrl+J)'} placement="right">
       <Box
         component="button"
         type="button"
         onClick={() => {
-          toggle();
+          if (onPage) {
+            setOpen(true);
+            navigate(-1);
+          } else toggle();
           onNavigate?.();
         }}
         aria-pressed={open}
-        aria-label={open ? 'Close Blue' : 'Open Blue'}
+        aria-label={onPage ? 'Use Blue as a side panel' : open ? 'Close Blue' : 'Open Blue'}
         sx={{
-          all: 'unset', boxSizing: 'border-box', cursor: 'pointer',
+          all: 'unset', boxSizing: 'border-box', cursor: 'pointer', flex: 1, minWidth: 0,
           display: 'flex', alignItems: 'center', gap: '10px',
-          height: 36, px: '8px', mb: 1, borderRadius: 'var(--r-ctl)',
+          height: 36, px: '8px', borderRadius: 'var(--r-ctl)',
           fontSize: 'var(--fs-sm)', fontWeight: 600,
           border: '1px solid',
           borderColor: open ? 'var(--accent-blue-fg)' : 'var(--border)',
@@ -102,6 +111,27 @@ function BlueToggle({ onNavigate }: { onNavigate?: () => void }) {
         </Box>
       </Box>
     </Tooltip>
+    <Tooltip title="Blue full screen: chat in the middle, results on the side" placement="right">
+      <IconButton
+        size="small"
+        aria-label="Open Blue full screen"
+        aria-pressed={onPage}
+        onClick={() => {
+          if (!onPage) navigate('/blue');
+          onNavigate?.();
+        }}
+        sx={{
+          width: 36, height: 36, borderRadius: 'var(--r-ctl)', border: '1px solid',
+          borderColor: onPage ? 'var(--accent-blue-fg)' : 'var(--border)',
+          bgcolor: onPage ? 'var(--accent-blue-bg)' : 'var(--bg-raised)',
+          color: onPage ? 'var(--accent-blue-fg)' : 'var(--text-muted)',
+          '&:hover': { borderColor: 'var(--accent-blue-fg)' }
+        }}
+      >
+        <FullScreenIcon sx={{ fontSize: 16 }} />
+      </IconButton>
+    </Tooltip>
+    </Box>
   );
 }
 
@@ -257,12 +287,14 @@ export default function DashboardLayout() {
   const { user } = useAuthStore();
   const blueAllowed = user?.assistantEnabled !== false;
   const { toggle: toggleBlue, refreshKey } = useBlueStore();
+  const { pathname } = useLocation();
+  const flush = pathname === '/blue';
 
   // Ctrl/⌘ + J opens and closes Blue.
   useEffect(() => {
     if (!blueAllowed) return;
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'j') {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'j' && window.location.pathname !== '/blue') {
         e.preventDefault();
         toggleBlue();
       }
@@ -288,10 +320,10 @@ export default function DashboardLayout() {
         <SidebarContent onNavigate={() => setDrawerOpen(false)} />
       </Drawer>
 
-      <main className="bp-panel" id="main">
-        <div className="bp-page">
-          {/* Re-mounts the page after Blue changes data, so it shows the latest. */}
-          <Outlet key={refreshKey} />
+      <main className={`bp-panel${flush ? ' bp-panel--flush' : ''}`} id="main">
+        <div className={`bp-page${flush ? ' bp-page--flush' : ''}`}>
+          {/* Re-mounts the page after Blue changes data, so it shows the latest (not the Blue page itself). */}
+          <Outlet key={flush ? 'blue' : refreshKey} />
         </div>
       </main>
 
@@ -305,7 +337,7 @@ export default function DashboardLayout() {
         >
           <MenuIcon fontSize="small" />
         </IconButton>
-        {blueAllowed && (
+        {blueAllowed && !flush && (
           <IconButton
             onClick={toggleBlue}
             aria-label="Open Blue"

@@ -1,36 +1,36 @@
-import { useState, type ReactNode } from 'react';
+import { useState, type MouseEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, Button, Chip, CircularProgress, Typography } from '@mui/material';
+import { Box, Button, Chip, CircularProgress, IconButton, Tooltip, Typography } from '@mui/material';
 import {
   CheckCircleOutline as DoneIcon,
   ErrorOutline as ErrorIcon,
   CalendarMonth as CalendarIcon,
   OpenInNew as OpenIcon,
   Visibility as PreviewIcon,
-  ChatBubbleOutline as CommentIcon
+  ChatBubbleOutline as CommentIcon,
+  TaskAlt as MarkDoneIcon,
+  ImageOutlined as ImageIcon
 } from '@mui/icons-material';
 import SocialPreviewModal from '../SocialPreviewModal';
 import BlueText from './BlueText';
 import type { BlueItem } from '../../services/blue';
 import { librarySrc } from '../../services/library';
+import { taskAPI } from '../../services/api';
+import { useBlueStore } from '../../store/blueStore';
+import { ImageLightbox, useBlueOpen, useBlueSurface } from './BlueSurface';
 
 /**
- * Turns Blue's tool results into cards: tasks, campaigns, projects, calendars, comments, users.
- * Every card links into the normal app screens.
+ * Turns Blue's tool results into the chat's standard layouts:
+ * - lists (tasks, posts, campaigns, projects, users) → compact tables, one row per item
+ * - one item (a task, a Library item, a poster) → a card with the image large
+ * - images → a gallery; clicking shows the full image (side panel) or opens it on the right (full screen)
+ * - numbers (AI usage, Inbox, setup) → small tiles
+ * Every row and card opens the item in the app.
  */
 
 type ToolItem = Extract<BlueItem, { kind: 'tool' }>;
 
-const LIST_LIMIT = 6;
-
-function pathFrom(url?: string): string | null {
-  if (!url) return null;
-  try {
-    return new URL(url, window.location.origin).pathname;
-  } catch {
-    return null;
-  }
-}
+const ROWS = 8;
 
 /** Dates are stored as UTC midnight, so format in UTC to avoid showing the day before. */
 function day(value?: string | null, withWeekday = true): string | null {
@@ -40,6 +40,13 @@ function day(value?: string | null, withWeekday = true): string | null {
   return d.toLocaleDateString(undefined, { ...(withWeekday ? { weekday: 'short' } : {}), day: 'numeric', month: 'short', timeZone: 'UTC' });
 }
 
+function dateTime(value?: string | null): string | null {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
 function range(start?: string | null, end?: string | null): string | null {
   const a = day(start, false);
   const b = day(end, false);
@@ -47,16 +54,36 @@ function range(start?: string | null, end?: string | null): string | null {
   return a || b;
 }
 
+function libDate(value?: string): string | null {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+}
+
+const GREEN = { bg: 'var(--accent-green-bg)', fg: 'var(--accent-green-fg)' };
+const BLUE = { bg: 'var(--accent-blue-bg)', fg: 'var(--accent-blue-fg)' };
+const AMBER = { bg: 'var(--accent-amber-bg)', fg: 'var(--accent-amber-fg)' };
+const VIOLET = { bg: 'var(--accent-violet-bg)', fg: 'var(--accent-violet-fg)' };
+const RED = { bg: 'var(--danger-surface, var(--accent-amber-bg))', fg: 'var(--danger-text)' };
+
 const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
-  Pending: { bg: 'var(--accent-amber-bg)', fg: 'var(--accent-amber-fg)' },
-  'In Progress': { bg: 'var(--accent-blue-bg)', fg: 'var(--accent-blue-fg)' },
-  Completed: { bg: 'var(--accent-green-bg)', fg: 'var(--accent-green-fg)' },
-  active: { bg: 'var(--accent-green-bg)', fg: 'var(--accent-green-fg)' },
-  completed: { bg: 'var(--accent-green-bg)', fg: 'var(--accent-green-fg)' },
-  in_progress: { bg: 'var(--accent-blue-bg)', fg: 'var(--accent-blue-fg)' },
-  review: { bg: 'var(--accent-violet-bg)', fg: 'var(--accent-violet-fg)' },
-  paused: { bg: 'var(--accent-amber-bg)', fg: 'var(--accent-amber-fg)' },
-  on_hold: { bg: 'var(--accent-amber-bg)', fg: 'var(--accent-amber-fg)' }
+  Pending: AMBER,
+  'In Progress': BLUE,
+  Completed: GREEN,
+  active: GREEN,
+  completed: GREEN,
+  in_progress: BLUE,
+  planning: VIOLET,
+  review: VIOLET,
+  paused: AMBER,
+  on_hold: AMBER,
+  scheduled: BLUE,
+  publishing: BLUE,
+  published: GREEN,
+  failed: RED,
+  manual_due: AMBER,
+  needs_action: AMBER,
+  cancelled: { bg: 'var(--bg-subtle)', fg: 'var(--text-muted)' }
 };
 
 function StatusChip({ status }: { status?: string }) {
@@ -65,8 +92,8 @@ function StatusChip({ status }: { status?: string }) {
   return (
     <Chip
       size="small"
-      label={status.replace('_', ' ')}
-      sx={{ height: 20, fontSize: 11, fontWeight: 600, bgcolor: c.bg, color: c.fg, textTransform: 'capitalize', '& .MuiChip-label': { px: 0.75 } }}
+      label={status.replace(/_/g, ' ')}
+      sx={{ height: 20, fontSize: 11, fontWeight: 600, bgcolor: c.bg, color: c.fg, textTransform: 'capitalize', flexShrink: 0, '& .MuiChip-label': { px: 0.75 } }}
     />
   );
 }
@@ -91,7 +118,7 @@ function Card({ children, onOpen, accent }: { children: ReactNode; onOpen?: () =
       role={onOpen ? 'link' : undefined}
       tabIndex={onOpen ? 0 : undefined}
       onKeyDown={(e) => {
-        if (onOpen && (e.key === 'Enter' || e.key === ' ')) {
+        if (onOpen && e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
           e.preventDefault();
           onOpen();
         }
@@ -103,7 +130,7 @@ function Card({ children, onOpen, accent }: { children: ReactNode; onOpen?: () =
 }
 
 function Meta({ children }: { children: ReactNode }) {
-  return <Typography sx={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.4 }}>{children}</Typography>;
+  return <Typography component="div" sx={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.4 }}>{children}</Typography>;
 }
 
 function Title({ children }: { children: ReactNode }) {
@@ -114,179 +141,304 @@ function Title({ children }: { children: ReactNode }) {
   );
 }
 
-function useOpen() {
-  const navigate = useNavigate();
-  return (url?: string) => {
-    const path = pathFrom(url);
-    return path ? () => navigate(path) : undefined;
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Entity cards
-// ---------------------------------------------------------------------------
-
-function libDate(value?: string): string | null {
-  if (!value) return null;
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
-}
-
-function LibraryThumb({ item, size }: { item: any; size: number | string }) {
+/** A square image with a quiet placeholder when there's none (or it fails to load). */
+function Thumb({ src, size, label }: { src?: string | null; size: number | string; label?: string }) {
   const [broken, setBroken] = useState(false);
-  const src = !broken ? librarySrc(item.thumbnail_url) : undefined;
+  const show = src && !broken;
   return (
-    <Box sx={{ width: size, aspectRatio: '1 / 1', flexShrink: 0, borderRadius: 'var(--r-nav)', overflow: 'hidden', bgcolor: 'var(--bg-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      {src ? (
-        <img src={src} alt="" loading="lazy" onError={() => setBroken(true)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+    <Box
+      sx={{
+        width: size, aspectRatio: '1 / 1', flexShrink: 0, borderRadius: 'var(--r-nav, 6px)', overflow: 'hidden',
+        bgcolor: 'var(--bg-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-faint)'
+      }}
+    >
+      {show ? (
+        <img src={src!} alt="" loading="lazy" onError={() => setBroken(true)} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+      ) : label ? (
+        <Typography sx={{ fontSize: 10, textTransform: 'uppercase' }}>{label}</Typography>
       ) : (
-        <Typography sx={{ fontSize: 10, color: 'var(--text-faint)', textTransform: 'uppercase' }}>{item.kind || 'file'}</Typography>
+        <ImageIcon sx={{ fontSize: 16 }} />
       )}
     </Box>
   );
 }
 
-function LibraryGallery({ items, total }: { items: any[]; total?: number }) {
-  const open = useOpen();
-  if (!items.length) return <Step ok text="Nothing in the Library matches" />;
+/** A large image inside a card; click to see it full size. */
+function HeroImage({ src, title, caption }: { src?: string | null; title?: string; caption?: ReactNode }) {
+  const [broken, setBroken] = useState(false);
+  const [zoom, setZoom] = useState(false);
+  if (!src || broken) return null;
   return (
-    <Box>
-      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 0.75 }}>
-        {items.slice(0, 9).map((i) => (
-          <Box
-            key={i.id}
-            onClick={open(i.url)}
-            role="link"
-            tabIndex={0}
-            title={[i.title, i.date, i.event].filter(Boolean).join(' · ')}
-            sx={{ cursor: 'pointer', minWidth: 0, '&:hover img': { opacity: 0.85 } }}
-          >
-            <LibraryThumb item={i} size="100%" />
-            <Typography sx={{ fontSize: 11, mt: 0.25, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{i.title}</Typography>
-            <Typography sx={{ fontSize: 10, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {[libDate(i.date), i.versions > 1 ? `v${i.current_version}` : null].filter(Boolean).join(' · ')}
-            </Typography>
-          </Box>
-        ))}
-      </Box>
-      {(total ?? items.length) > Math.min(items.length, 9) && (
-        <Meta>
-          {total} matches · <Box component="span" sx={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => open('/library')?.()}>open the Library</Box>
-        </Meta>
-      )}
-    </Box>
-  );
-}
-
-function LibraryItemCard({ item, versions }: { item: any; versions?: any[] }) {
-  const open = useOpen();
-  return (
-    <Card onOpen={open(item.url)}>
-      <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'flex-start' }}>
-        <LibraryThumb item={item} size={72} />
-        <Box sx={{ minWidth: 0, flex: 1 }}>
-          <Title>{item.title}</Title>
-          <Meta>{[libDate(item.date), item.event, item.versions > 1 ? `version ${item.current_version} of ${item.versions}` : null].filter(Boolean).join(' · ')}</Meta>
-          {item.description && <Meta>{item.description}</Meta>}
+    <>
+      <Box
+        component="img"
+        src={src}
+        alt=""
+        onError={() => setBroken(true)}
+        onClick={(e: MouseEvent) => {
+          e.stopPropagation();
+          setZoom(true);
+        }}
+        sx={{ width: '100%', maxHeight: 260, objectFit: 'cover', borderRadius: 'var(--r-ctl)', mt: 0.5, cursor: 'zoom-in', display: 'block' }}
+      />
+      {zoom && (
+        <Box onClick={(e) => e.stopPropagation()}>
+          <ImageLightbox src={src} title={title} caption={caption} onClose={() => setZoom(false)} openUrl={null} />
         </Box>
-      </Box>
-      {versions && versions.length > 1 && (
-        <Meta>
-          Versions: {versions.slice(0, 5).map((v: any) => `v${v.number}${v.current ? ' (current)' : ''} ${v.added}`).join(', ')}
-          {versions.length > 5 ? ', …' : ''}
-        </Meta>
       )}
-    </Card>
+    </>
   );
 }
 
-function PublishPostsCard({ posts, title }: { posts: any[]; title?: string }) {
-  const open = useOpen();
+// ---------------------------------------------------------------------------
+// Tables
+// ---------------------------------------------------------------------------
+
+function Table({ head, children, footer }: { head?: ReactNode; children: ReactNode; footer?: ReactNode }) {
+  return (
+    <Box sx={{ border: '1px solid var(--border)', borderRadius: 'var(--r-card)', bgcolor: 'var(--bg-raised)', overflow: 'hidden' }}>
+      {head && (
+        <Box sx={{ px: 1.25, py: 0.75, borderBottom: '1px solid var(--border)', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>{head}</Box>
+      )}
+      {children}
+      {footer && <Box sx={{ px: 1.25, py: 0.75, borderTop: '1px solid var(--border)' }}>{footer}</Box>}
+    </Box>
+  );
+}
+
+function Row({ onOpen, children }: { onOpen?: () => void; children: ReactNode }) {
+  return (
+    <Box
+      onClick={onOpen}
+      role={onOpen ? 'link' : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+      onKeyDown={(e) => {
+        if (onOpen && e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      sx={{
+        display: 'flex', alignItems: 'center', gap: 1, px: 1.25, py: 0.75, minWidth: 0,
+        cursor: onOpen ? 'pointer' : 'default',
+        '& + &': { borderTop: '1px solid var(--border)' },
+        '&:hover': onOpen ? { bgcolor: 'var(--bg-hover)' } : undefined
+      }}
+    >
+      {children}
+    </Box>
+  );
+}
+
+function RowText({ primary, secondary }: { primary: ReactNode; secondary?: ReactNode }) {
+  return (
+    <Box sx={{ flex: 1, minWidth: 0 }}>
+      <Typography noWrap sx={{ fontSize: 13, fontWeight: 500, color: 'var(--text-strong)' }}>{primary}</Typography>
+      {secondary && <Typography noWrap sx={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{secondary}</Typography>}
+    </Box>
+  );
+}
+
+/** Shows the first rows; "Show all" reveals the rest that came back; beyond that, a link to the full page. */
+function useMore<T>(items: T[]) {
+  const [all, setAll] = useState(false);
+  return { shown: all ? items : items.slice(0, ROWS), hidden: all ? 0 : Math.max(0, items.length - ROWS), showAll: () => setAll(true) };
+}
+
+function MoreFooter({ hidden, onShowAll, total, loaded, pageLabel, pagePath }: { hidden: number; onShowAll: () => void; total?: number; loaded: number; pageLabel: string; pagePath: string }) {
+  const navigate = useNavigate();
+  const beyond = (total ?? loaded) - loaded;
+  if (!hidden && beyond <= 0) return null;
+  return (
+    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+      {hidden > 0 && (
+        <Button size="small" onClick={onShowAll} sx={{ fontSize: 12, py: 0, minWidth: 0 }}>
+          Show all {loaded}
+        </Button>
+      )}
+      {beyond > 0 && (
+        <Button size="small" onClick={() => navigate(pagePath)} sx={{ fontSize: 12, py: 0, minWidth: 0 }}>
+          {total} in total · open {pageLabel}
+        </Button>
+      )}
+    </Box>
+  );
+}
+
+function TaskTable({ tasks, total, head }: { tasks: any[]; total?: number; head?: string }) {
+  const open = useBlueOpen();
+  const [done, setDone] = useState<Record<string, 'saving' | 'done' | 'error'>>({});
+  const { shown, hidden, showAll } = useMore(tasks);
+  if (!tasks.length) return <Step ok text="No tasks found" />;
+
+  const markDone = async (t: any) => {
+    setDone((s) => ({ ...s, [t.id]: 'saving' }));
+    try {
+      await taskAPI.update(t.id, { status: 'Completed' });
+      setDone((s) => ({ ...s, [t.id]: 'done' }));
+      useBlueStore.setState((s) => ({ refreshKey: s.refreshKey + 1 }));
+    } catch {
+      setDone((s) => ({ ...s, [t.id]: 'error' }));
+    }
+  };
+
+  return (
+    <Table
+      head={head ?? `${total ?? tasks.length} task${(total ?? tasks.length) === 1 ? '' : 's'}`}
+      footer={<MoreFooter hidden={hidden} onShowAll={showAll} total={total} loaded={tasks.length} pageLabel="the Tasks Sheet" pagePath="/tasks-sheet" />}
+    >
+      {shown.map((t) => {
+        const state = done[t.id];
+        const status = state === 'done' ? 'Completed' : t.status;
+        return (
+          <Row key={t.id} onOpen={open(t.url, t)}>
+            <Thumb src={t.designed_image_url} size={36} />
+            <RowText primary={t.name} secondary={[day(t.task_date), t.project?.name].filter(Boolean).join(' · ') || undefined} />
+            <StatusChip status={status} />
+            {status !== 'Completed' && (
+              <Tooltip title={state === 'error' ? 'Couldn’t update. Try again' : 'Mark as completed'}>
+                <span>
+                  <IconButton
+                    size="small"
+                    aria-label="Mark as completed"
+                    disabled={state === 'saving'}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      markDone(t);
+                    }}
+                    sx={{ color: state === 'error' ? 'var(--danger-text)' : 'var(--text-muted)' }}
+                  >
+                    {state === 'saving' ? <CircularProgress size={14} /> : <MarkDoneIcon sx={{ fontSize: 18 }} />}
+                  </IconButton>
+                </span>
+              </Tooltip>
+            )}
+          </Row>
+        );
+      })}
+    </Table>
+  );
+}
+
+function CampaignTable({ campaigns, total }: { campaigns: any[]; total?: number }) {
+  const open = useBlueOpen();
+  const { shown, hidden, showAll } = useMore(campaigns);
+  if (!campaigns.length) return <Step ok text="No campaigns found" />;
+  return (
+    <Table
+      head={`${total ?? campaigns.length} campaign${(total ?? campaigns.length) === 1 ? '' : 's'}`}
+      footer={<MoreFooter hidden={hidden} onShowAll={showAll} total={total} loaded={campaigns.length} pageLabel="Campaigns" pagePath="/campaigns" />}
+    >
+      {shown.map((c) => (
+        <Row key={c.id} onOpen={open(c.url, c)}>
+          <RowText primary={c.name} secondary={range(c.start_date, c.end_date) || undefined} />
+          {c.archived ? <StatusChip status="archived" /> : <StatusChip status={c.status} />}
+        </Row>
+      ))}
+    </Table>
+  );
+}
+
+function ProjectTable({ projects, total, extra }: { projects: any[]; total?: number; extra?: (p: any) => string | undefined }) {
+  const open = useBlueOpen();
+  const { shown, hidden, showAll } = useMore(projects);
+  if (!projects.length) return <Step ok text="No projects found" />;
+  return (
+    <Table
+      head={`${total ?? projects.length} project${(total ?? projects.length) === 1 ? '' : 's'}`}
+      footer={<MoreFooter hidden={hidden} onShowAll={showAll} total={total} loaded={projects.length} pageLabel="Campaigns" pagePath="/campaigns" />}
+    >
+      {shown.map((p) => (
+        <Row key={p.id} onOpen={open(p.url, p)}>
+          <RowText primary={p.name} secondary={[p.campaign?.name, range(p.start_date, p.due_date), extra?.(p)].filter(Boolean).join(' · ') || undefined} />
+          <StatusChip status={p.status} />
+        </Row>
+      ))}
+    </Table>
+  );
+}
+
+function PostTable({ posts, total, head }: { posts: any[]; total?: number; head?: string }) {
+  const open = useBlueOpen();
+  const { shown, hidden, showAll } = useMore(posts);
   if (!posts.length) return <Step ok text="No posts found" />;
   return (
-    <Card onOpen={open('/publishing')}>
-      {title && <Title>{title}</Title>}
-      {posts.slice(0, LIST_LIMIT).map((p: any) => (
-        <Meta key={p.id}>
-          <strong>{p.platform}</strong>
-          {p.account ? ` · ${p.account}` : ''} · {p.status}
-          {p.when ? ` · ${new Date(p.when).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : ''}
-          {p.task?.name ? ` · ${p.task.name}` : ''}
-          {p.test_account ? ' (test)' : ''}
-          {p.problem ? ` — ${p.problem}` : ''}
-        </Meta>
+    <Table
+      head={head || `${total ?? posts.length} post${(total ?? posts.length) === 1 ? '' : 's'}`}
+      footer={<MoreFooter hidden={hidden} onShowAll={showAll} total={total} loaded={posts.length} pageLabel="Publishing" pagePath="/publishing" />}
+    >
+      {shown.map((p) => (
+        <Row key={p.id} onOpen={open(p.task?.id ? `/tasks/${p.task.id}` : p.url, p.task ? { id: p.task.id, name: p.task.name } : undefined)}>
+          <RowText
+            primary={`${p.platform}${p.account ? ` · ${p.account}` : ''}${p.test_account ? ' (test)' : ''}`}
+            secondary={[dateTime(p.when), p.task?.name, p.problem].filter(Boolean).join(' · ') || undefined}
+          />
+          <StatusChip status={p.status} />
+        </Row>
       ))}
-      {posts.length > LIST_LIMIT && <Meta>…and {posts.length - LIST_LIMIT} more</Meta>}
-    </Card>
+    </Table>
   );
 }
 
-function InboxCard({ data }: { data: any }) {
-  const open = useOpen();
-  const items: any[] = data.items || [];
+function UserTable({ users, total }: { users: any[]; total?: number }) {
+  const open = useBlueOpen();
+  const { shown, hidden, showAll } = useMore(users);
+  if (!users.length) return <Step ok text="No users found" />;
   return (
-    <Card onOpen={open('/inbox')}>
-      <Title>
-        Inbox · {data.counts?.needs_action || 0} need{data.counts?.needs_action === 1 ? 's' : ''} you
-        {data.counts?.unread_updates ? ` · ${data.counts.unread_updates} unread` : ''}
-      </Title>
-      {items.length ? (
-        items.slice(0, LIST_LIMIT).map((i: any) => (
-          <Meta key={i.id}>
-            <strong>{i.title}</strong>
-            {i.actions?.length ? ` — ${i.actions.map((a: any) => a.label).join(' · ')}` : ''}
-          </Meta>
-        ))
-      ) : (
-        <Meta>Nothing waiting.</Meta>
-      )}
-      {items.length > LIST_LIMIT && <Meta>…and {items.length - LIST_LIMIT} more</Meta>}
-    </Card>
-  );
-}
-
-function ChannelsCard({ data }: { data: any }) {
-  const open = useOpen();
-  return (
-    <Card onOpen={open('/publishing?tab=channels')}>
-      <Title>Connected accounts</Title>
-      {(data.accounts || []).length ? (
-        data.accounts.map((a: any) => (
-          <Meta key={a.id}>
-            {a.platform} · {a.name}
-            {a.test_account ? ' (test)' : ''}
-            {a.needs_reconnect ? ' — needs reconnecting' : ''}
-          </Meta>
-        ))
-      ) : (
-        <Meta>None yet. Platforms can still be used as “post by hand” reminders.</Meta>
-      )}
-    </Card>
-  );
-}
-
-function LibraryOverviewCard({ data }: { data: any }) {
-  const open = useOpen();
-  return (
-    <Card onOpen={open('/library')}>
-      <Title>Library · {data.total_items} items</Title>
-      {(data.timeline || []).slice(0, 4).map((y: any) => (
-        <Meta key={y.year}>
-          {y.year}: {y.items} · {y.months.slice(0, 4).map((m: any) => `${m.month.slice(0, 3)} ${m.items}`).join(', ')}
-          {y.months.length > 4 ? ', …' : ''}
-        </Meta>
+    <Table
+      head={`${total ?? users.length} user${(total ?? users.length) === 1 ? '' : 's'}`}
+      footer={<MoreFooter hidden={hidden} onShowAll={showAll} total={total} loaded={users.length} pageLabel="Users" pagePath="/admin/users" />}
+    >
+      {shown.map((u) => (
+        <Row key={u.id} onOpen={open(`/admin/users/${u.id}`)}>
+          <RowText
+            primary={`${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email}
+            secondary={[u.email, u.role?.replace('_', ' '), u.part === 'part_two' ? 'AI off' : 'AI on'].filter(Boolean).join(' · ')}
+          />
+          {u.active === false && <StatusChip status="inactive" />}
+        </Row>
       ))}
-    </Card>
+    </Table>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Tiles (numbers)
+// ---------------------------------------------------------------------------
+
+function Tiles({ tiles }: { tiles: { label: string; value: ReactNode; tone?: 'warn' | 'bad' }[] }) {
+  return (
+    <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: 0.75 }}>
+      {tiles.map((t) => (
+        <Box key={t.label} sx={{ bgcolor: 'var(--bg-subtle)', borderRadius: 'var(--r-ctl)', px: 1.25, py: 1 }}>
+          <Typography sx={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{t.label}</Typography>
+          <Typography
+            sx={{ fontSize: 18, fontWeight: 600, color: t.tone === 'bad' ? 'var(--danger-text)' : t.tone === 'warn' ? 'var(--accent-amber-fg)' : 'var(--text-strong)' }}
+          >
+            {t.value}
+          </Typography>
+        </Box>
+      ))}
+    </Box>
+  );
+}
+
+function money(n?: number) {
+  if (typeof n !== 'number') return '—';
+  return n < 0.01 && n > 0 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Single items
+// ---------------------------------------------------------------------------
 
 function TaskCard({ task, compact }: { task: any; compact?: boolean }) {
-  const open = useOpen();
+  const open = useBlueOpen();
   const [preview, setPreview] = useState(false);
   const when = day(task.task_date);
   const where = [task.project?.name, task.campaign?.name].filter(Boolean).join(' · ');
   return (
-    <Card onOpen={open(task.url)}>
+    <Card onOpen={open(task.url, task)}>
       <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
         <Title>{task.name}</Title>
         <StatusChip status={task.status} />
@@ -303,26 +455,21 @@ function TaskCard({ task, compact }: { task: any; compact?: boolean }) {
           {where}
         </Meta>
       )}
-      {!compact && task.designed_image_url && (
-        <Box component="img" src={task.designed_image_url} alt="" sx={{ width: '100%', maxHeight: 160, objectFit: 'cover', borderRadius: 'var(--r-ctl)', mt: 0.5 }} />
-      )}
+      <HeroImage src={task.designed_image_url} title={task.name} />
       {!compact && task.content && (
         <Typography
-          sx={{
-            fontSize: 12.5, color: 'var(--text)', mt: 0.25, whiteSpace: 'pre-wrap',
-            display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden'
-          }}
+          sx={{ fontSize: 12.5, color: 'var(--text)', mt: 0.25, whiteSpace: 'pre-wrap', display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
         >
           {task.content}
         </Typography>
       )}
-      {!compact && (task.content || task.designed_image_url) && (
+      {(task.content || task.designed_image_url) && (
         <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }} onClick={(e) => e.stopPropagation()}>
           <Button size="small" startIcon={<PreviewIcon sx={{ fontSize: 16 }} />} onClick={() => setPreview(true)} sx={{ fontSize: 12, py: 0.25 }}>
             Preview post
           </Button>
           {task.url && (
-            <Button size="small" startIcon={<OpenIcon sx={{ fontSize: 16 }} />} onClick={open(task.url)} sx={{ fontSize: 12, py: 0.25 }}>
+            <Button size="small" startIcon={<OpenIcon sx={{ fontSize: 16 }} />} onClick={open(task.url, task)} sx={{ fontSize: 12, py: 0.25 }}>
               Open
             </Button>
           )}
@@ -342,10 +489,10 @@ function TaskCard({ task, compact }: { task: any; compact?: boolean }) {
 }
 
 function CampaignCard({ campaign, extra }: { campaign: any; extra?: string }) {
-  const open = useOpen();
+  const open = useBlueOpen();
   const when = range(campaign.start_date, campaign.end_date);
   return (
-    <Card onOpen={open(campaign.url)} accent="var(--accent-violet-fg)">
+    <Card onOpen={open(campaign.url, campaign)} accent="var(--accent-violet-fg)">
       <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
         <Title>{campaign.name}</Title>
         {campaign.archived ? <StatusChip status="archived" /> : <StatusChip status={campaign.status} />}
@@ -356,57 +503,15 @@ function CampaignCard({ campaign, extra }: { campaign: any; extra?: string }) {
 }
 
 function ProjectCard({ project, extra }: { project: any; extra?: string }) {
-  const open = useOpen();
+  const open = useBlueOpen();
   const when = range(project.start_date, project.due_date);
   return (
-    <Card onOpen={open(project.url)} accent="var(--accent-blue-fg)">
+    <Card onOpen={open(project.url, project)} accent="var(--accent-blue-fg)">
       <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
         <Title>{project.name}</Title>
         <StatusChip status={project.status} />
       </Box>
       <Meta>{['Project', project.campaign?.name, when, extra].filter(Boolean).join(' · ')}</Meta>
-    </Card>
-  );
-}
-
-function ListOf<T>({ items, render, total, label }: { items: T[]; render: (item: T, i: number) => ReactNode; total?: number; label: string }) {
-  if (!items.length) return <Step ok text={`No ${label} found`} />;
-  const shown = items.slice(0, LIST_LIMIT);
-  const more = (total ?? items.length) - shown.length;
-  return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-      {shown.map(render)}
-      {more > 0 && <Meta>and {more} more {label}</Meta>}
-    </Box>
-  );
-}
-
-function Calendar({ data }: { data: any }) {
-  const open = useOpen();
-  const days = Object.keys(data.days || {}).sort();
-  if (!days.length) return <Step ok text="Nothing scheduled in that period" />;
-  return (
-    <Card>
-      <Meta>
-        {data.total_tasks} task{data.total_tasks === 1 ? '' : 's'} · {day(data.date_from, false)} – {day(data.date_to, false)}
-      </Meta>
-      {days.map((d) => (
-        <Box key={d} sx={{ display: 'grid', gridTemplateColumns: '64px minmax(0,1fr)', gap: 1, py: 0.5, borderTop: '1px solid var(--border)' }}>
-          <Typography sx={{ fontSize: 12, fontWeight: 600, color: 'var(--text-strong)' }}>{d === 'undated' ? 'No date' : day(d)}</Typography>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-            {data.days[d].map((t: any) => (
-              <Box
-                key={t.id}
-                onClick={open(t.url)}
-                sx={{ display: 'flex', alignItems: 'center', gap: 0.75, cursor: 'pointer', '&:hover .t': { textDecoration: 'underline' } }}
-              >
-                <Typography className="t" noWrap sx={{ fontSize: 12.5, flex: 1, minWidth: 0 }}>{t.name}</Typography>
-                <StatusChip status={t.status} />
-              </Box>
-            ))}
-          </Box>
-        </Box>
-      ))}
     </Card>
   );
 }
@@ -423,19 +528,173 @@ function CommentCard({ comment }: { comment: any }) {
   );
 }
 
-function UserRow({ user }: { user: any }) {
-  const open = useOpen();
+function UserCard({ user }: { user: any }) {
+  return <UserTable users={[user]} />;
+}
+
+/** Full-size file URL of a Library item (the thumbnail URL without "?variant=thumb"). */
+function libraryFull(item: any): string | undefined {
+  if (item.id) return librarySrc(`/api/library/items/${item.id}/file`);
+  return librarySrc(item.thumbnail_url?.replace(/\?variant=thumb$/, ''));
+}
+
+function LibraryGallery({ items, total }: { items: any[]; total?: number }) {
+  const open = useBlueOpen();
+  const surface = useBlueSurface();
+  const navigate = useNavigate();
+  const [zoom, setZoom] = useState<any | null>(null);
+  if (!items.length) return <Step ok text="Nothing in the Library matches" />;
+  const shown = items.slice(0, 12);
   return (
-    <Card onOpen={open(`/admin/users/${user.id}`)}>
-      <Title>
-        {user.first_name} {user.last_name}
-      </Title>
-      <Meta>
-        {[user.email, user.role?.replace('_', ' '), user.part === 'part_two' ? 'Part two' : 'Part one', user.active === false ? 'inactive' : null]
-          .filter(Boolean)
-          .join(' · ')}
-      </Meta>
+    <Box>
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 0.75 }}>
+        {shown.map((i) => (
+          <Box
+            key={i.id}
+            onClick={surface === 'page' ? open(i.url, i) : () => setZoom(i)}
+            role="button"
+            tabIndex={0}
+            title={[i.title, libDate(i.date), i.event].filter(Boolean).join(' · ')}
+            sx={{ cursor: 'pointer', minWidth: 0, '&:hover img': { opacity: 0.85 } }}
+          >
+            <Thumb src={librarySrc(i.thumbnail_url)} size="100%" label={i.kind || 'file'} />
+            <Typography sx={{ fontSize: 11, mt: 0.25, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{i.title}</Typography>
+            <Typography sx={{ fontSize: 10, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {[libDate(i.date), i.versions > 1 ? `v${i.current_version}` : null].filter(Boolean).join(' · ')}
+            </Typography>
+          </Box>
+        ))}
+      </Box>
+      {(total ?? items.length) > shown.length && (
+        <Meta>
+          {total ?? items.length} matches ·{' '}
+          <Box component="span" sx={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigate('/library')}>
+            open the Library
+          </Box>
+        </Meta>
+      )}
+      {zoom && (
+        <ImageLightbox
+          src={zoom.kind === 'image' || !zoom.kind ? libraryFull(zoom) || null : librarySrc(zoom.thumbnail_url) || null}
+          title={zoom.title}
+          caption={[libDate(zoom.date), zoom.event, zoom.versions > 1 ? `version ${zoom.current_version} of ${zoom.versions}` : null].filter(Boolean).join(' · ')}
+          openUrl={zoom.url}
+          onClose={() => setZoom(null)}
+        />
+      )}
+    </Box>
+  );
+}
+
+function LibraryItemCard({ item, versions }: { item: any; versions?: any[] }) {
+  const open = useBlueOpen();
+  const isImage = item.kind === 'image';
+  return (
+    <Card onOpen={open(item.url, item)}>
+      {isImage ? (
+        <HeroImage src={libraryFull(item)} title={item.title} caption={item.description} />
+      ) : (
+        <Thumb src={librarySrc(item.thumbnail_url)} size={72} label={item.kind} />
+      )}
+      <Title>{item.title}</Title>
+      <Meta>{[libDate(item.date), item.event, item.versions > 1 ? `version ${item.current_version} of ${item.versions}` : null].filter(Boolean).join(' · ')}</Meta>
+      {item.description && <Meta>{item.description}</Meta>}
+      {versions && versions.length > 1 && (
+        <Meta>
+          Versions: {versions.slice(0, 5).map((v: any) => `v${v.number}${v.current ? ' (current)' : ''} ${v.added}`).join(', ')}
+          {versions.length > 5 ? ', …' : ''}
+        </Meta>
+      )}
     </Card>
+  );
+}
+
+function PosterCard({ src, title, note, taskUrl }: { src?: string; title: string; note: string; taskUrl?: string }) {
+  const open = useBlueOpen();
+  const taskId = taskUrl?.match(/tasks\/([a-f0-9]{24})/i)?.[1];
+  return (
+    <Card onOpen={open(taskUrl, taskId ? { id: taskId } : undefined)}>
+      <Title>{title}</Title>
+      <HeroImage src={src} title={title} />
+      <Meta>{note}</Meta>
+    </Card>
+  );
+}
+
+function InboxCard({ data }: { data: any }) {
+  const open = useBlueOpen();
+  const items: any[] = data.items || [];
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+      <Tiles
+        tiles={[
+          { label: 'Need you', value: data.counts?.needs_action || 0, tone: data.counts?.needs_action ? 'warn' : undefined },
+          { label: 'Unread updates', value: data.counts?.unread_updates || 0 },
+          { label: 'Messages', value: data.counts?.unread_messages || 0 }
+        ]}
+      />
+      {items.length > 0 && (
+        <Table>
+          {items.slice(0, ROWS).map((i: any) => (
+            <Row key={i.id} onOpen={open('/inbox')}>
+              <RowText primary={i.title} secondary={i.actions?.length ? i.actions.map((a: any) => a.label).join(' · ') : i.body} />
+            </Row>
+          ))}
+        </Table>
+      )}
+    </Box>
+  );
+}
+
+function ChannelsCard({ data }: { data: any }) {
+  const open = useBlueOpen();
+  const accounts: any[] = data.accounts || [];
+  if (!accounts.length) return <Step ok text="No connected accounts yet. Platforms can still be used as “post by hand” reminders." />;
+  return (
+    <Table head="Connected accounts">
+      {accounts.map((a: any) => (
+        <Row key={a.id} onOpen={open('/publishing?tab=channels')}>
+          <RowText primary={`${a.platform} · ${a.name}`} secondary={a.test_account ? 'Test account' : undefined} />
+          {a.needs_reconnect && <StatusChip status="needs_action" />}
+        </Row>
+      ))}
+    </Table>
+  );
+}
+
+function LibraryOverviewCard({ data }: { data: any }) {
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+      <Tiles tiles={[{ label: 'Items', value: data.total_items ?? 0 }, ...(data.timeline || []).slice(0, 3).map((y: any) => ({ label: String(y.year), value: y.items }))]} />
+    </Box>
+  );
+}
+
+function Calendar({ data }: { data: any }) {
+  const open = useBlueOpen();
+  const days = Object.keys(data.days || {}).sort();
+  if (!days.length) return <Step ok text="Nothing scheduled in that period" />;
+  return (
+    <Table head={`${data.total_tasks} task${data.total_tasks === 1 ? '' : 's'} · ${day(data.date_from, false)} – ${day(data.date_to, false)}`}>
+      {days.map((d) => (
+        <Box key={d} sx={{ display: 'grid', gridTemplateColumns: '72px minmax(0,1fr)', gap: 1, px: 1.25, py: 0.75, '& + &': { borderTop: '1px solid var(--border)' } }}>
+          <Typography sx={{ fontSize: 12, fontWeight: 600, color: 'var(--text-strong)', pt: '6px' }}>{d === 'undated' ? 'No date' : day(d)}</Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+            {data.days[d].map((t: any) => (
+              <Box
+                key={t.id}
+                onClick={open(t.url, t)}
+                sx={{ display: 'flex', alignItems: 'center', gap: 0.75, cursor: 'pointer', borderRadius: 'var(--r-ctl)', '&:hover': { bgcolor: 'var(--bg-hover)' } }}
+              >
+                <Thumb src={t.designed_image_url} size={28} />
+                <Typography noWrap sx={{ fontSize: 12.5, flex: 1, minWidth: 0 }}>{t.name}</Typography>
+                <StatusChip status={t.status} />
+              </Box>
+            ))}
+          </Box>
+        </Box>
+      ))}
+    </Table>
   );
 }
 
@@ -482,14 +741,14 @@ export function BlueToolItem({ item }: { item: ToolItem }) {
     case 'update_task':
       return d.task ? <TaskCard task={d.task} /> : <Step ok text="Done" />;
     case 'get_task':
-      return d.task ? <TaskCard task={d.task} compact /> : <Step ok text="Done" />;
+      return d.task ? <TaskCard task={d.task} /> : <Step ok text="Done" />;
     case 'create_tasks': {
       const created = (d.results || []).filter((r: any) => r.created).map((r: any) => r.task);
       const failed = (d.results || []).filter((r: any) => !r.created);
       return (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
           <Step ok={failed.length === 0} text={d.message || `Created ${created.length} tasks`} />
-          <ListOf items={created} label="tasks" render={(t: any) => <TaskCard key={t.id} task={t} compact />} />
+          {created.length > 0 && <TaskTable tasks={created} head={`${created.length} new task${created.length === 1 ? '' : 's'}`} />}
           {failed.map((f: any) => (
             <Step key={f.index} ok={false} text={`${f.name}: ${f.error}`} />
           ))}
@@ -497,7 +756,7 @@ export function BlueToolItem({ item }: { item: ToolItem }) {
       );
     }
     case 'list_tasks':
-      return <ListOf items={d.tasks || []} total={d.pagination?.total} label="tasks" render={(t: any) => <TaskCard key={t.id} task={t} compact />} />;
+      return <TaskTable tasks={d.tasks || []} total={d.pagination?.total} />;
     case 'get_calendar':
       return <Calendar data={d} />;
     case 'create_campaign':
@@ -507,43 +766,63 @@ export function BlueToolItem({ item }: { item: ToolItem }) {
       return d.campaign ? <CampaignCard campaign={d.campaign} /> : <Step ok text="Done" />;
     case 'get_campaign':
       return d.campaign ? (
-        <CampaignCard campaign={d.campaign} extra={`${(d.projects || []).length} projects · ${d.total_tasks ?? 0} tasks`} />
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+          <CampaignCard campaign={d.campaign} extra={`${(d.projects || []).length} projects · ${d.total_tasks ?? 0} tasks`} />
+          {(d.projects || []).length > 0 && (
+            <ProjectTable projects={d.projects} extra={(p) => (p.task_counts ? `${p.task_counts.total} tasks` : undefined)} />
+          )}
+        </Box>
       ) : (
         <Step ok text="Done" />
       );
     case 'list_campaigns':
-      return <ListOf items={d.campaigns || []} total={d.pagination?.total} label="campaigns" render={(c: any) => <CampaignCard key={c.id} campaign={c} />} />;
+      return <CampaignTable campaigns={d.campaigns || []} total={d.pagination?.total} />;
     case 'create_project':
     case 'update_project':
     case 'assign_user_to_project':
       return d.project ? <ProjectCard project={d.project} /> : <Step ok text="Done" />;
     case 'get_project':
-      return d.project ? <ProjectCard project={d.project} extra={`${(d.tasks || []).length} tasks`} /> : <Step ok text="Done" />;
+      return d.project ? (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+          <ProjectCard project={d.project} />
+          <TaskTable tasks={d.tasks || []} />
+        </Box>
+      ) : (
+        <Step ok text="Done" />
+      );
     case 'list_projects':
-      return <ListOf items={d.projects || []} total={d.pagination?.total} label="projects" render={(p: any) => <ProjectCard key={p.id} project={p} />} />;
+      return <ProjectTable projects={d.projects || []} total={d.pagination?.total} />;
     case 'add_comment':
     case 'update_comment':
       return d.comment ? <CommentCard comment={d.comment} /> : <Step ok text="Done" />;
     case 'list_comments':
-      return <ListOf items={d.comments || []} label="comments" render={(c: any) => <CommentCard key={c.id} comment={c} />} />;
+      return (d.comments || []).length ? (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+          {(d.comments as any[]).slice(0, ROWS).map((c) => (
+            <CommentCard key={c.id} comment={c} />
+          ))}
+        </Box>
+      ) : (
+        <Step ok text="No comments" />
+      );
     case 'list_users':
-      return <ListOf items={d.users || []} total={d.pagination?.total} label="users" render={(u: any) => <UserRow key={u.id} user={u} />} />;
+      return <UserTable users={d.users || []} total={d.pagination?.total} />;
     case 'get_user':
-      return <UserRow user={d} />;
+      return <UserCard user={d.user || d} />;
     case 'create_user':
     case 'update_user':
-      return d.user ? <UserRow user={d.user} /> : <Step ok text="Done" />;
+      return d.user ? <UserCard user={d.user} /> : <Step ok text="Done" />;
     case 'generate_campaign_content':
       return (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
           <Step ok text={d.message || 'Generated'} />
-          <ListOf items={d.projects || []} label="projects" render={(p: any) => <ProjectCard key={p.id} project={p} extra={`${p.tasks_created ?? 0} tasks`} />} />
+          <ProjectTable projects={d.projects || []} extra={(p) => `${p.tasks_created ?? 0} tasks`} />
         </Box>
       );
     case 'schedule_post':
-      return <PublishPostsCard posts={d.posts || []} title={d.message} />;
+      return <PostTable posts={d.posts || []} head={d.message} />;
     case 'list_posts':
-      return <PublishPostsCard posts={d.posts || []} />;
+      return <PostTable posts={d.posts || []} total={d.total} />;
     case 'list_inbox':
       return <InboxCard data={d} />;
     case 'list_publishing_channels':
@@ -551,7 +830,7 @@ export function BlueToolItem({ item }: { item: ToolItem }) {
     case 'search_library':
       return <LibraryGallery items={d.items || []} total={d.total_matches} />;
     case 'get_library_item':
-      return <LibraryItemCard item={d.item} versions={d.versions} />;
+      return d.item ? <LibraryItemCard item={d.item} versions={d.versions} /> : <Step ok text="Done" />;
     case 'update_library_item':
     case 'restore_library_version':
       return d.item ? <LibraryItemCard item={d.item} /> : <Step ok text={d.message || 'Done'} />;
@@ -562,6 +841,60 @@ export function BlueToolItem({ item }: { item: ToolItem }) {
         <Card>
           <Meta>Suggested description</Meta>
           <BlueText text={d.suggested_description || ''} />
+        </Card>
+      );
+    case 'generate_task_poster':
+      return <PosterCard src={d.pending_image_url} title="New poster (not used yet)" note="Keep it or discard it on the task, or ask me to." taskUrl={d.task_url} />;
+    case 'adopt_task_poster':
+      return d.image_url ? <PosterCard src={d.image_url} title="Poster is now the task image" note={d.message || 'Saved'} /> : <Step ok text={d.message || 'Done'} />;
+    case 'ai_usage':
+      return (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+          <Tiles
+            tiles={[
+              { label: 'AI calls', value: d.totals?.calls ?? 0 },
+              { label: 'Failed', value: d.totals?.failed ?? 0, tone: d.totals?.failed ? 'bad' : undefined },
+              { label: 'Tokens', value: (d.totals?.tokens ?? 0).toLocaleString() },
+              { label: 'Est. cost', value: money(d.totals?.estimated_cost_usd) }
+            ]}
+          />
+          {(d.recent || []).length > 0 && (
+            <Table head="Recent">
+              {(d.recent as any[]).slice(0, ROWS).map((u, i) => (
+                <Row key={i}>
+                  <RowText primary={u.feature || 'AI call'} secondary={[u.model, dateTime(u.at), u.seconds ? `${u.seconds}s` : null, u.error].filter(Boolean).join(' · ')} />
+                  <Typography sx={{ fontSize: 12, color: 'var(--text-muted)', flexShrink: 0 }}>{money(u.cost_usd)}</Typography>
+                  {!u.ok && <StatusChip status="failed" />}
+                </Row>
+              ))}
+            </Table>
+          )}
+        </Box>
+      );
+    case 'ai_setup_status': {
+      const keys = Object.entries(d.api_keys || {}).filter(([, v]) => v).map(([k]) => k);
+      const missing: any[] = d.app_commands_missing || [];
+      return (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+          <Tiles
+            tiles={[
+              { label: 'AI keys', value: keys.length ? keys.join(', ') : 'None', tone: keys.length ? undefined : 'bad' },
+              { label: 'Prompts', value: (d.prompts || []).length },
+              { label: 'Commands', value: (d.commands || []).length },
+              { label: 'Missing', value: missing.length, tone: missing.length ? 'warn' : undefined }
+            ]}
+          />
+          {missing.map((m) => (
+            <Step key={m.command} ok={false} text={`${m.command} is not set up (${m.used_by})`} />
+          ))}
+        </Box>
+      );
+    }
+    case 'run_prompt':
+      return (
+        <Card>
+          <Meta>AI reply{d.usage?.total_tokens ? ` · ${d.usage.total_tokens} tokens` : ''}</Meta>
+          <BlueText text={String(d.reply || '')} />
         </Card>
       );
     default:

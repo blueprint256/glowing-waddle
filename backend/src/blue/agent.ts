@@ -34,6 +34,8 @@ export interface AgentResult {
 }
 
 const MAX_RESULT_CHARS = 24_000;
+/** Cards in a saved chat can show more than the AI reads; above this they show as a plain step. */
+const MAX_DISPLAY_CHARS = 400_000;
 const now = () => new Date().toISOString();
 
 export function isDestructive<Ctx>(tool: ToolDefinition<Ctx>): boolean {
@@ -78,7 +80,13 @@ export async function executeCall<Ctx>(
   try {
     const data = await tool.handler(call.args ?? {}, ctx);
     onEvent({ type: 'tool_result', id: call.id, name: call.name, ok: true, data });
-    return { id: call.id, name: call.name, content: resultContent(data), isError: false };
+    const full = JSON.stringify(data ?? null);
+    const content = resultContent(data);
+    return {
+      id: call.id, name: call.name, content, isError: false,
+      // Keep the full result for the chat cards when the AI only got a shortened copy.
+      ...(content.length !== full.length && full.length <= MAX_DISPLAY_CHARS ? { display: full } : {})
+    };
   } catch (err) {
     let error: string;
     if (err instanceof ToolError) error = err.message;
