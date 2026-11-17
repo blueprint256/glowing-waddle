@@ -715,6 +715,14 @@ router.post('/:id/generate', isAuthenticated, validateMongoId('id'), async (req:
         }
       };
 
+      // The AI sometimes writes "TBD" or "next Monday": an unreadable date is left empty instead of
+      // failing the whole generation half-way.
+      const aiDate = (value: unknown): Date | undefined => {
+        if (!value || (typeof value !== 'string' && typeof value !== 'number')) return undefined;
+        const d = new Date(value);
+        return Number.isNaN(d.getTime()) ? undefined : d;
+      };
+
       // Create projects and tasks
       const createdProjects: any[] = [];
       const createdTasksCount: number[] = [];
@@ -732,8 +740,8 @@ router.post('/:id/generate', isAuthenticated, validateMongoId('id'), async (req:
           campaignId: campaign._id,
           createdBy: req.user!._id,
           status: normalizeProjectStatus(projectData.status),
-          startDate: projectData.startDate ? new Date(projectData.startDate) : undefined,
-          dueDate: projectData.dueDate ? new Date(projectData.dueDate) : undefined,
+          startDate: aiDate(projectData.startDate),
+          dueDate: aiDate(projectData.dueDate),
           assignments: [] // No assignments initially
         });
 
@@ -754,8 +762,8 @@ router.post('/:id/generate', isAuthenticated, validateMongoId('id'), async (req:
               campaignId: campaign._id,
               createdBy: req.user!._id,
               status: normalizeTaskStatus(taskData.status),
-              taskDate: taskData.taskDate ? new Date(taskData.taskDate) : undefined,
-              content: taskData.content || ''
+              taskDate: aiDate(taskData.taskDate),
+              content: typeof taskData.content === 'string' ? taskData.content : taskData.content ? JSON.stringify(taskData.content) : ''
             });
 
             taskCount++;

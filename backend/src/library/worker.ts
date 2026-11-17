@@ -230,7 +230,8 @@ async function addTaskImage(job: ILibraryJob) {
   const [res] = await ingest({
     ownerId,
     userId,
-    originalName: basename(url, `${task.name}.png`),
+    // Name the file after the task ("Cold Brew Teaser.png"), not the random storage name.
+    originalName: `${(task.name || 'Task image').replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 120) || 'Task image'}${(basename(url, 'x.png').match(/\.(png|jpe?g|webp|gif)$/i)?.[0] || '.png').toLowerCase()}`,
     data: { buffer },
     source: 'task',
     note: String(job.payload?.note || ''),

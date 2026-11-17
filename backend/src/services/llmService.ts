@@ -199,64 +199,64 @@ export function compileSuperPrompt(promptTemplate: string, params: SuperPromptPa
   // Replace {companyInfo} with formatted company information
   if (params.companyInfo) {
     const companyInfoStr = formatCompanyInfo(params.companyInfo);
-    compiledPrompt = compiledPrompt.replace(/\{companyInfo\}/g, companyInfoStr);
+    compiledPrompt = compiledPrompt.replace(/\{companyInfo\}/g, () => companyInfoStr);
   }
 
   // Replace individual company fields
   if (params.companyInfo?.companyName) {
-    compiledPrompt = compiledPrompt.replace(/\{companyName\}/g, params.companyInfo.companyName);
+    compiledPrompt = compiledPrompt.replace(/\{companyName\}/g, () => String(params.companyInfo.companyName));
   }
   if (params.companyInfo?.sector) {
-    compiledPrompt = compiledPrompt.replace(/\{sector\}/g, params.companyInfo.sector);
+    compiledPrompt = compiledPrompt.replace(/\{sector\}/g, () => String(params.companyInfo.sector));
   }
   if (params.companyInfo?.brandTone) {
-    compiledPrompt = compiledPrompt.replace(/\{brandTone\}/g, params.companyInfo.brandTone);
+    compiledPrompt = compiledPrompt.replace(/\{brandTone\}/g, () => String(params.companyInfo.brandTone));
   }
 
   // Replace brand asset placeholders
   if (params.companyInfo?.brandGuidelines) {
-    compiledPrompt = compiledPrompt.replace(/\{brandGuidelines\}/g, params.companyInfo.brandGuidelines);
+    compiledPrompt = compiledPrompt.replace(/\{brandGuidelines\}/g, () => String(params.companyInfo.brandGuidelines));
   }
   if (params.companyInfo?.primaryLogoUrl) {
-    compiledPrompt = compiledPrompt.replace(/\{primaryLogo\}/g, params.companyInfo.primaryLogoUrl);
+    compiledPrompt = compiledPrompt.replace(/\{primaryLogo\}/g, () => String(params.companyInfo.primaryLogoUrl));
   }
   if (params.companyInfo?.secondaryLogoUrl) {
-    compiledPrompt = compiledPrompt.replace(/\{secondaryLogo\}/g, params.companyInfo.secondaryLogoUrl);
+    compiledPrompt = compiledPrompt.replace(/\{secondaryLogo\}/g, () => String(params.companyInfo.secondaryLogoUrl));
   }
   if (params.companyInfo?.tertiaryLogoUrl) {
-    compiledPrompt = compiledPrompt.replace(/\{tertiaryLogo\}/g, params.companyInfo.tertiaryLogoUrl);
+    compiledPrompt = compiledPrompt.replace(/\{tertiaryLogo\}/g, () => String(params.companyInfo.tertiaryLogoUrl));
   }
 
   // Replace {campaignDetails} with formatted campaign information
   if (params.campaignDetails) {
     const campaignDetailsStr = formatCampaignDetails(params.campaignDetails);
-    compiledPrompt = compiledPrompt.replace(/\{campaignDetails\}/g, campaignDetailsStr);
+    compiledPrompt = compiledPrompt.replace(/\{campaignDetails\}/g, () => campaignDetailsStr);
   }
 
   // Replace individual campaign fields
   if (params.campaignDetails?.name) {
-    compiledPrompt = compiledPrompt.replace(/\{campaignName\}/g, params.campaignDetails.name);
+    compiledPrompt = compiledPrompt.replace(/\{campaignName\}/g, () => String(params.campaignDetails.name));
   }
   if (params.campaignDetails?.coreMessages) {
-    compiledPrompt = compiledPrompt.replace(/\{coreMessages\}/g, params.campaignDetails.coreMessages);
+    compiledPrompt = compiledPrompt.replace(/\{coreMessages\}/g, () => String(params.campaignDetails.coreMessages));
   }
   if (params.campaignDetails?.hashtags) {
-    compiledPrompt = compiledPrompt.replace(/\{hashtags\}/g, params.campaignDetails.hashtags.join(', '));
+    compiledPrompt = compiledPrompt.replace(/\{hashtags\}/g, () => params.campaignDetails.hashtags.join(', '));
   }
 
   // Replace {taskDescription} if provided
   if (params.taskDescription) {
-    compiledPrompt = compiledPrompt.replace(/\{taskDescription\}/g, params.taskDescription);
+    compiledPrompt = compiledPrompt.replace(/\{taskDescription\}/g, () => String(params.taskDescription));
   }
 
   // Replace {baseImage} if provided (URL of the task's base/original image)
   if (params.baseImage) {
-    compiledPrompt = compiledPrompt.replace(/\{baseImage\}/g, params.baseImage);
+    compiledPrompt = compiledPrompt.replace(/\{baseImage\}/g, () => String(params.baseImage));
   }
 
   // Replace {previousOutput} if provided (for multi-step chains)
   if (params.previousOutput !== undefined) {
-    compiledPrompt = compiledPrompt.replace(/\{previousOutput\}/g, String(params.previousOutput));
+    compiledPrompt = compiledPrompt.replace(/\{previousOutput\}/g, () => String(params.previousOutput));
   }
 
   // Replace any custom placeholders
@@ -267,7 +267,7 @@ export function compileSuperPrompt(promptTemplate: string, params: SuperPromptPa
         ? JSON.stringify(params[key], null, 2)
         : String(params[key]);
       const regex = new RegExp(`\\{${key}\\}`, 'g');
-      compiledPrompt = compiledPrompt.replace(regex, value);
+      compiledPrompt = compiledPrompt.replace(regex, () => value);
     }
   });
 
@@ -416,6 +416,11 @@ export function calculateEstimatedCost(
     // OpenAI
     'gpt-4o': { input: 2.5, output: 10 },
     'gpt-4o-mini': { input: 0.15, output: 0.6 },
+    'gpt-4.1': { input: 2.0, output: 8.0 },
+    'gpt-4.1-mini': { input: 0.4, output: 1.6 },
+    'gpt-4.1-nano': { input: 0.1, output: 0.4 },
+    'gpt-5-mini': { input: 0.25, output: 2.0 },
+    'gpt-5-nano': { input: 0.05, output: 0.4 },
     'gpt-3.5-turbo': { input: 0.5, output: 1.5 },
 
     // Anthropic
@@ -470,6 +475,50 @@ async function logLLMUsage(
   } catch (error) {
     console.error('Error logging LLM usage:', error);
     // Don't throw - logging failure shouldn't break the main flow
+  }
+}
+
+/**
+ * Image quality for gpt-image-1.5, from IMAGE_QUALITY in the server's .env:
+ * low (~$0.009 per square image), medium (~$0.034), high (~$0.133) or auto (default; OpenAI decides,
+ * usually high).
+ */
+export function imageQuality(): 'low' | 'medium' | 'high' | 'auto' {
+  const q = String(process.env.IMAGE_QUALITY || '').trim().toLowerCase();
+  return q === 'low' || q === 'medium' || q === 'high' ? q : 'auto';
+}
+
+/** Records an image generation with its real token usage and cost (gpt-image-1.5 prices per 1M tokens). */
+async function logImageUsage(
+  userId: mongoose.Types.ObjectId | undefined,
+  promptName: string,
+  response: any,
+  duration: number,
+  success: boolean,
+  errorMessage?: string
+): Promise<void> {
+  if (!userId) return;
+  try {
+    const u = response?.usage || {};
+    const input = Number(u.input_tokens) || 0;
+    const output = Number(u.output_tokens) || 0;
+    const imageIn = Number(u.input_tokens_details?.image_tokens) || 0;
+    const textIn = Number(u.input_tokens_details?.text_tokens) || Math.max(0, input - imageIn);
+    const estimatedCost = (textIn * 5 + imageIn * 8 + output * 32) / 1_000_000;
+    await LLMUsage.create({
+      userId,
+      promptName,
+      llmModel: 'openai/gpt-image-1.5',
+      promptTokens: input,
+      completionTokens: output,
+      totalTokens: Number(u.total_tokens) || input + output,
+      estimatedCost,
+      success,
+      errorMessage,
+      requestDuration: duration
+    });
+  } catch (error) {
+    console.error('Error logging image usage:', error);
   }
 }
 
@@ -845,7 +894,8 @@ export async function generateImageWithPrompt(
         image: imageFiles, // Array of ONLY referenced images (prompt-driven)
         prompt: compiledPrompt,
         n: 1,
-        size: size
+        size: size,
+        quality: imageQuality()
         // NOTE: response_format is NOT supported by gpt-image-1.5
       });
     } else {
@@ -856,7 +906,8 @@ export async function generateImageWithPrompt(
         model: imageModel,
         prompt: compiledPrompt,
         n: 1,
-        size: size
+        size: size,
+        quality: imageQuality()
         // NOTE: quality and response_format are NOT supported by gpt-image-1.5
       });
     }
@@ -893,18 +944,7 @@ export async function generateImageWithPrompt(
     console.log('========================================\n');
 
     // Log usage if userId provided
-    if (options?.userId) {
-      await LLMUsage.create({
-        userId: options.userId,
-        llmModel: `${imageProvider}/${imageModel}`,
-        promptTokens: 0, // Image generation doesn't use token-based pricing
-        completionTokens: 0,
-        totalTokens: 0,
-        estimatedCost: 0, // Could calculate based on model and size
-        promptName,
-        createdAt: new Date()
-      });
-    }
+    await logImageUsage(options?.userId, promptName, response, duration, true);
 
     return {
       imageUrl,
@@ -912,6 +952,7 @@ export async function generateImageWithPrompt(
     };
   } catch (error: any) {
     const duration = Date.now() - startTime;
+    await logImageUsage(options?.userId, promptName, null, duration, false, error.message);
 
     console.log('\n========================================');
     console.log('❌ IMAGE LLM ERROR');
@@ -1163,6 +1204,7 @@ export async function executeCommandChain(
           const size = '1024x1024';
 
           // Generate or edit image
+          const imageStart = Date.now();
           let response;
           if (imageFiles.length > 0) {
             console.log(`🎨 Using images.edit with ${imageFiles.length} image(s)`);
@@ -1171,7 +1213,8 @@ export async function executeCommandChain(
               image: imageFiles,
               prompt: compiledPrompt,
               n: 1,
-              size: size
+              size: size,
+        quality: imageQuality()
             });
           } else {
             console.log('✨ Using images.generate (no images referenced)');
@@ -1179,10 +1222,13 @@ export async function executeCommandChain(
               model: imageModel,
               prompt: compiledPrompt,
               n: 1,
-              size: size
+              size: size,
+        quality: imageQuality()
               // NOTE: quality parameter not supported by gpt-image-1.5
             });
           }
+
+          await logImageUsage(options?.userId, promptName, response, Date.now() - imageStart, true);
 
           // Get base64 image and upload to S3
           const base64Image = response.data?.[0]?.b64_json;

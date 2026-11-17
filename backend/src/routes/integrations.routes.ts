@@ -33,16 +33,16 @@ router.get('/status', isAuthenticated, async (req: Request, res: Response) => {
       const config = await AppConfig.getConfig();
       llmProviders = {
         openai: {
-          configured: !!config.openAIApiKey
+          configured: !!(config.openAIApiKey || process.env.OPENAI_API_KEY)
         },
         anthropic: {
-          configured: !!config.anthropicApiKey
+          configured: !!(config.anthropicApiKey || process.env.ANTHROPIC_API_KEY)
         },
         grok: {
-          configured: !!config.grokApiKey
+          configured: !!(config.grokApiKey || process.env.GROK_API_KEY)
         },
         gemini: {
-          configured: !!config.geminiApiKey
+          configured: !!(config.geminiApiKey || process.env.GEMINI_API_KEY)
         }
       };
     }
@@ -78,7 +78,9 @@ router.get('/openai/status', isAuthenticated, isSystemAdmin, async (req: Request
 
     res.json({
       success: true,
-      configured: !!config.openAIApiKey,
+      configured: !!(config.openAIApiKey || process.env.OPENAI_API_KEY),
+      // 'settings' = saved in the app; 'server' = from the server's .env (OPENAI_API_KEY)
+      source: config.openAIApiKey ? 'settings' : process.env.OPENAI_API_KEY ? 'server' : null,
       updatedAt: config.openAIKeyUpdatedAt,
       updatedBy: config.openAIKeyUpdatedBy
     });
