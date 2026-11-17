@@ -14,7 +14,6 @@ import {
   LinearProgress,
   Link,
   MenuItem,
-  Snackbar,
   TextField,
   Tooltip,
   Typography
@@ -33,6 +32,10 @@ import { campaignAPI } from '../../services/api';
 import { libraryAPI, librarySrc, formatBytes, formatItemDate, CATEGORY_LABELS, type LibraryItem, type LibraryVersionInfo } from '../../services/library';
 import { KIND_ICONS } from './LibraryPage';
 import EditInCanvaButton from '../../components/Canva/EditInCanvaButton';
+import { useOpenPost } from '../../components/posts/PostPanelHost';
+import { errorMessage, notify } from '../../store/toastStore';
+import { announcePostChanged } from '../../store/aiJobsStore';
+import { paths } from '../../lib/paths';
 
 const DATE_SOURCE_LABELS: Record<string, string> = {
   user: 'set by you',
@@ -46,7 +49,7 @@ const DATE_SOURCE_LABELS: Record<string, string> = {
 const SOURCE_LABELS: Record<string, string> = {
   upload: 'Uploaded',
   app: 'Imported from the app',
-  task: 'From a task',
+  task: 'From a post',
   restore: 'Restored',
   zip: 'From a zip file',
   canva: 'Edited in Canva'
@@ -82,7 +85,8 @@ export default function LibraryItemPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const [confirmPurge, setConfirmPurge] = useState(false);
+  const openPost = useOpenPost();
   const [campaigns, setCampaigns] = useState<{ id: string; name: string }[]>([]);
   const [versionFile, setVersionFile] = useState<File | null>(null);
   const [versionNote, setVersionNote] = useState('');
@@ -134,9 +138,9 @@ export default function LibraryItemPage() {
     setBusy(true);
     try {
       await fn();
-      if (done) setToast(done);
-    } catch (e: any) {
-      setToast(e?.response?.data?.message || 'Something went wrong');
+      if (done) notify(done);
+    } catch (e) {
+      notify(errorMessage(e), { tone: 'error' });
     } finally {
       setBusy(false);
     }
@@ -145,7 +149,7 @@ export default function LibraryItemPage() {
   if (error) {
     return (
       <Box>
-        <Button startIcon={<BackIcon />} onClick={() => navigate('/library')} sx={{ mb: 2 }}>
+        <Button startIcon={<BackIcon />} onClick={() => navigate(paths.library())} sx={{ mb: 2 }}>
           Library
         </Button>
         <Alert severity="error">{error}</Alert>
@@ -175,9 +179,9 @@ export default function LibraryItemPage() {
       });
       if (body.capturedAt === '') delete body.capturedAt;
       apply(await libraryAPI.update(item.id, body));
-      setToast('Saved');
-    } catch (e: any) {
-      setToast(e?.response?.data?.message || 'Could not save');
+      notify('Saved');
+    } catch (e) {
+      notify(errorMessage(e, 'Couldn’t save.'), { tone: 'error' });
     } finally {
       setSaving(false);
     }
@@ -191,11 +195,11 @@ export default function LibraryItemPage() {
     setVersionProgress(0);
     try {
       apply(await libraryAPI.addVersion(item.id, versionFile, versionNote, setVersionProgress));
-      setToast('New version added');
+      notify('New version added');
       setVersionFile(null);
       setVersionNote('');
-    } catch (e: any) {
-      setToast(e?.response?.data?.message || 'Could not add the version');
+    } catch (e) {
+      notify(errorMessage(e, 'Couldn’t add the version.'), { tone: 'error' });
     } finally {
       setVersionProgress(null);
     }
@@ -204,7 +208,7 @@ export default function LibraryItemPage() {
   return (
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flexWrap: 'wrap' }}>
-        <Button startIcon={<BackIcon />} onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/library'))}>
+        <Button startIcon={<BackIcon />} onClick={() => (window.history.length > 1 ? navigate(-1) : navigate(paths.library()))}>
           Library
         </Button>
         <Box sx={{ flex: 1 }} />
@@ -212,7 +216,7 @@ export default function LibraryItemPage() {
           <EditInCanvaButton
             target={{ target: 'library', assetId: item.id }}
             onImported={(message) => {
-              setToast(message);
+              notify(message);
               load();
             }}
           />
@@ -222,7 +226,7 @@ export default function LibraryItemPage() {
             <Button startIcon={<DownloadIcon />} href={librarySrc(current?.downloadUrl) || ''} disabled={!current}>
               Download
             </Button>
-            <Button startIcon={<DeleteIcon />} color="error" disabled={busy} onClick={() => run(async () => { await libraryAPI.trash(item.id); navigate('/library'); }, 'Moved to trash')}>
+            <Button startIcon={<DeleteIcon />} color="error" disabled={busy} onClick={() => run(async () => { await libraryAPI.trash(item.id); navigate(paths.library()); }, 'Moved to the trash')}>
               Delete
             </Button>
           </>
@@ -242,10 +246,7 @@ export default function LibraryItemPage() {
                 size="small"
                 color="error"
                 disabled={busy}
-                onClick={() => {
-                  if (!window.confirm(`Delete "${item.title}" and all ${item.versionCount} version${item.versionCount === 1 ? '' : 's'} for good? This cannot be undone.`)) return;
-                  run(async () => { await libraryAPI.purge(item.id); navigate('/library?view=trash'); }, 'Deleted for good');
-                }}
+                onClick={() => setConfirmPurge(true)}
               >
                 Delete for good
               </Button>
@@ -268,7 +269,7 @@ export default function LibraryItemPage() {
                 onClick={() =>
                   run(async () => {
                     const r = await libraryAPI.review(item.id, 'merge');
-                    navigate(`/library/${r.assetId}`, { replace: true });
+                    navigate(paths.libraryItem(r.assetId), { replace: true });
                   }, 'Added as a new version')
                 }
               >
@@ -281,7 +282,7 @@ export default function LibraryItemPage() {
           }
         >
           This looks like another version of{' '}
-          <Link component={RouterLink} to={`/library/${item.review.versionOf.assetId}`}>
+          <Link component={RouterLink} to={paths.libraryItem(item.review.versionOf.assetId)}>
             something already in your Library
           </Link>
           .
@@ -374,10 +375,17 @@ export default function LibraryItemPage() {
 
           <Section title="Linked to">
             {item.links.taskId && (
-              <LinkRow label="Task" to={`/tasks/${item.links.taskId}`} />
+              <Link component="button" type="button" onClick={() => openPost(String(item.links.taskId))} sx={{ fontSize: 'var(--fs-sm)', alignSelf: 'flex-start' }}>
+                Post
+              </Link>
             )}
-            {item.links.projectId && <LinkRow label="Project" to={`/projects/${item.links.projectId}`} />}
-            {item.links.campaignId && <LinkRow label={linkedCampaign ? `Campaign · ${linkedCampaign.name}` : 'Campaign'} to={`/campaigns/${item.links.campaignId}`} />}
+            {item.links.projectId && (
+              <LinkRow
+                label="Theme"
+                to={item.links.campaignId ? paths.campaign(item.links.campaignId, { theme: item.links.projectId }) : `/projects/${item.links.projectId}`}
+              />
+            )}
+            {item.links.campaignId && <LinkRow label={linkedCampaign ? `Campaign · ${linkedCampaign.name}` : 'Campaign'} to={paths.campaign(item.links.campaignId)} />}
             {!inTrash && (
               <Autocomplete
                 size="small"
@@ -391,7 +399,7 @@ export default function LibraryItemPage() {
                 sx={{ mt: 1 }}
               />
             )}
-            <Typography sx={{ fontSize: 'var(--fs-2xs)', color: 'var(--text-faint)', mt: 0.5 }}>Tip: ask Blue to link this to a specific task.</Typography>
+            <Typography sx={{ fontSize: 'var(--fs-2xs)', color: 'var(--text-faint)', mt: 0.5 }}>Tip: ask Blue to link this to a specific post.</Typography>
           </Section>
 
           <Section title="Details">
@@ -438,7 +446,32 @@ export default function LibraryItemPage() {
               key={v.id}
               version={v}
               busy={busy || inTrash}
-              onRestore={() => run(async () => apply(await libraryAPI.restoreVersion(item.id, v.id)), `Version ${v.number} is current again`)}
+              onRestore={() =>
+                run(async () => {
+                  apply(await libraryAPI.restoreVersion(item.id, v.id));
+                  const taskId = item.links.taskId ? String(item.links.taskId) : null;
+                  // The post this came from still shows the old picture: offer to update it too.
+                  if (taskId && (v.mime || '').startsWith('image/')) {
+                    notify(`Version ${v.number} is current again`, {
+                      duration: 10000,
+                      action: {
+                        label: 'Also use this on the post',
+                        run: () => {
+                          libraryAPI
+                            .useOnPost(item.id, taskId)
+                            .then(() => {
+                              announcePostChanged(taskId);
+                              notify('The post now uses this picture', { action: { label: 'Open post', run: () => openPost(taskId) } });
+                            })
+                            .catch((e) => notify(errorMessage(e, 'Couldn’t update the post.'), { tone: 'error' }));
+                        }
+                      }
+                    });
+                  } else {
+                    notify(`Version ${v.number} is current again`);
+                  }
+                })
+              }
             />
           ))}
         </Box>
@@ -463,7 +496,33 @@ export default function LibraryItemPage() {
         </DialogActions>
       </Dialog>
 
-      <Snackbar open={!!toast} autoHideDuration={4000} onClose={() => setToast(null)} message={toast} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
+      <Dialog open={confirmPurge} onClose={() => !busy && setConfirmPurge(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Delete for good?</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ fontSize: 14 }}>
+            “{item.title}” and all {item.versionCount} version{item.versionCount === 1 ? '' : 's'} will be deleted. This can’t be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmPurge(false)} disabled={busy}>
+            Keep it
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            disabled={busy}
+            onClick={() =>
+              run(async () => {
+                await libraryAPI.purge(item.id);
+                setConfirmPurge(false);
+                navigate(paths.library({ view: 'trash' }));
+              }, 'Deleted for good')
+            }
+          >
+            Delete for good
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
