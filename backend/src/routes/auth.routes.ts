@@ -117,7 +117,8 @@ router.post('/login', (req: Request, res: Response, next: NextFunction) => {
           accessMode: user.accessMode ?? 'part_one',
           mcpEnabled: user.mcpEnabled !== false,
           assistantEnabled: user.assistantEnabled !== false,
-          libraryEnabled: user.libraryEnabled !== false
+          libraryEnabled: user.libraryEnabled !== false,
+          publishingEnabled: user.publishingEnabled !== false
         }
       });
     });
@@ -170,6 +171,7 @@ router.get('/me', isAuthenticated, (req: Request, res: Response) => {
       mcpEnabled: req.user.mcpEnabled !== false,
       assistantEnabled: req.user.assistantEnabled !== false,
       libraryEnabled: req.user.libraryEnabled !== false,
+      publishingEnabled: req.user.publishingEnabled !== false,
       isActive: req.user.isActive
     }
   });

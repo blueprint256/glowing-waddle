@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
@@ -374,4 +374,20 @@ export function objectKeyFromUrl(url: string): string | null {
   } catch {
     return null;
   }
+}
+
+/** Size and type of a stored object, without downloading it. */
+export async function headObjectInfo(key: string): Promise<{ size: number; contentType: string }> {
+  const res = await s3Client.send(new HeadObjectCommand({ Bucket: BUCKET_NAME, Key: key }));
+  return { size: Number(res.ContentLength || 0), contentType: res.ContentType || 'application/octet-stream' };
+}
+
+/** Read one byte range of an object (inclusive end), so large videos are uploaded in chunks, never held whole in memory. */
+export async function getObjectRange(key: string, start: number, end: number): Promise<Buffer> {
+  const res = await s3Client.send(new GetObjectCommand({ Bucket: BUCKET_NAME, Key: key, Range: `bytes=${start}-${end}` }));
+  const body: any = res.Body;
+  if (!body) throw new Error('Empty object');
+  const chunks: Buffer[] = [];
+  for await (const chunk of body as AsyncIterable<Uint8Array>) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks);
 }

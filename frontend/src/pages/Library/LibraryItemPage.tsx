@@ -32,6 +32,7 @@ import {
 import { campaignAPI } from '../../services/api';
 import { libraryAPI, librarySrc, formatBytes, formatItemDate, CATEGORY_LABELS, type LibraryItem, type LibraryVersionInfo } from '../../services/library';
 import { KIND_ICONS } from './LibraryPage';
+import EditInCanvaButton from '../../components/Canva/EditInCanvaButton';
 
 const DATE_SOURCE_LABELS: Record<string, string> = {
   user: 'set by you',
@@ -47,7 +48,8 @@ const SOURCE_LABELS: Record<string, string> = {
   app: 'Imported from the app',
   task: 'From a task',
   restore: 'Restored',
-  zip: 'From a zip file'
+  zip: 'From a zip file',
+  canva: 'Edited in Canva'
 };
 
 interface Draft {
@@ -206,6 +208,15 @@ export default function LibraryItemPage() {
           Library
         </Button>
         <Box sx={{ flex: 1 }} />
+        {!inTrash && item.kind === 'image' && (
+          <EditInCanvaButton
+            target={{ target: 'library', assetId: item.id }}
+            onImported={(message) => {
+              setToast(message);
+              load();
+            }}
+          />
+        )}
         {!inTrash && (
           <>
             <Button startIcon={<DownloadIcon />} href={librarySrc(current?.downloadUrl) || ''} disabled={!current}>

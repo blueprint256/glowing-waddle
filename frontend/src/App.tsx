@@ -23,6 +23,7 @@ const Settings = lazy(() => import('./pages/Settings'));
 const OAuthConsent = lazy(() => import('./pages/OAuth/OAuthConsent'));
 const LibraryPage = lazy(() => import('./pages/Library/LibraryPage'));
 const LibraryItemPage = lazy(() => import('./pages/Library/LibraryItemPage'));
+const PublishingPage = lazy(() => import('./pages/Publishing/PublishingPage'));
 
 function PageFallback() {
   return (
@@ -89,6 +90,7 @@ function App() {
         <Route path="settings" element={<Settings />} />
         <Route path="library" element={<LibraryPage />} />
         <Route path="library/:id" element={<LibraryItemPage />} />
+        <Route path="publishing" element={<PublishingPage />} />
         <Route path="admin/users" element={<UserManagement />} />
         <Route path="admin/users/:id" element={<UserDetail />} />
       </Route>

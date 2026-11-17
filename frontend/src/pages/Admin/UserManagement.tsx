@@ -43,7 +43,8 @@ export default function UserManagement() {
     accessMode: AccessMode.PART_ONE,
     mcpEnabled: true,
     assistantEnabled: true,
-    libraryEnabled: true
+    libraryEnabled: true,
+    publishingEnabled: true
   });
 
   useEffect(() => {
@@ -81,7 +82,8 @@ export default function UserManagement() {
         accessMode: AccessMode.PART_ONE,
         mcpEnabled: true,
         assistantEnabled: true,
-        libraryEnabled: true
+        libraryEnabled: true,
+        publishingEnabled: true
       });
       loadUsers();
     } catch (error: any) {
@@ -116,6 +118,7 @@ export default function UserManagement() {
               <TableCell>Part</TableCell>
               <TableCell>Blue</TableCell>
               <TableCell>Library</TableCell>
+              <TableCell>Publishing</TableCell>
               <TableCell>Claude</TableCell>
               <TableCell>Status</TableCell>
             </TableRow>
@@ -153,6 +156,14 @@ export default function UserManagement() {
                     label={user.libraryEnabled === false ? 'Off' : 'On'}
                     color={user.libraryEnabled === false ? 'default' : 'primary'}
                     variant={user.libraryEnabled === false ? 'outlined' : 'filled'}
+                    size="small"
+                  />
+                </TableCell>
+                <TableCell>
+                  <Chip
+                    label={user.publishingEnabled === false ? 'Off' : 'On'}
+                    color={user.publishingEnabled === false ? 'default' : 'primary'}
+                    variant={user.publishingEnabled === false ? 'outlined' : 'filled'}
                     size="small"
                   />
                 </TableCell>
@@ -279,6 +290,15 @@ export default function UserManagement() {
               />
             }
             label="Allow Library"
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={formData.publishingEnabled}
+                onChange={(e) => setFormData({ ...formData, publishingEnabled: e.target.checked })}
+              />
+            }
+            label="Allow publishing"
           />
         </DialogContent>
         <DialogActions>

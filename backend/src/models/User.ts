@@ -54,6 +54,11 @@ export function canUseLibrary(user: { isActive?: boolean; libraryEnabled?: boole
   return user.isActive !== false && user.libraryEnabled !== false;
 }
 
+/** Publishing (scheduling and posting to social accounts) is on unless an admin turned it off for this user. */
+export function canUsePublishing(user: { isActive?: boolean; publishingEnabled?: boolean }): boolean {
+  return user.isActive !== false && user.publishingEnabled !== false;
+}
+
 export interface IUser extends Document {
   email: string;
   password?: string;
@@ -69,6 +74,7 @@ export interface IUser extends Document {
   assistantEnabled: boolean;
   /** Library (Aggregator) access, toggled by a System Admin. Default true. */
   libraryEnabled: boolean;
+  publishingEnabled: boolean;
   isActive: boolean;
   companyInfo?: {
     companyName?: string;
@@ -154,6 +160,10 @@ const userSchema = new Schema<IUser>(
       default: true
     },
     libraryEnabled: {
+      type: Boolean,
+      default: true
+    },
+    publishingEnabled: {
       type: Boolean,
       default: true
     },

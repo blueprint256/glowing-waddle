@@ -3,7 +3,8 @@ import mongoose from 'mongoose';
 import { isAuthenticated } from '../middleware/auth';
 import { isSystemAdmin } from '../middleware/rbac';
 import { getInternalSecret, INTERNAL_HEADER, ACT_AS_HEADER } from '../middleware/bearerAuth';
-import { canUseAI, canUseBlue, canUseLibrary, IUser } from '../models/User';
+import { canUseAI, canUseBlue, canUseLibrary, canUsePublishing, IUser } from '../models/User';
+import { loadPublishingSetup } from '../publishing/setup';
 import { loadLibrarySetup } from '../library/setup';
 import { AppConfig } from '../models/AppConfig';
 import { LLMUsage } from '../models/LLMUsage';
@@ -65,7 +66,7 @@ function unavailableReason(user: IUser, setup: BlueSetup): { code: string; messa
   return null;
 }
 
-function buildContext(user: IUser, libraryOn: boolean): ToolContext {
+function buildContext(user: IUser, libraryOn: boolean, publishingOn = false): ToolContext {
   const port = process.env.PORT || 5000;
   return {
     api: createApiClient({
@@ -83,7 +84,8 @@ function buildContext(user: IUser, libraryOn: boolean): ToolContext {
       role: user.role,
       accessMode: user.accessMode,
       canUseAI: canUseAI(user),
-      canUseLibrary: libraryOn && canUseLibrary(user)
+      canUseLibrary: libraryOn && canUseLibrary(user),
+      canUsePublishing: publishingOn && canUsePublishing(user)
     },
     appUrl: getFrontendUrl()
   };
@@ -200,7 +202,7 @@ async function runAndStream(
   const user = req.user!;
   const stream = openStream(res);
   const startedAt = Date.now();
-  const ctx = buildContext(user, (await loadLibrarySetup()).enabled);
+  const ctx = buildContext(user, (await loadLibrarySetup()).enabled, (await loadPublishingSetup()).enabled);
   let usage: Usage = { input: 0, output: 0 };
   let errorMessage: string | undefined;
 
@@ -212,7 +214,7 @@ async function runAndStream(
     if (!prepared.skipModel) {
       const provider = await createBlueProvider(setup);
       const system = buildSystemPrompt({
-        user: { name: ctx.user.name, role: ctx.user.role, part: ctx.user.accessMode, canUseAI: ctx.user.canUseAI, canUseLibrary: ctx.user.canUseLibrary },
+        user: { name: ctx.user.name, role: ctx.user.role, part: ctx.user.accessMode, canUseAI: ctx.user.canUseAI, canUseLibrary: ctx.user.canUseLibrary, canUsePublishing: ctx.user.canUsePublishing },
         timeZone: typeof req.body?.timeZone === 'string' ? req.body.timeZone : undefined,
         path: typeof req.body?.path === 'string' ? req.body.path : undefined
       });

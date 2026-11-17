@@ -22,7 +22,12 @@ export enum AuditAction {
   CONNECTOR_DENIED = 'connector_denied',
   CONNECTOR_REVOKED = 'connector_revoked',
   LIBRARY_UPLOADED = 'library_uploaded',
-  LIBRARY_DELETED = 'library_deleted'
+  LIBRARY_DELETED = 'library_deleted',
+  CHANNEL_CONNECTED = 'channel_connected',
+  CHANNEL_DISCONNECTED = 'channel_disconnected',
+  POST_SCHEDULED = 'post_scheduled',
+  POST_FAILED = 'post_failed',
+  PUBLISHING_SETTINGS_UPDATED = 'publishing_settings_updated'
 }
 
 export interface IAuditLog extends Document {

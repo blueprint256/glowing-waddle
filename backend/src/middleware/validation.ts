@@ -39,6 +39,8 @@ export const validateUserCreation = [
     .withMessage('assistantEnabled must be true or false'),
   body('libraryEnabled').optional().custom((value) => typeof value === 'boolean')
     .withMessage('libraryEnabled must be true or false'),
+  body('publishingEnabled').optional().custom((value) => typeof value === 'boolean')
+    .withMessage('publishingEnabled must be true or false'),
   handleValidationErrors
 ];
 
@@ -57,6 +59,8 @@ export const validateUserUpdate = [
     .withMessage('assistantEnabled must be true or false'),
   body('libraryEnabled').optional().custom((value) => typeof value === 'boolean')
     .withMessage('libraryEnabled must be true or false'),
+  body('publishingEnabled').optional().custom((value) => typeof value === 'boolean')
+    .withMessage('publishingEnabled must be true or false'),
   handleValidationErrors
 ];
 

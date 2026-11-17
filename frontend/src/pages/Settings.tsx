@@ -51,6 +51,7 @@ import api, { promptAPI, commandMappingAPI, chainAPI } from '../services/api';
 import ClaudeConnectorCard from '../components/Settings/ClaudeConnectorCard';
 import BlueSettingsCard from '../components/Settings/BlueSettingsCard';
 import LibrarySettingsCard from '../components/Settings/LibrarySettingsCard';
+import PublishingSettingsCard from '../components/Settings/PublishingSettingsCard';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -1264,9 +1265,8 @@ export default function Settings() {
                       </Box>
                     </Box>
                     <Typography variant="body2" color="text.secondary">
-                      Connect your Canva account to import designs and images directly into your tasks.
-                      This integration allows you to browse and use your Canva designs within the campaign
-                      management platform.
+                      Connect your own Canva account to use “Edit in Canva” on task images and Library pictures.
+                      The edited design comes back into the app as a new version.
                     </Typography>
                     {canvaConnected && canvaConnectedAt && (
                       <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
@@ -1298,6 +1298,9 @@ export default function Settings() {
                     )}
                   </CardActions>
                 </Card>
+
+                {/* Publishing platforms + Canva app keys (System Admin only) */}
+                {user?.role === UserRole.SYSTEM_ADMIN && <PublishingSettingsCard />}
 
                 {/* OpenAI Integration (System Admin only) */}
                 {user?.role === UserRole.SYSTEM_ADMIN && (

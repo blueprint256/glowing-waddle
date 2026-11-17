@@ -10,6 +10,7 @@ import {
   CalendarMonth as CalendarIcon,
   TableChart as TableChartIcon,
   PhotoLibrary as PhotoLibraryIcon,
+  Send as SendIcon,
   Settings as SettingsIcon,
   Logout as LogoutIcon,
   DarkMode as DarkModeIcon,
@@ -34,6 +35,8 @@ interface NavItem {
   also?: string[];
   /** Hidden when the user's Library (Aggregator) access is switched off. */
   library?: boolean;
+  /** Hidden when the user's publishing access is switched off. */
+  publishing?: boolean;
 }
 
 const NAV: NavItem[] = [
@@ -43,6 +46,7 @@ const NAV: NavItem[] = [
   { text: 'Calendar', icon: <CalendarIcon />, path: '/calendar', accent: 'purple', roles: ['all'] },
   { text: 'Tasks Sheet', icon: <TableChartIcon />, path: '/tasks-sheet', accent: 'amber', roles: ['all'] },
   { text: 'Library', icon: <PhotoLibraryIcon />, path: '/library', accent: 'blue', roles: ['all'], library: true },
+  { text: 'Publishing', icon: <SendIcon />, path: '/publishing', accent: 'green', roles: ['all'], publishing: true },
   { text: 'Settings', icon: <SettingsIcon />, path: '/settings', roles: ['all'] },
   { text: 'Users', icon: <PeopleIcon />, path: '/admin/users', accent: 'wine', roles: [UserRole.SYSTEM_ADMIN] }
 ];
@@ -102,7 +106,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const blueAllowed = user?.assistantEnabled !== false;
 
   const items = NAV.filter(
-    (i) => (i.roles.includes('all') || (user && i.roles.includes(user.role))) && (!i.library || user?.libraryEnabled !== false)
+    (i) => (i.roles.includes('all') || (user && i.roles.includes(user.role))) && (!i.library || user?.libraryEnabled !== false) && (!i.publishing || user?.publishingEnabled !== false)
   );
   const initials = `${user?.firstName?.[0] ?? ''}${user?.lastName?.[0] ?? ''}`.toUpperCase() || 'U';
 

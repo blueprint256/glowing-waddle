@@ -32,6 +32,9 @@ import oauthRoutes from './oauth/oauth.routes';
 import connectedAppsRoutes from './routes/connectedApps.routes';
 import blueRoutes from './routes/blue.routes';
 import libraryRoutes from './routes/library.routes';
+import publishingRoutes from './routes/publishing.routes';
+import canvaRoutes from './routes/canva.routes';
+import { startPublishingWorker } from './publishing/worker';
 import { startLibraryWorker } from './library/worker';
 import mcpRouter from './mcp/router';
 
@@ -159,6 +162,7 @@ app.patch('/api/tasks/:id/adopt-poster', requireAI);
 app.use('/api', connectedAppsRoutes); // /api/oauth/requests/*, /api/connected-apps
 app.use('/api/blue', blueRoutes); // Blue, the in-app assistant
 app.use('/api/library', libraryRoutes); // Library (Aggregator)
+app.use('/api/publishing', publishingRoutes); // Publishing (social posting)
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/campaigns', campaignRoutes);
@@ -166,6 +170,7 @@ app.use('/api/projects', projectRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/comments', commentRoutes);
 app.use('/api/assets', assetRoutes);
+app.use('/api/integrations/canva', canvaRoutes); // Canva connect + Edit in Canva
 app.use('/api/integrations', integrationsRoutes);
 app.use('/api/prompts', promptRoutes);
 app.use('/api/llm', llmRoutes);
@@ -217,6 +222,7 @@ app.listen(PORT, () => {
   console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 API: http://localhost:${PORT}`);
   startLibraryWorker();
+  startPublishingWorker();
 });
 
 export default app;

@@ -200,6 +200,47 @@ function LibraryItemCard({ item, versions }: { item: any; versions?: any[] }) {
   );
 }
 
+function PublishPostsCard({ posts, title }: { posts: any[]; title?: string }) {
+  const open = useOpen();
+  if (!posts.length) return <Step ok text="No posts found" />;
+  return (
+    <Card onOpen={open('/publishing')}>
+      {title && <Title>{title}</Title>}
+      {posts.slice(0, LIST_LIMIT).map((p: any) => (
+        <Meta key={p.id}>
+          <strong>{p.platform}</strong>
+          {p.account ? ` · ${p.account}` : ''} · {p.status}
+          {p.when ? ` · ${new Date(p.when).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : ''}
+          {p.task?.name ? ` · ${p.task.name}` : ''}
+          {p.test_account ? ' (test)' : ''}
+          {p.problem ? ` — ${p.problem}` : ''}
+        </Meta>
+      ))}
+      {posts.length > LIST_LIMIT && <Meta>…and {posts.length - LIST_LIMIT} more</Meta>}
+    </Card>
+  );
+}
+
+function ChannelsCard({ data }: { data: any }) {
+  const open = useOpen();
+  return (
+    <Card onOpen={open('/publishing?tab=channels')}>
+      <Title>Connected accounts</Title>
+      {(data.accounts || []).length ? (
+        data.accounts.map((a: any) => (
+          <Meta key={a.id}>
+            {a.platform} · {a.name}
+            {a.test_account ? ' (test)' : ''}
+            {a.needs_reconnect ? ' — needs reconnecting' : ''}
+          </Meta>
+        ))
+      ) : (
+        <Meta>None yet. Platforms can still be used as “post by hand” reminders.</Meta>
+      )}
+    </Card>
+  );
+}
+
 function LibraryOverviewCard({ data }: { data: any }) {
   const open = useOpen();
   return (
@@ -384,6 +425,7 @@ const STEP_LABELS: Record<string, string> = {
   update_company_info: 'Updated your company info',
   delete_task: 'Task deleted',
   delete_library_item: 'Moved to the trash',
+  cancel_post: 'Post cancelled',
   delete_comment: 'Comment deleted',
   remove_user_from_project: 'Removed from the project',
   deactivate_user: 'Account deactivated'
@@ -474,6 +516,12 @@ export function BlueToolItem({ item }: { item: ToolItem }) {
           <ListOf items={d.projects || []} label="projects" render={(p: any) => <ProjectCard key={p.id} project={p} extra={`${p.tasks_created ?? 0} tasks`} />} />
         </Box>
       );
+    case 'schedule_post':
+      return <PublishPostsCard posts={d.posts || []} title={d.message} />;
+    case 'list_posts':
+      return <PublishPostsCard posts={d.posts || []} />;
+    case 'list_publishing_channels':
+      return <ChannelsCard data={d} />;
     case 'search_library':
       return <LibraryGallery items={d.items || []} total={d.total_matches} />;
     case 'get_library_item':

@@ -12,7 +12,8 @@
     "mcp:selftest": "ts-node --transpile-only src/scripts/mcpSelfTest.ts",
     "mcp:smoke": "ts-node --transpile-only src/scripts/mcpSmokeTest.ts",
     "blue:selftest": "ts-node --transpile-only src/scripts/blueSelfTest.ts",
-    "library:selftest": "ts-node --transpile-only src/scripts/librarySelfTest.ts"
+    "library:selftest": "ts-node --transpile-only src/scripts/librarySelfTest.ts",
+    "publishing:selftest": "ts-node --transpile-only src/scripts/publishingSelfTest.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",

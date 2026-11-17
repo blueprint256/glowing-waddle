@@ -547,3 +547,7 @@ Blue is a chat assistant built into the app: users type what they need ("create 
 ## Library (Aggregator)
 
 The Library brings a client's past and present work into the app: posters, photos, logos, captions, drafts, documents and videos, uploaded as files, whole folders or zip files, or imported from the app's own task images and logos. An AI reads each item once (describes it, reads text in images, dates it, tags it), every file keeps a full version history, and a timeline index (years → months → events) lets users, Blue and Claude go straight to "that Women's Day poster from around March" without rescanning anything. System Admins can switch it off globally or per user and set a monthly AI allowance. See [docs/AGGREGATOR.md](docs/AGGREGATOR.md).
+
+## Publishing and Edit in Canva
+
+Tasks can be published to X, LinkedIn, Facebook, Instagram, TikTok and YouTube, now or on a schedule, from the task page or by asking Blue. The full engine is built (scheduling, retries, status, each platform's posting rules). Each platform is switched on in Settings by pasting the keys of the developer app it approved. Until then, "post by hand" reminders and test accounts work with no approvals. **Edit in Canva** sends a task image or Library picture to the user's own Canva and brings the edited design back as a new version. See [docs/PUBLISHING.md](docs/PUBLISHING.md).

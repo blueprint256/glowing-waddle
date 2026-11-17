@@ -34,6 +34,8 @@ import { taskAPI, commentAPI } from '../../services/api';
 import { Task, Comment, TaskStatus, canUseAI } from '../../types';
 import { useAuthStore } from '../../store/authStore';
 import SocialPreviewModal from '../../components/SocialPreviewModal';
+import TaskPublishing from '../../components/Publishing/TaskPublishing';
+import EditInCanvaButton from '../../components/Canva/EditInCanvaButton';
 
 export default function TaskDetail() {
   const { id } = useParams<{ id: string }>();
@@ -407,6 +409,17 @@ export default function TaskDetail() {
                           {generatingPoster ? 'Generating Poster...' : 'Generate Poster with AI'}
                         </Button>
                         )}
+
+                        {task.designedImage && (
+                          <EditInCanvaButton
+                            target={{ target: 'task', taskId: id! }}
+                            onImported={(message) => {
+                              setSnackbarMessage(message);
+                              setSnackbarOpen(true);
+                              loadTask();
+                            }}
+                          />
+                        )}
                       </Box>
                     </Box>
                   </Grid>
@@ -625,6 +638,8 @@ export default function TaskDetail() {
             </Button>
           </DialogActions>
         </Dialog>
+
+        {id && <TaskPublishing taskId={id} />}
 
         {/* Comments Section */}
         <Paper sx={{ p: 3 }}>

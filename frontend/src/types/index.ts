@@ -50,6 +50,8 @@ export interface User {
   assistantEnabled?: boolean;
   /** Library (Aggregator) access; set by a System Admin. Treated as enabled when absent. */
   libraryEnabled?: boolean;
+  /** Publishing (scheduling/posting) access; set by a System Admin. Treated as enabled when absent. */
+  publishingEnabled?: boolean;
   isActive: boolean;
   authProvider?: 'local' | 'google';
   companyInfo?: CompanyInfo;

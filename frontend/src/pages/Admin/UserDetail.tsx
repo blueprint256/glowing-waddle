@@ -36,6 +36,8 @@ export default function UserDetail() {
   const [savingBlue, setSavingBlue] = useState(false);
   const [blueMessage, setBlueMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [savingLibrary, setSavingLibrary] = useState(false);
+  const [savingPublishing, setSavingPublishing] = useState(false);
+  const [publishingMessage, setPublishingMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [libraryMessage, setLibraryMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [connectorMessage, setConnectorMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -92,6 +94,23 @@ export default function UserDetail() {
       setConnectorMessage({ type: 'error', text: e.response?.data?.message || 'Failed to update connector access' });
     } finally {
       setSavingConnector(false);
+    }
+  };
+
+  const togglePublishing = async (enabled: boolean) => {
+    try {
+      setSavingPublishing(true);
+      setPublishingMessage(null);
+      await userAPI.update(id!, { publishingEnabled: enabled });
+      setUser((u) => (u ? { ...u, publishingEnabled: enabled } : u));
+      setPublishingMessage({
+        type: 'success',
+        text: enabled ? 'Publishing enabled for this user.' : 'Publishing disabled for this user. Scheduled posts will not go out while it is off.'
+      });
+    } catch (e: any) {
+      setPublishingMessage({ type: 'error', text: e.response?.data?.message || 'Failed to update publishing access' });
+    } finally {
+      setSavingPublishing(false);
     }
   };
 
@@ -300,6 +319,35 @@ export default function UserDetail() {
                 {libraryMessage && (
                   <Alert severity={libraryMessage.type} sx={{ mt: 2 }}>
                     {libraryMessage.text}
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Publishing access */}
+          <Grid item xs={12} md={6}>
+            <Card variant="outlined" sx={{ height: '100%' }}>
+              <CardContent>
+                <Typography variant="h6" gutterBottom color="primary">
+                  Publishing
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  Connect social accounts, schedule posts and set post-by-hand reminders.
+                </Typography>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={user.publishingEnabled !== false}
+                      onChange={(e) => togglePublishing(e.target.checked)}
+                      disabled={savingPublishing || !user.isActive}
+                    />
+                  }
+                  label={user.publishingEnabled !== false ? 'Enabled' : 'Disabled'}
+                />
+                {publishingMessage && (
+                  <Alert severity={publishingMessage.type} sx={{ mt: 2 }}>
+                    {publishingMessage.text}
                   </Alert>
                 )}
               </CardContent>

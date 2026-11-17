@@ -21,6 +21,8 @@ export interface ToolUser {
   canUseAI: boolean;
   /** Library (Aggregator) available to this user (global switch + per-user toggle). */
   canUseLibrary: boolean;
+  /** Publishing available to this user (global switch + per-user toggle). */
+  canUsePublishing?: boolean;
 }
 
 export interface ToolContext {
@@ -185,6 +187,7 @@ function shapeUser(u: any) {
     claude_connector_enabled: u.mcpEnabled !== false,
     blue_enabled: u.assistantEnabled !== false,
     library_enabled: u.libraryEnabled !== false,
+    publishing_enabled: u.publishingEnabled !== false,
     active: u.isActive !== false,
     login_method: u.authProvider,
     campaign_count: u.campaignCount,
@@ -920,7 +923,8 @@ const adminTools: Tool[] = [
         part: userPart,
         claude_connector_enabled: { type: 'boolean', description: 'Allow this user to connect Claude. Default true.' },
         blue_enabled: { type: 'boolean', description: 'Allow this user to use Blue, the in-app assistant. Default true.' },
-        library_enabled: { type: 'boolean', description: 'Allow this user to use the Library (Aggregator). Default true.' }
+        library_enabled: { type: 'boolean', description: 'Allow this user to use the Library (Aggregator). Default true.' },
+        publishing_enabled: { type: 'boolean', description: 'Allow this user to schedule and publish posts. Default true.' }
       },
       ['email', 'password', 'first_name', 'last_name', 'role']
     ),
@@ -937,7 +941,8 @@ const adminTools: Tool[] = [
           part: 'accessMode',
           claude_connector_enabled: 'mcpEnabled',
           blue_enabled: 'assistantEnabled',
-          library_enabled: 'libraryEnabled'
+          library_enabled: 'libraryEnabled',
+          publishing_enabled: 'publishingEnabled'
         })
       });
       return { message: res.message, user: shapeUser(res.user) };
@@ -958,6 +963,7 @@ const adminTools: Tool[] = [
         claude_connector_enabled: { type: 'boolean', description: 'Allow this user to connect Claude.' },
         blue_enabled: { type: 'boolean', description: 'Allow this user to use Blue, the in-app assistant.' },
         library_enabled: { type: 'boolean', description: 'Allow this user to use the Library (Aggregator).' },
+        publishing_enabled: { type: 'boolean', description: 'Allow this user to schedule and publish posts.' },
         active: { type: 'boolean', description: 'false deactivates the account, true reactivates it.' }
       },
       ['user_id']
@@ -974,9 +980,10 @@ const adminTools: Tool[] = [
         claude_connector_enabled: 'mcpEnabled',
         blue_enabled: 'assistantEnabled',
         library_enabled: 'libraryEnabled',
+        publishing_enabled: 'publishingEnabled',
         active: 'isActive'
       });
-      requireSomeField(body, 'email, first_name, last_name, role, part, claude_connector_enabled, blue_enabled, library_enabled, active');
+      requireSomeField(body, 'email, first_name, last_name, role, part, claude_connector_enabled, blue_enabled, library_enabled, publishing_enabled, active');
       const res = await ctx.api.request('PUT', `/api/users/${args.user_id}`, { body });
       return { message: res.message, user: shapeUser(res.user) };
     }
@@ -1207,6 +1214,141 @@ const libraryTools: Tool[] = [
   }
 ];
 
+// ---------------------------------------------------------------------------
+// Publishing: connected accounts and posts
+// ---------------------------------------------------------------------------
+
+const PLATFORM_IDS = ['x', 'linkedin', 'facebook', 'instagram', 'tiktok', 'youtube'];
+/** Posting to real accounts can't be undone, so assistants ask the user first. */
+const PUBLISH = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true };
+const canUsePublishingTools = (ctx: ToolContext) => ctx.user.canUsePublishing;
+
+function shapePublishPost(p: any, appUrl: string) {
+  return clean({
+    id: p.id,
+    platform: p.platformName,
+    account: p.channel?.name || (p.mode === 'manual' ? 'post by hand' : undefined),
+    status: p.status,
+    when: p.scheduledAt || undefined,
+    published_at: p.publishedAt || undefined,
+    link: p.remoteUrl || undefined,
+    task: p.task?.name ? { id: p.task.id, name: p.task.name } : undefined,
+    caption: p.text ? String(p.text).slice(0, 200) : undefined,
+    files: p.media?.length || undefined,
+    problem: p.lastError || undefined,
+    test_account: p.channel?.simulated || undefined,
+    url: `${appUrl}/publishing?post=${p.id}`
+  });
+}
+
+const publishingTools: Tool[] = [
+  {
+    name: 'list_publishing_channels',
+    title: 'List connected accounts',
+    description:
+      'The social accounts the user can publish to (with their ids), and which platforms the administrator has switched on. Posts for a task go to the accounts of the campaign owner. Platforms without connected accounts can still be used as "post by hand" reminders.',
+    inputSchema: obj({}),
+    annotations: READ,
+    isAvailable: canUsePublishingTools,
+    handler: async (_args, ctx) => {
+      const [channels, status] = await Promise.all([ctx.api.request('GET', '/api/publishing/channels'), ctx.api.request('GET', '/api/publishing/status')]);
+      return {
+        accounts: channels.channels.map((c: any) => clean({ id: c.id, platform: c.platformName, name: c.name, username: c.username || undefined, test_account: c.simulated || undefined, needs_reconnect: c.status !== 'active' || undefined })),
+        platforms_switched_on: status.platforms.filter((p: any) => p.ready).map((p: any) => p.name),
+        test_mode: status.testMode,
+        connect_more_at: `${ctx.appUrl}/publishing?tab=channels`
+      };
+    }
+  },
+  {
+    name: 'schedule_post',
+    title: 'Schedule or publish a task',
+    description:
+      "Publish a task's caption and image to connected accounts now or at a set time, and/or add 'post by hand' reminders for platforms without a connection. The caption defaults to the task's content. Always confirm the accounts, caption and time with the user first: posts to real accounts are public.",
+    inputSchema: obj(
+      {
+        task_id: id('The task to publish.'),
+        account_ids: { type: 'array', items: { type: 'string', pattern: OBJECT_ID_PATTERN }, maxItems: 20, description: 'Connected account ids from list_publishing_channels.' },
+        post_by_hand_on: { type: 'array', items: { type: 'string', enum: PLATFORM_IDS }, maxItems: 6, description: 'Platforms to remind the user to post on by hand.' },
+        when: { type: 'string', enum: ['now', 'schedule'], description: 'Post now, or at scheduled_at.' },
+        scheduled_at: { type: 'string', format: 'date-or-datetime', description: 'ISO date-time with timezone, e.g. 2026-11-27T09:00:00+03:00. Required when when=schedule.' },
+        caption: text('Caption to post instead of the task content.', 63000),
+        include_task_image: { type: 'boolean', description: "Attach the task's image (default true)." },
+        youtube_title: { type: 'string', maxLength: 100, description: 'Title for YouTube posts.' },
+        tiktok_privacy: { type: 'string', enum: ['PUBLIC_TO_EVERYONE', 'MUTUAL_FOLLOW_FRIENDS', 'FOLLOWER_OF_CREATOR', 'SELF_ONLY'], description: 'Who can see a TikTok post; ask the user.' }
+      },
+      ['task_id', 'when']
+    ),
+    annotations: PUBLISH,
+    isAvailable: canUsePublishingTools,
+    handler: async (args, ctx) => {
+      const accounts = (args.account_ids as string[]) || [];
+      const manual = (args.post_by_hand_on as string[]) || [];
+      if (!accounts.length && !manual.length) throw new ToolError('Choose at least one account (account_ids) or platform to post by hand (post_by_hand_on).');
+      if (args.when === 'schedule' && !args.scheduled_at) throw new ToolError('scheduled_at is required when when=schedule.');
+      const info = await ctx.api.request('GET', `/api/publishing/tasks/${args.task_id}/media`);
+      const caption = typeof args.caption === 'string' ? args.caption : info.task.content || '';
+      const main = info.media.find((m: any) => m.isMain);
+      const media = args.include_task_image === false || !main ? [] : [{ source: main.source, url: main.url, assetId: main.assetId }];
+      const res = await ctx.api.request('POST', '/api/publishing/posts', {
+        body: {
+          taskId: args.task_id,
+          text: caption,
+          media,
+          targets: [...accounts.map((channelId) => ({ channelId })), ...manual.map((platform) => ({ platform }))],
+          when: args.when,
+          scheduledAt: args.scheduled_at,
+          options: {
+            ...(args.youtube_title ? { youtube: { title: args.youtube_title } } : {}),
+            ...(args.tiktok_privacy ? { tiktok: { privacy: args.tiktok_privacy } } : {})
+          }
+        }
+      });
+      return { message: args.when === 'now' ? 'Publishing now' : 'Scheduled', posts: res.posts.map((p: any) => shapePublishPost(p, ctx.appUrl)) };
+    }
+  },
+  {
+    name: 'list_posts',
+    title: 'List posts',
+    description: 'Scheduled, published, failed and post-by-hand items, newest first (upcoming: soonest first).',
+    inputSchema: obj({
+      status: { type: 'string', enum: ['upcoming', 'attention', 'done', 'draft', 'cancelled'], description: 'upcoming = scheduled/being published; attention = failed or due to post by hand; done = published.' },
+      task_id: id('Only posts of this task.'),
+      date_from: date('Scheduled on/after this day.'),
+      date_to: date('Scheduled on/before this day.'),
+      page,
+      limit: limit(20, 50)
+    }),
+    annotations: READ,
+    isAvailable: canUsePublishingTools,
+    handler: async (args, ctx) => {
+      const res = await ctx.api.request('GET', '/api/publishing/posts', {
+        query: {
+          status: args.status,
+          taskId: args.task_id,
+          from: args.date_from ? String(args.date_from).slice(0, 10) : undefined,
+          to: args.date_to ? String(args.date_to).slice(0, 10) : undefined,
+          page: args.page ?? 1,
+          limit: args.limit ?? 20
+        }
+      });
+      return { posts: res.posts.map((p: any) => shapePublishPost(p, ctx.appUrl)), total: res.total, page: res.page };
+    }
+  },
+  {
+    name: 'cancel_post',
+    title: 'Cancel a scheduled post',
+    description: 'Stop a scheduled (or failed / post-by-hand) post from going out. Published posts must be deleted on the platform itself.',
+    inputSchema: obj({ post_id: id('Post id from list_posts.') }, ['post_id']),
+    annotations: DESTRUCTIVE,
+    isAvailable: canUsePublishingTools,
+    handler: async (args, ctx) => {
+      const res = await ctx.api.request('POST', `/api/publishing/posts/${args.post_id}/cancel`);
+      return { message: 'Cancelled', post: shapePublishPost(res.post, ctx.appUrl) };
+    }
+  }
+];
+
 export const TOOLS: Tool[] = [
   ...accountTools,
   ...campaignTools,
@@ -1214,6 +1356,7 @@ export const TOOLS: Tool[] = [
   ...taskTools,
   ...commentTools,
   ...libraryTools,
+  ...publishingTools,
   ...aiTools,
   ...adminTools
 ];
@@ -1231,4 +1374,5 @@ How to work:
 - Every result includes a "url" the user can open in the app.
 - Images cannot be added through this connector yet; tell the user to upload them in the app.
 - Projects cannot be deleted (the app does not allow it either).
+- Publishing: list_publishing_channels shows connected accounts; schedule_post publishes a task now or later (always confirm accounts, caption and time with the user first); accounts that aren't connected can get "post by hand" reminders.
 - The Library holds the user's past and present work (posters, photos, captions, logos, files) with full version history. To find something, call library_overview first to see which years, months and events exist, then search_library with a date range and/or words. Never guess item ids.`;
