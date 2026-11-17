@@ -100,6 +100,7 @@ export const publishingAPI = {
   create: (body: PostPayload) => api.post<{ posts: Post[] }>('/publishing/posts', body).then((r) => r.data.posts),
   list: (params: Record<string, string | number | undefined>) =>
     api.get<{ posts: Post[]; total: number; page: number; limit: number }>('/publishing/posts', { params }).then((r) => r.data),
+  get: (id: string) => api.get<{ post: Post }>(`/publishing/posts/${id}`).then((r) => r.data.post),
   update: (id: string, body: Record<string, unknown>) => api.patch<{ post: Post }>(`/publishing/posts/${id}`, body).then((r) => r.data.post),
   cancel: (id: string) => api.post<{ post: Post }>(`/publishing/posts/${id}/cancel`).then((r) => r.data.post),
   retry: (id: string) => api.post<{ post: Post }>(`/publishing/posts/${id}/retry`).then((r) => r.data.post),

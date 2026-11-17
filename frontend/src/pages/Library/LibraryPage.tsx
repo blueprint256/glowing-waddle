@@ -6,11 +6,14 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   IconButton,
   InputAdornment,
   LinearProgress,
   MenuItem,
-  Snackbar,
   Tab,
   Tabs,
   TextField,
@@ -56,6 +59,9 @@ import {
   type UploadResult,
   type BatchProgress
 } from '../../services/library';
+import { paths } from '../../lib/paths';
+import PageHeader from '../../components/ui/PageHeader';
+import { errorMessage, notify } from '../../store/toastStore';
 
 const PAGE_SIZE = 30;
 
@@ -127,7 +133,7 @@ export default function LibraryPage() {
   const [openYears, setOpenYears] = useState<Record<number, boolean>>({});
   const [upload, setUpload] = useState<UploadState | null>(null);
   const [dragging, setDragging] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const [confirmCampaign, setConfirmCampaign] = useState(false);
   const [busy, setBusy] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
@@ -232,7 +238,7 @@ export default function LibraryPage() {
     async (picked: PickedFile[]) => {
       const files = importable(picked);
       if (!files.length) {
-        setToast('Nothing to import there');
+        notify('Nothing to import there');
         return;
       }
       const tooBig = status ? files.filter((f) => f.file.size > status.maxFileBytes) : [];
@@ -274,26 +280,26 @@ export default function LibraryPage() {
     setBusy(true);
     try {
       const res = await libraryAPI.importApp();
-      setToast(res.message);
+      notify(res.message);
       setUpload({ batchId: res.batchId, files: 0, sent: 0, total: 0, results: [], uploading: false });
-    } catch (e: any) {
-      setToast(e?.response?.data?.message || 'Could not start the import');
+    } catch (e) {
+      notify(errorMessage(e, 'Could not start the import.'), { tone: 'error' });
     } finally {
       setBusy(false);
     }
   };
 
   const makeCampaign = async () => {
+    setConfirmCampaign(false);
     if (!event) return;
     const year = from ? Number(from.slice(0, 4)) : undefined;
-    if (!window.confirm(`Create a completed campaign "${event}${year ? ` ${year}` : ''}" from these items? They stay in your Library and get linked to it.`)) return;
     setBusy(true);
     try {
       const res = await libraryAPI.makeCampaign(event, year);
-      setToast(`Created "${res.campaign.name}" and linked ${res.linked} item${res.linked === 1 ? '' : 's'}`);
-      navigate(`/campaigns/${res.campaign.id}`);
-    } catch (e: any) {
-      setToast(e?.response?.data?.message || 'Could not create the campaign');
+      notify(`Created "${res.campaign.name}" and linked ${res.linked} item${res.linked === 1 ? '' : 's'}`);
+      navigate(paths.campaign(res.campaign.id));
+    } catch (e) {
+      notify(errorMessage(e, 'Could not create the campaign.'), { tone: 'error' });
     } finally {
       setBusy(false);
     }
@@ -310,10 +316,8 @@ export default function LibraryPage() {
   if (!status.available) {
     return (
       <Box>
-        <Typography variant="h4" sx={{ mb: 2 }}>
-          Library
-        </Typography>
-        <Alert severity="info">{status.reason || 'The Library is not available for your account.'}</Alert>
+        <PageHeader title="Library" />
+        <Alert severity="info">{status.reason || 'The Library isn’t available on your account.'}</Alert>
       </Box>
     );
   }
@@ -359,15 +363,16 @@ export default function LibraryPage() {
       )}
 
       {/* Header */}
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'flex-start', justifyContent: 'space-between', mb: 2 }}>
-        <Box>
-          <Typography variant="h4">Library</Typography>
-          <Typography sx={{ color: 'var(--text-muted)', fontSize: 'var(--fs-xs)', mt: 0.5 }}>
-            {overview ? `${overview.total.toLocaleString()} item${overview.total === 1 ? '' : 's'}` : ' '}
+      <PageHeader
+        title="Library"
+        subtitle={
+          <>
+            {overview ? `${overview.total.toLocaleString()} item${overview.total === 1 ? '' : 's'}` : 'Your pictures, captions, logos and files, with every version.'}
             {status.ai.enabled && status.ai.monthlyLimit > 0 && ` · AI reading ${status.ai.usedThisMonth.toLocaleString()} of ${status.ai.monthlyLimit.toLocaleString()} this month`}
             {!status.ai.enabled && ' · AI reading is off (search uses file names, folders and text in files)'}
-          </Typography>
-        </Box>
+          </>
+        }
+        actions={
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           <Button variant="contained" startIcon={<UploadIcon />} onClick={() => fileInput.current?.click()} disabled={upload?.uploading}>
             Upload files
@@ -375,7 +380,7 @@ export default function LibraryPage() {
           <Button variant="outlined" startIcon={<FolderUploadIcon />} onClick={() => folderInput.current?.click()} disabled={upload?.uploading}>
             Upload folder
           </Button>
-          <Tooltip title="Bring in the task images, posters, logos and files already in the app">
+          <Tooltip title="Bring in the post images, AI images, logos and files already in the app">
             <span>
               <Button variant="outlined" startIcon={<ImportIcon />} onClick={importFromApp} disabled={busy || upload?.uploading}>
                 Import from app
@@ -392,7 +397,8 @@ export default function LibraryPage() {
             {...({ webkitdirectory: '', directory: '' } as Record<string, string>)}
           />
         </Box>
-      </Box>
+        }
+      />
 
       {/* Upload / processing progress */}
       {upload && (
@@ -563,7 +569,7 @@ export default function LibraryPage() {
                 Clear all
               </Button>
               {event && canMakeCampaign && view === 'all' && (
-                <Button size="small" variant="outlined" startIcon={<CampaignIcon />} onClick={makeCampaign} disabled={busy} sx={{ ml: 'auto' }}>
+                <Button size="small" variant="outlined" startIcon={<CampaignIcon />} onClick={() => setConfirmCampaign(true)} disabled={busy} sx={{ ml: 'auto' }}>
                   Make this a past campaign
                 </Button>
               )}
@@ -582,7 +588,7 @@ export default function LibraryPage() {
 
           <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 1.5 }}>
             {items.map((item) => (
-              <ItemCard key={item.id} item={item} onOpen={() => navigate(`/library/${item.id}`)} />
+              <ItemCard key={item.id} item={item} onOpen={() => navigate(paths.libraryItem(item.id))} />
             ))}
           </Box>
 
@@ -600,7 +606,20 @@ export default function LibraryPage() {
         </Box>
       </Box>
 
-      <Snackbar open={!!toast} autoHideDuration={5000} onClose={() => setToast(null)} message={toast} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
+      <Dialog open={confirmCampaign} onClose={() => setConfirmCampaign(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Make “{event}” a past campaign?</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ fontSize: 14 }}>
+            A finished campaign called “{event}{from ? ` ${from.slice(0, 4)}` : ''}” is created and these items are linked to it. They stay in your Library.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmCampaign(false)}>Cancel</Button>
+          <Button variant="contained" onClick={makeCampaign} disabled={busy}>
+            Create campaign
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

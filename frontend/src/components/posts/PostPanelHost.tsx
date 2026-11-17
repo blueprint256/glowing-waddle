@@ -33,10 +33,21 @@ export function usePostEvents(onChange: (taskId: string) => void) {
   const ref = useRef(onChange);
   ref.current = onChange;
   useEffect(() => {
-    const handler = (e: Event) => ref.current(String((e as CustomEvent).detail || ''));
+    // Several changes at once (e.g. a batch in Publishing) refresh once.
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let last = '';
+    const handler = (e: Event) => {
+      last = String((e as CustomEvent).detail || '');
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        ref.current(last);
+      }, 150);
+    };
     window.addEventListener('post:changed', handler);
     window.addEventListener('post:deleted', handler);
     return () => {
+      if (timer) clearTimeout(timer);
       window.removeEventListener('post:changed', handler);
       window.removeEventListener('post:deleted', handler);
     };

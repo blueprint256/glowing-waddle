@@ -1,33 +1,67 @@
-import { useCallback, useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Alert, Avatar, Box, Button, Chip, CircularProgress, IconButton, Snackbar, Tab, Tabs, Tooltip, Typography } from '@mui/material';
-import { LinkOff as DisconnectIcon, Add as AddIcon, Science as TestIcon } from '@mui/icons-material';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Link as RouterLink, useSearchParams } from 'react-router-dom';
+import { Avatar, Box, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Tab, Tabs, Tooltip, Typography } from '@mui/material';
+import { LinkOff as DisconnectIcon, Add as AddIcon, Science as TestIcon, Send as SendIcon } from '@mui/icons-material';
+import PageHeader from '../../components/ui/PageHeader';
+import EmptyState from '../../components/ui/EmptyState';
 import PostList, { PlatformBadge } from '../../components/Publishing/PostList';
 import { publishingAPI, PLATFORM_ORDER, PLATFORM_LABELS, type Channel, type Post, type PublishingStatus, type PlatformId } from '../../services/publishing';
-
-type TabId = 'upcoming' | 'attention' | 'done' | 'draft' | 'channels';
-
-const PROVIDER_OF: Record<PlatformId, string> = { x: 'x', linkedin: 'linkedin', facebook: 'meta', instagram: 'meta', tiktok: 'tiktok', youtube: 'google' };
+import { paths, type PublishingTab } from '../../lib/paths';
+import { timeZoneName } from '../../lib/dates';
+import { errorMessage, notify } from '../../store/toastStore';
+import { announcePostChanged } from '../../store/aiJobsStore';
+import { usePostEvents } from '../../components/posts/PostPanelHost';
 
 /**
- * Publishing: what's going out, what needs attention (failed / post by hand), what went out, and the
- * connected accounts. Platforms the admin hasn't switched on yet still work as "post by hand".
+ * Publishing (decision 4): three tabs.
+ * - Queue: what needs you (failed, post by hand), what's going out, and drafts
+ * - Accounts: connected social accounts
+ * - History: what went out (and what was cancelled)
+ * Older addresses still work (?tab=upcoming|attention|draft → queue, done → history, channels → accounts).
+ * ?item=<id> points out one scheduled copy (links from the Inbox and Blue).
  */
+
+const PROVIDER_OF: Record<PlatformId, string> = { x: 'x', linkedin: 'linkedin', facebook: 'meta', instagram: 'meta', tiktok: 'tiktok', youtube: 'google' };
+const OLD_TABS: Record<string, PublishingTab> = { upcoming: 'queue', attention: 'queue', draft: 'queue', done: 'history', channels: 'accounts' };
+const PAGE = 50;
+const ACCOUNT_TYPES: Record<string, string> = { organization: 'Company page', page: 'Page', business: 'Business', creator: 'Creator', channel: 'Channel' };
+
+type HistoryFilter = 'all' | 'published' | 'cancelled';
+
 export default function PublishingPage() {
   const [params, setParams] = useSearchParams();
-  const tab = (params.get('tab') as TabId) || 'upcoming';
+  const raw = params.get('tab') || 'queue';
+  const tab: PublishingTab = (['queue', 'accounts', 'history'].includes(raw) ? raw : OLD_TABS[raw] || 'queue') as PublishingTab;
+  const item = params.get('item');
+
   const [status, setStatus] = useState<PublishingStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [total, setTotal] = useState(0);
-  const [channels, setChannels] = useState<Channel[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [toast, setToast] = useState<string | null>(null);
+  const [attention, setAttention] = useState<Post[] | null>(null);
+  const [upcoming, setUpcoming] = useState<Post[] | null>(null);
+  const [upcomingTotal, setUpcomingTotal] = useState(0);
+  const [drafts, setDrafts] = useState<Post[]>([]);
+  const [history, setHistory] = useState<Post[] | null>(null);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('all');
+  const [historyPage, setHistoryPage] = useState(1);
+  const [channels, setChannels] = useState<Channel[] | null>(null);
+  const [pointed, setPointed] = useState<Post | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [disconnecting, setDisconnecting] = useState<Channel | null>(null);
 
-  const setTab = (t: TabId) => {
+  // Old tab names become the new ones in the address.
+  useEffect(() => {
+    if (raw !== tab) {
+      const next = new URLSearchParams(params);
+      if (tab === 'queue') next.delete('tab');
+      else next.set('tab', tab);
+      setParams(next, { replace: true });
+    }
+  }, [raw, tab, params, setParams]);
+
+  const setTab = (t: PublishingTab) => {
     const next = new URLSearchParams();
-    if (t !== 'upcoming') next.set('tab', t);
+    if (t !== 'queue') next.set('tab', t);
     setParams(next, { replace: true });
   };
 
@@ -35,49 +69,124 @@ export default function PublishingPage() {
   useEffect(() => {
     const c = params.get('connect');
     if (!c) return;
-    setToast(c === 'ok' ? `Connected ${params.get('count') || ''} account${params.get('count') === '1' ? '' : 's'}`.replace('  ', ' ') : params.get('message') || 'Could not connect the account');
+    const count = Number(params.get('count') || 0);
+    if (c === 'ok') notify(count ? `Connected ${count} account${count === 1 ? '' : 's'}` : 'Account connected');
+    else notify(params.get('message') || 'Couldn’t connect the account.', { tone: 'error' });
     const next = new URLSearchParams(params);
     ['connect', 'count', 'message'].forEach((k) => next.delete(k));
     setParams(next, { replace: true });
   }, [params, setParams]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const loadStatus = useCallback(async () => {
     try {
       const s = await publishingAPI.status();
       setStatus(s);
-      if (!s.available) return;
-      if (tab === 'channels') {
-        setChannels(await publishingAPI.channels());
-      } else {
-        const r = await publishingAPI.list({ status: tab === 'draft' ? 'draft' : tab, limit: 100 });
-        setPosts(r.posts);
-        setTotal(r.total);
-      }
-    } catch (e: any) {
-      setError(e?.response?.data?.message || 'Could not load publishing');
-    } finally {
-      setLoading(false);
+      return s;
+    } catch (e) {
+      setError(errorMessage(e, 'Publishing couldn’t load. Try again.'));
+      return null;
     }
-  }, [tab]);
+  }, []);
+
+  const loadQueue = useCallback(async () => {
+    try {
+      const [a, u, d] = await Promise.all([
+        publishingAPI.list({ status: 'attention', limit: 100 }),
+        publishingAPI.list({ status: 'upcoming', limit: 100 }),
+        publishingAPI.list({ status: 'draft', limit: 100 })
+      ]);
+      setAttention(a.posts);
+      setUpcoming(u.posts);
+      setUpcomingTotal(u.total);
+      setDrafts(d.posts);
+    } catch (e) {
+      setError(errorMessage(e, 'Publishing couldn’t load. Try again.'));
+    }
+  }, []);
+
+  const loadHistory = useCallback(
+    async (page: number, filter: HistoryFilter) => {
+      try {
+        const r = await publishingAPI.list({ status: filter === 'all' ? 'published,cancelled' : filter, limit: PAGE, page });
+        setHistory((prev) => (page === 1 ? r.posts : [...(prev || []), ...r.posts]));
+        setHistoryTotal(r.total);
+      } catch (e) {
+        setError(errorMessage(e, 'Publishing couldn’t load. Try again.'));
+      }
+    },
+    []
+  );
+
+  const loadChannels = useCallback(async () => {
+    try {
+      setChannels(await publishingAPI.channels());
+    } catch (e) {
+      setError(errorMessage(e, 'Your accounts couldn’t load. Try again.'));
+    }
+  }, []);
+
+  const refresh = useCallback(async () => {
+    setError(null);
+    const s = await loadStatus();
+    if (!s?.available) return;
+    if (tab === 'queue') await loadQueue();
+    else if (tab === 'history') {
+      setHistoryPage(1);
+      await loadHistory(1, historyFilter);
+    } else await loadChannels();
+  }, [tab, historyFilter, loadStatus, loadQueue, loadHistory, loadChannels]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    refresh();
+  }, [refresh]);
 
-  // Refresh while something is being published.
+  usePostEvents(() => {
+    if (tab === 'queue') loadQueue();
+  });
+
+  // The pointed-out item, even when it isn't in the current tab's first page.
   useEffect(() => {
-    if (tab !== 'upcoming' || !posts.some((p) => p.status === 'publishing' || p.status === 'processing' || (p.scheduledAt && new Date(p.scheduledAt).getTime() < Date.now() + 60_000))) return;
-    const t = setInterval(load, 8000);
+    if (!item) {
+      setPointed(null);
+      return;
+    }
+    publishingAPI
+      .get(item)
+      .then(setPointed)
+      .catch(() => setPointed(null));
+  }, [item]);
+
+  // Check back while something is going out or about to.
+  useEffect(() => {
+    if (tab !== 'queue') return;
+    const soon = (upcoming || []).some((p) => ['publishing', 'processing'].includes(p.status) || (p.scheduledAt && new Date(p.scheduledAt).getTime() < Date.now() + 60_000));
+    if (!soon) return;
+    const t = setInterval(() => {
+      loadQueue();
+      loadStatus();
+    }, 8000);
     return () => clearInterval(t);
-  }, [tab, posts, load]);
+  }, [tab, upcoming, loadQueue, loadStatus]);
+
+  const changed = (message?: string, post?: Post) => {
+    if (message) notify(message);
+    loadStatus();
+    if (tab === 'queue') loadQueue();
+    else if (tab === 'history') {
+      setHistoryPage(1);
+      loadHistory(1, historyFilter);
+    }
+    if (pointed) publishingAPI.get(pointed.id).then(setPointed).catch(() => setPointed(null));
+    // The post's own status follows Publishing.
+    if (post?.task?.id) announcePostChanged(post.task.id);
+  };
 
   const connect = async (platform: PlatformId) => {
     setBusy(platform);
     try {
-      window.location.href = await publishingAPI.connect(PROVIDER_OF[platform], '/publishing?tab=channels');
-    } catch (e: any) {
-      setToast(e?.response?.data?.message || 'Could not start connecting');
+      window.location.href = await publishingAPI.connect(PROVIDER_OF[platform], paths.publishing('accounts'));
+    } catch (e) {
+      notify(errorMessage(e, 'Couldn’t start connecting.'), { tone: 'error' });
       setBusy(null);
     }
   };
@@ -86,146 +195,254 @@ export default function PublishingPage() {
     setBusy(platform);
     try {
       await publishingAPI.addTestChannel(platform);
-      setToast(`Test ${PLATFORM_LABELS[platform]} account added`);
-      load();
-    } catch (e: any) {
-      setToast(e?.response?.data?.message || 'Could not add the test account');
+      notify(`Test ${PLATFORM_LABELS[platform]} account added`);
+      loadChannels();
+    } catch (e) {
+      notify(errorMessage(e, 'Couldn’t add the test account.'), { tone: 'error' });
     } finally {
       setBusy(null);
     }
   };
 
   const disconnect = async (c: Channel) => {
-    if (!window.confirm(`Disconnect ${c.platformName} · ${c.name}? Scheduled posts to it will be cancelled.`)) return;
+    setDisconnecting(null);
     setBusy(c.id);
     try {
-      await publishingAPI.disconnect(c.id);
-      setToast('Disconnected');
-      load();
-    } catch (e: any) {
-      setToast(e?.response?.data?.message || 'Could not disconnect');
+      const r = await publishingAPI.disconnect(c.id);
+      notify(r?.message || `Disconnected ${c.platformName} · ${c.name}`);
+      loadChannels();
+      loadStatus();
+    } catch (e) {
+      notify(errorMessage(e, 'Couldn’t disconnect.'), { tone: 'error' });
     } finally {
       setBusy(null);
     }
   };
 
-  if (error) return <Alert severity="error">{error}</Alert>;
+  const counts = status?.counts;
+  const pointedShown = useMemo(() => {
+    if (!pointed) return false;
+    const all = [...(attention || []), ...(upcoming || []), ...drafts, ...(history || [])];
+    return all.some((p) => p.id === pointed.id);
+  }, [pointed, attention, upcoming, drafts, history]);
+
+  const header = (
+    <PageHeader
+      title="Publishing"
+      subtitle={`What goes out where and when. Schedule a post from the post itself (Publish or schedule). Times are in your time zone (${timeZoneName()}).`}
+      actions={
+        <Button component={RouterLink} to={paths.planner({ view: 'list', status: 'Ready' })} startIcon={<SendIcon />}>
+          Ready posts
+        </Button>
+      }
+    />
+  );
+
+  if (error) {
+    return (
+      <Box>
+        {header}
+        <EmptyState title="Publishing couldn’t load" text={error} action={<Button onClick={refresh}>Try again</Button>} />
+      </Box>
+    );
+  }
   if (status && !status.available) {
     return (
       <Box>
-        <Typography variant="h4" sx={{ mb: 2 }}>
-          Publishing
-        </Typography>
-        <Alert severity="info">{status.reason}</Alert>
+        {header}
+        <EmptyState title="Publishing isn’t available" text={status.reason} />
       </Box>
     );
   }
 
-  const c = status?.counts;
   return (
     <Box>
-      <Typography variant="h4">Publishing</Typography>
-      <Typography sx={{ color: 'var(--text-muted)', fontSize: 'var(--fs-xs)', mt: 0.5, mb: 2 }}>
-        Schedule tasks from their page with the Publish button. Platforms that aren't connected yet still work as “post by hand” reminders.
-      </Typography>
+      {header}
 
-      <Tabs value={tab} onChange={(_e, v) => setTab(v)} variant="scrollable" sx={{ mb: 2, minHeight: 36, '& .MuiTab-root': { minHeight: 36, textTransform: 'none' } }}>
-        <Tab value="upcoming" label={`Upcoming${c?.upcoming ? ` (${c.upcoming})` : ''}`} />
-        <Tab value="attention" label={`Needs attention${c?.attention ? ` (${c.attention})` : ''}`} />
-        <Tab value="done" label="Published" />
-        <Tab value="draft" label={`Drafts${c?.drafts ? ` (${c.drafts})` : ''}`} />
-        <Tab value="channels" label="Accounts" />
+      <Tabs value={tab} onChange={(_e, v) => setTab(v)} variant="scrollable" sx={{ mb: 2, minHeight: 36, borderBottom: '1px solid var(--border)', '& .MuiTab-root': { minHeight: 36, textTransform: 'none', fontSize: 14 } }}>
+        <Tab value="queue" label={`Queue${counts ? ` (${counts.attention + counts.upcoming})` : ''}`} />
+        <Tab value="accounts" label="Accounts" />
+        <Tab value="history" label="History" />
       </Tabs>
 
-      {loading && !posts.length && !channels.length ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-          <CircularProgress size={22} />
-        </Box>
-      ) : tab === 'channels' ? (
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
-          {PLATFORM_ORDER.map((p) => {
-            const info = status?.platforms.find((x) => x.id === p);
-            const accounts = channels.filter((ch) => ch.platform === p);
-            return (
-              <Box key={p} sx={{ p: 2, border: '1px solid var(--border)', borderRadius: 'var(--r-card)', bgcolor: 'var(--bg-raised)' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                  <PlatformBadge platform={p} />
-                  <Typography sx={{ fontWeight: 'var(--fw-semibold)', flex: 1 }}>{PLATFORM_LABELS[p]}</Typography>
-                  {info?.ready ? (
-                    <Button size="small" variant="outlined" startIcon={busy === p ? <CircularProgress size={14} /> : <AddIcon />} disabled={busy === p} onClick={() => connect(p)}>
-                      Connect
-                    </Button>
-                  ) : (
-                    <Chip size="small" label="Not switched on yet" />
-                  )}
-                </Box>
-                {accounts.map((ch) => (
-                  <Box key={ch.id} sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5 }}>
-                    <Avatar src={ch.avatarUrl || undefined} sx={{ width: 24, height: 24, fontSize: 12 }}>
-                      {ch.name.slice(0, 1)}
-                    </Avatar>
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Typography sx={{ fontSize: 'var(--fs-sm)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {ch.name}
-                        {ch.username ? ` · @${ch.username}` : ''}
-                      </Typography>
-                      {ch.status !== 'active' && (
-                        <Typography sx={{ fontSize: 'var(--fs-2xs)', color: 'var(--danger-text)' }}>
-                          Needs reconnecting{ch.lastError ? `: ${ch.lastError}` : ''}
-                        </Typography>
-                      )}
-                    </Box>
-                    {ch.simulated && <Chip size="small" label="Test" sx={{ height: 20 }} />}
-                    {ch.accountType !== 'person' && !ch.simulated && <Chip size="small" label={ch.accountType} sx={{ height: 20 }} />}
-                    {ch.status !== 'active' && info?.ready && (
-                      <Button size="small" onClick={() => connect(p)}>
-                        Reconnect
-                      </Button>
-                    )}
-                    <Tooltip title="Disconnect">
-                      <IconButton size="small" disabled={busy === ch.id} onClick={() => disconnect(ch)}>
-                        <DisconnectIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                  </Box>
-                ))}
-                {!accounts.length && (
-                  <Typography sx={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>
-                    {info?.ready ? 'No accounts connected.' : 'Your administrator switches this on once the platform approves the app. Until then, use “post by hand”.'}
-                  </Typography>
-                )}
-                {status?.testMode && !accounts.some((a) => a.simulated) && (
-                  <Button size="small" startIcon={<TestIcon />} sx={{ mt: 1 }} disabled={busy === p} onClick={() => addTest(p)}>
-                    Add a test account
-                  </Button>
-                )}
-              </Box>
-            );
-          })}
-        </Box>
-      ) : (
-        <>
-          <PostList
-            posts={posts}
-            onChanged={(m) => {
-              if (m) setToast(m);
-              load();
-            }}
-            emptyText={
-              tab === 'upcoming'
-                ? 'Nothing scheduled. Open a task and press Publish.'
-                : tab === 'attention'
-                  ? 'All good: no failed posts and nothing waiting to be posted by hand.'
-                  : tab === 'done'
-                    ? 'Nothing published yet.'
-                    : 'No drafts.'
-            }
-          />
-          {total > posts.length && <Typography sx={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', mt: 1 }}>Showing the first {posts.length} of {total}.</Typography>}
-        </>
+      {pointed && !pointedShown && (
+        <Section title="The item you opened">
+          <PostList posts={[pointed]} onChanged={changed} highlight={pointed.id} />
+        </Section>
       )}
 
-      <Snackbar open={!!toast} autoHideDuration={5000} onClose={() => setToast(null)} message={toast} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
+      {tab === 'queue' &&
+        (attention === null || upcoming === null ? (
+          <Loading />
+        ) : attention.length === 0 && upcoming.length === 0 && drafts.length === 0 ? (
+          <EmptyState
+            icon={<SendIcon />}
+            title="Nothing in the queue"
+            text="Open a post that’s Ready and choose “Publish or schedule”. Platforms that aren’t connected still work as reminders to post by hand."
+            action={
+              <Button variant="contained" component={RouterLink} to={paths.planner({ view: 'list', status: 'Ready' })}>
+                See Ready posts
+              </Button>
+            }
+          />
+        ) : (
+          <>
+            {attention.length > 0 && (
+              <Section title="Needs you" count={attention.length} tone="attention" hint="Didn’t go out, or waiting for you to post by hand.">
+                <PostList posts={attention} onChanged={changed} highlight={item} />
+              </Section>
+            )}
+            <Section title="Going out" count={upcomingTotal} hint={upcomingTotal > upcoming.length ? `Showing the next ${upcoming.length}.` : undefined}>
+              <PostList posts={upcoming} onChanged={changed} highlight={item} emptyText="Nothing scheduled." />
+            </Section>
+            {drafts.length > 0 && (
+              <Section title="Drafts" count={drafts.length} hint="Saved in Publishing but not scheduled.">
+                <PostList posts={drafts} onChanged={changed} highlight={item} />
+              </Section>
+            )}
+          </>
+        ))}
+
+      {tab === 'history' &&
+        (history === null ? (
+          <Loading />
+        ) : (
+          <>
+            <Box sx={{ display: 'flex', gap: 1, mb: 1.5 }} role="group" aria-label="Show">
+              {(['all', 'published', 'cancelled'] as HistoryFilter[]).map((f) => (
+                <Chip
+                  key={f}
+                  label={f === 'all' ? 'All' : f === 'published' ? 'Published' : 'Cancelled'}
+                  onClick={() => setHistoryFilter(f)}
+                  variant={historyFilter === f ? 'filled' : 'outlined'}
+                  aria-pressed={historyFilter === f}
+                />
+              ))}
+            </Box>
+            <PostList posts={history} onChanged={changed} highlight={item} emptyText={historyFilter === 'cancelled' ? 'Nothing cancelled.' : 'Nothing has gone out yet.'} />
+            {historyTotal > history.length && (
+              <Button
+                sx={{ mt: 1.5 }}
+                onClick={() => {
+                  const next = historyPage + 1;
+                  setHistoryPage(next);
+                  loadHistory(next, historyFilter);
+                }}
+              >
+                Show more ({historyTotal - history.length} left)
+              </Button>
+            )}
+          </>
+        ))}
+
+      {tab === 'accounts' &&
+        (channels === null ? (
+          <Loading />
+        ) : (
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 1.5 }}>
+            {PLATFORM_ORDER.map((p) => {
+              const info = status?.platforms.find((x) => x.id === p);
+              const accounts = channels.filter((ch) => ch.platform === p);
+              return (
+                <Box key={p} component="section" aria-label={PLATFORM_LABELS[p]} sx={{ p: 2, border: '1px solid var(--border)', borderRadius: 'var(--r-panel)', bgcolor: 'var(--bg-panel)' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                    <PlatformBadge platform={p} />
+                    <Typography sx={{ fontWeight: 600, fontSize: 15, flex: 1, color: 'var(--text-strong)' }}>{PLATFORM_LABELS[p]}</Typography>
+                    {info?.ready ? (
+                      <Button size="small" variant="outlined" startIcon={busy === p ? <CircularProgress size={14} /> : <AddIcon />} disabled={busy === p} onClick={() => connect(p)}>
+                        Connect
+                      </Button>
+                    ) : (
+                      <Chip size="small" label="Post by hand for now" />
+                    )}
+                  </Box>
+                  {accounts.map((ch) => (
+                    <Box key={ch.id} sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5 }}>
+                      <Avatar src={ch.avatarUrl || undefined} sx={{ width: 26, height: 26, fontSize: 12 }}>
+                        {ch.name.slice(0, 1)}
+                      </Avatar>
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography noWrap sx={{ fontSize: 14 }}>
+                          {ch.name}
+                          {ch.username ? ` · @${ch.username}` : ''}
+                        </Typography>
+                        {ch.status !== 'active' && (
+                          <Typography sx={{ fontSize: 12.5, color: 'var(--st-attention-fg)' }}>
+                            Needs reconnecting{ch.lastError ? `: ${ch.lastError}` : ''}
+                          </Typography>
+                        )}
+                      </Box>
+                      {ch.simulated && <Chip size="small" label="Test" sx={{ height: 20 }} />}
+                      {ch.accountType !== 'person' && !ch.simulated && <Chip size="small" label={ACCOUNT_TYPES[ch.accountType] || ch.accountType} sx={{ height: 20 }} />}
+                      {ch.status !== 'active' && info?.ready && (
+                        <Button size="small" onClick={() => connect(p)}>
+                          Reconnect
+                        </Button>
+                      )}
+                      <Tooltip title="Disconnect">
+                        <span>
+                          <IconButton size="small" aria-label={`Disconnect ${ch.name}`} disabled={busy === ch.id} onClick={() => setDisconnecting(ch)}>
+                            <DisconnectIcon fontSize="small" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                    </Box>
+                  ))}
+                  {!accounts.length && (
+                    <Typography sx={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                      {info?.ready
+                        ? 'No accounts connected.'
+                        : 'This platform isn’t switched on yet. You can still plan posts for it: Blueprint reminds you when it’s time to post by hand.'}
+                    </Typography>
+                  )}
+                  {status?.testMode && !accounts.some((a) => a.simulated) && (
+                    <Button size="small" startIcon={<TestIcon />} sx={{ mt: 1 }} disabled={busy === p} onClick={() => addTest(p)}>
+                      Add a test account
+                    </Button>
+                  )}
+                </Box>
+              );
+            })}
+          </Box>
+        ))}
+
+      <Dialog open={Boolean(disconnecting)} onClose={() => setDisconnecting(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Disconnect {disconnecting?.platformName}?</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ fontSize: 14 }}>
+            “{disconnecting?.name}” will be disconnected and anything scheduled to it will be cancelled. You can connect it again later.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDisconnecting(null)}>Keep it</Button>
+          <Button color="error" variant="contained" onClick={() => disconnecting && disconnect(disconnecting)}>
+            Disconnect
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}
+
+function Loading() {
+  return (
+    <Box sx={{ display: 'grid', placeItems: 'center', py: 6 }}>
+      <CircularProgress size={22} sx={{ color: 'var(--text-muted)' }} />
+    </Box>
+  );
+}
+
+function Section({ title, count, hint, tone, children }: { title: string; count?: number; hint?: string; tone?: 'attention'; children: ReactNode }) {
+  return (
+    <Box component="section" sx={{ mb: 3 }}>
+      <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, mb: 1, flexWrap: 'wrap' }}>
+        <Typography component="h2" sx={{ fontSize: 15, fontWeight: 700, color: tone === 'attention' ? 'var(--st-attention-fg)' : 'var(--text-strong)' }}>
+          {title}
+          {count !== undefined ? ` · ${count}` : ''}
+        </Typography>
+        {hint && <Typography sx={{ fontSize: 12.5, color: 'var(--text-muted)' }}>{hint}</Typography>}
+      </Box>
+      {children}
     </Box>
   );
 }

@@ -12,7 +12,6 @@ import {
   DialogTitle,
   FormControlLabel,
   IconButton,
-  Snackbar,
   Switch,
   Tab,
   Tabs,
@@ -27,6 +26,10 @@ import { useInboxStore } from '../../store/inboxStore';
 import { useBlueStore } from '../../store/blueStore';
 import { useAuthStore } from '../../store/authStore';
 import { UserRole } from '../../types';
+import PageHeader from '../../components/ui/PageHeader';
+import { useOpenPost } from '../../components/posts/PostPanelHost';
+import { appPath } from '../../lib/paths';
+import { errorMessage, notify } from '../../store/toastStore';
 
 const BOXES: { id: InboxBox; label: string }[] = [
   { id: 'action', label: 'Needs action' },
@@ -53,7 +56,15 @@ export default function InboxPage() {
   const [showClosed, setShowClosed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const openPost = useOpenPost();
+  // Links in reminders: a post opens beside the Inbox; anything else goes to its page.
+  const go = (link: string) => {
+    const path = appPath(link);
+    if (!path) return;
+    const post = path.match(/^\/posts\/([a-f0-9]{24})(?:[?#]|$)/i);
+    if (post) openPost(post[1]);
+    else navigate(path);
+  };
   const [composeOpen, setComposeOpen] = useState(false);
   const [prefsOpen, setPrefsOpen] = useState(false);
 
@@ -106,7 +117,7 @@ export default function InboxPage() {
   };
 
   const afterAction = (message: string, next?: InboxItem, openBlue?: string) => {
-    setToast(message);
+    if (message) notify(message);
     if (next) updateItem(next);
     if (openBlue) {
       if (blue.status?.available) {
@@ -114,7 +125,7 @@ export default function InboxPage() {
         blue.setOpen(true);
         void blue.send(openBlue);
       } else {
-        setToast('Blue is not available on your account, so the post can’t be drafted automatically.');
+        notify('Blue isn’t available on your account, so the post can’t be drafted automatically.', { tone: 'info' });
       }
     }
     refreshCounts();
@@ -126,30 +137,38 @@ export default function InboxPage() {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flexWrap: 'wrap' }}>
-        <Typography variant="h4" sx={{ flex: 1 }}>
-          Inbox
-        </Typography>
-        <Tooltip title="Mark everything here as read">
-          <IconButton
-            onClick={async () => {
-              await inboxAPI.readAll(box);
-              load();
-              refreshCounts();
-            }}
-          >
-            <ReadAllIcon />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Reminder settings">
-          <IconButton onClick={() => setPrefsOpen(true)}>
-            <PrefsIcon />
-          </IconButton>
-        </Tooltip>
-        <Button variant="contained" startIcon={<ComposeIcon />} onClick={() => setComposeOpen(true)}>
-          Message support
-        </Button>
-      </Box>
+      <PageHeader
+        title="Inbox"
+        subtitle="Reminders that need you, updates, and messages with the Blueprint team."
+        actions={
+          <>
+            <Tooltip title="Mark everything here as read">
+              <IconButton
+                aria-label="Mark everything here as read"
+                onClick={async () => {
+                  try {
+                    await inboxAPI.readAll(box);
+                    load();
+                    refreshCounts();
+                  } catch (e) {
+                    notify(errorMessage(e), { tone: 'error' });
+                  }
+                }}
+              >
+                <ReadAllIcon />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Reminder settings">
+              <IconButton aria-label="Reminder settings" onClick={() => setPrefsOpen(true)}>
+                <PrefsIcon />
+              </IconButton>
+            </Tooltip>
+            <Button variant="contained" startIcon={<ComposeIcon />} onClick={() => setComposeOpen(true)}>
+              Message support
+            </Button>
+          </>
+        }
+      />
 
       <Box sx={{ display: 'grid', gridTemplateColumns: narrow ? '1fr' : 'minmax(280px, 380px) 1fr', gap: 2, alignItems: 'start' }}>
         {showList && (
@@ -221,7 +240,7 @@ export default function InboxPage() {
         {showDetail && (
           <Box sx={{ border: '1px solid var(--border)', borderRadius: 'var(--r-panel)', bgcolor: 'var(--bg-raised)', minHeight: 320, p: 2.5 }}>
             {selected ? (
-              <ItemDetail key={selected.id} item={selected} narrow={narrow} onBack={() => setQuery({ item: null })} onDone={afterAction} onNavigate={(path) => navigate(path)} />
+              <ItemDetail key={selected.id} item={selected} narrow={narrow} onBack={() => setQuery({ item: null })} onDone={afterAction} onNavigate={go} />
             ) : (
               <Typography sx={{ color: 'var(--text-muted)', fontSize: 'var(--fs-sm)', textAlign: 'center', mt: 10 }}>Choose an item to see it here.</Typography>
             )}
@@ -234,13 +253,12 @@ export default function InboxPage() {
         onClose={() => setComposeOpen(false)}
         onSent={() => {
           setComposeOpen(false);
-          setToast('Sent to the Blueprint team');
+          notify('Sent to the Blueprint team');
           setQuery({ box: 'message', item: null });
           refreshCounts();
         }}
       />
-      <PreferencesDialog open={prefsOpen} onClose={() => setPrefsOpen(false)} onSaved={() => setToast('Saved')} />
-      <Snackbar open={!!toast} autoHideDuration={5000} onClose={() => setToast(null)} message={toast} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
+      <PreferencesDialog open={prefsOpen} onClose={() => setPrefsOpen(false)} onSaved={() => notify('Saved')} />
     </Box>
   );
 }
@@ -264,6 +282,7 @@ function ItemDetail({
   const [inputValue, setInputValue] = useState('');
   const [reply, setReply] = useState('');
   const [thread, setThread] = useState<Thread | null>(null);
+  const [confirming, setConfirming] = useState<{ action: InboxAction; value?: string } | null>(null);
 
   const loadThread = useCallback(async () => {
     if (!item.threadId) return;
@@ -278,7 +297,7 @@ function ItemDetail({
     loadThread();
   }, [loadThread]);
 
-  const run = async (action: InboxAction, value?: string) => {
+  const run = async (action: InboxAction, value?: string, confirmed = false) => {
     if (action.link) {
       onNavigate(action.link);
       return;
@@ -288,15 +307,19 @@ function ItemDetail({
       setInputValue('');
       return;
     }
-    if (action.confirm && !window.confirm(action.confirm)) return;
+    if (action.confirm && !confirmed) {
+      setConfirming({ action, value });
+      return;
+    }
+    setConfirming(null);
     setBusy(action.id);
     setError(null);
     try {
       const r = await inboxAPI.act(item.id, action.id, value);
       setInputFor(null);
       onDone(r.message, r.item, r.openBlue);
-    } catch (e: any) {
-      setError(e?.response?.data?.message || 'That didn’t work');
+    } catch (e) {
+      setError(errorMessage(e, 'That didn’t work. Try again.'));
     } finally {
       setBusy(null);
     }
@@ -318,8 +341,8 @@ function ItemDetail({
         onDone(r.message, r.item, r.openBlue);
         if (r.threadId) setThread(await inboxAPI.thread(r.threadId));
       }
-    } catch (e: any) {
-      setError(e?.response?.data?.message || 'Could not send the reply');
+    } catch (e) {
+      setError(errorMessage(e, 'Couldn’t send the reply.'));
     } finally {
       setBusy(null);
     }
@@ -424,6 +447,16 @@ function ItemDetail({
             {inputFor.label}
           </Button>
           <Button onClick={() => setInputFor(null)}>Cancel</Button>
+        </Box>
+      )}
+
+      {confirming && (
+        <Box role="alertdialog" aria-label="Confirm" sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', p: 1.5, borderRadius: 'var(--r-card)', bgcolor: 'var(--bg-subtle)', border: '1px solid var(--border)' }}>
+          <Typography sx={{ flex: 1, minWidth: 200, fontSize: 14 }}>{confirming.action.confirm}</Typography>
+          <Button onClick={() => setConfirming(null)}>Cancel</Button>
+          <Button variant="contained" disabled={busy !== null} onClick={() => run(confirming.action, confirming.value, true)}>
+            {confirming.action.label}
+          </Button>
         </Box>
       )}
 
