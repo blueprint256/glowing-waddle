@@ -69,6 +69,18 @@ const mediaSchema = new Schema<PostMedia>(
   { _id: false }
 );
 
+// A field literally called "type" must be written as { type: String }: Mongoose reads a bare
+// `type: String` as the type of the whole object, which turned this list into a list of strings.
+const eventSchema = new Schema(
+  {
+    at: { type: Date, default: Date.now },
+    type: { type: String, required: true },
+    message: String,
+    by: { type: Schema.Types.ObjectId, ref: 'User' }
+  },
+  { _id: false }
+);
+
 const schema = new Schema<ISocialPost>(
   {
     ownerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
@@ -91,10 +103,7 @@ const schema = new Schema<ISocialPost>(
     lockedAt: Date,
     progress: String,
     lastError: String,
-    events: {
-      type: [{ at: { type: Date, default: Date.now }, type: String, message: String, by: { type: Schema.Types.ObjectId, ref: 'User' }, _id: false }],
-      default: []
-    },
+    events: { type: [eventSchema], default: [] },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true }
   },
   { timestamps: true, minimize: false }

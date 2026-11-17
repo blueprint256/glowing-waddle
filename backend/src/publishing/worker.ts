@@ -130,15 +130,24 @@ async function checkProcessing(post: ISocialPost, fetchImpl: FetchLike = default
 
 async function tick() {
   const now = new Date();
+  // Each step is independent, so a problem in one never stops the others.
   try {
     // 1. Manual posts: time to post by hand.
     await SocialPost.updateMany(
       { mode: 'manual', status: 'scheduled', scheduledAt: { $lte: now } },
       { $set: { status: 'due' }, $push: { events: event('due', 'Time to post this by hand') } }
     );
+  } catch (error) {
+    console.error('[publishing] could not mark posts due:', error);
+  }
+  try {
     // 4. Interrupted uploads: we can't know whether the platform received the post, so don't repeat it.
     const stale = await SocialPost.find({ status: 'publishing', lockedAt: { $lt: new Date(Date.now() - STALE_MS) } }).limit(20);
     for (const p of stale) await fail(p, 'Publishing was interrupted. Check the account to see whether it went out before retrying.');
+  } catch (error) {
+    console.error('[publishing] could not check interrupted posts:', error);
+  }
+  try {
 
     // 2 + 3. Claim work up to the concurrency limit.
     while (running < CONCURRENCY) {
@@ -168,9 +177,19 @@ async function tick() {
   }
 }
 
+/** Posts saved while the history field was misdefined may hold text entries; clear those once. */
+async function repairEventHistory() {
+  try {
+    const r = await SocialPost.collection.updateMany({ 'events.0': { $type: 'string' } }, { $set: { events: [] } });
+    if (r.modifiedCount) console.log(`[publishing] repaired the history of ${r.modifiedCount} post(s)`);
+  } catch (error) {
+    console.error('[publishing] could not repair post history:', error);
+  }
+}
+
 export function startPublishingWorker() {
   if (timer || process.env.PUBLISHING_WORKER === 'off') return;
   timer = setInterval(tick, POLL_MS);
-  setTimeout(tick, 3000);
+  setTimeout(() => void repairEventHistory().then(tick), 3000);
   console.log('📣 Publishing scheduler started');
 }
