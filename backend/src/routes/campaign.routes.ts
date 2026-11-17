@@ -599,9 +599,14 @@ router.post('/:id/generate', isAuthenticated, validateMongoId('id'), async (req:
       .populate('steps.promptId');
 
     if (!commandMapping) {
+      // List what does exist, so people (and assistants) can pick a valid command.
+      const available = (await CommandMapping.distinct('command')).filter(Boolean).sort();
       return res.status(404).json({
         success: false,
-        message: `Command '${command.trim()}' is not configured. Please contact your administrator to set up this command.`
+        message: available.length
+          ? `Command '${command.trim()}' is not configured. Available commands: ${available.join(', ')}.`
+          : `Command '${command.trim()}' is not configured, and no AI commands are set up yet. A System Admin adds them in Settings → Command Mappings.`,
+        availableCommands: available
       });
     }
 

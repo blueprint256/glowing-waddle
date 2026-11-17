@@ -334,7 +334,13 @@ export async function checkPosts(ownerId: Id, input: Pick<CreatePostsInput, 'tex
 export async function createPosts(user: IUser, ownerId: Id, input: CreatePostsInput, extra: { taskId?: Id; campaignId?: Id } = {}) {
   const text = typeof input.text === 'string' ? input.text : '';
   const check = await checkPosts(ownerId, input);
-  if (input.when !== 'draft' && !check.ok) throw new PublishingError(400, 'Fix the problems before scheduling', check.targets);
+  if (input.when !== 'draft' && !check.ok) {
+    // Say exactly what's wrong (the form shows it per destination; assistants only see this message).
+    const problems = check.targets
+      .filter((t) => t.problems.some((p) => p.level === 'error'))
+      .map((t) => `${t.label}: ${t.problems.filter((p) => p.level === 'error').map((p) => p.message).join(' ')}`);
+    throw new PublishingError(400, `Fix these before scheduling — ${problems.join(' | ')}`, check.targets);
+  }
   let scheduledAt = new Date();
   if (input.when === 'schedule') {
     const d = new Date(String(input.scheduledAt || ''));

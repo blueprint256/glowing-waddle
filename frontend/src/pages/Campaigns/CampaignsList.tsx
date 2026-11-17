@@ -32,6 +32,7 @@ export default function CampaignsList() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ total: 0, pages: 0, limit: 10 });
   const [formData, setFormData] = useState({
@@ -57,6 +58,9 @@ export default function CampaignsList() {
   };
 
   const handleCreate = async () => {
+    // Ignore double clicks while saving (they created duplicate campaigns).
+    if (creating) return;
+    setCreating(true);
     try {
       await campaignAPI.create(formData);
       setOpen(false);
@@ -64,6 +68,8 @@ export default function CampaignsList() {
       loadCampaigns();
     } catch (error: any) {
       alert(error.response?.data?.message || 'Failed to create campaign');
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -285,7 +291,7 @@ export default function CampaignsList() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={handleCreate} variant="contained">
+          <Button onClick={handleCreate} variant="contained" disabled={creating || !formData.name.trim()}>
             Create
           </Button>
         </DialogActions>

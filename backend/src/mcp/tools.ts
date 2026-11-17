@@ -712,19 +712,33 @@ const taskTools: Tool[] = [
     ),
     annotations: CREATE,
     handler: async (args, ctx) => {
-      const results: any[] = [];
-      for (let i = 0; i < args.tasks.length; i++) {
+      // Created a few at a time (not one by one) so large calendars don't take minutes on a slow
+      // database connection, while keeping the order of results.
+      const results: any[] = new Array(args.tasks.length);
+      let stop = false;
+      const createOne = async (i: number) => {
+        if (stop) {
+          results[i] = { index: i, created: false, name: args.tasks[i].name, error: 'Skipped after an earlier access error' };
+          return;
+        }
         try {
           const res = await ctx.api.request('POST', '/api/tasks', {
             body: { projectId: args.project_id, ...pick(args.tasks[i], taskMapping) }
           });
-          results.push({ index: i, created: true, task: shapeTask(res.task, ctx.appUrl) });
+          results[i] = { index: i, created: true, task: shapeTask(res.task, ctx.appUrl) };
         } catch (error: any) {
-          results.push({ index: i, created: false, name: args.tasks[i].name, error: error?.message || String(error) });
+          results[i] = { index: i, created: false, name: args.tasks[i].name, error: error?.message || String(error) };
           // Stop early on errors that will repeat for every task (no access / project gone).
-          if (error?.status === 401 || error?.status === 403 || error?.status === 404) break;
+          if (error?.status === 401 || error?.status === 403 || error?.status === 404) stop = true;
         }
-      }
+      };
+      const CONCURRENCY = 4;
+      let next = 0;
+      await Promise.all(
+        Array.from({ length: Math.min(CONCURRENCY, args.tasks.length) }, async () => {
+          while (next < args.tasks.length) await createOne(next++);
+        })
+      );
       const created = results.filter((r) => r.created).length;
       return { message: `Created ${created} of ${args.tasks.length} task(s)`, results };
     }
@@ -849,7 +863,7 @@ const aiTools: Tool[] = [
     inputSchema: obj(
       {
         campaign_id: id('Campaign ID.'),
-        command: { type: 'string', minLength: 1, maxLength: 200, description: 'Name of the AI command configured by the administrator.' }
+        command: { type: 'string', minLength: 1, maxLength: 200, description: 'Name of the AI command configured by the administrator. If unsure, try one: an unknown name returns the list of available commands.' }
       },
       ['campaign_id', 'command']
     ),
