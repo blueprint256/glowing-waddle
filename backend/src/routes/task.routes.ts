@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import multer from 'multer';
 import { Task, TaskStatus } from '../models/Task';
+import { SocialPost } from '../models/SocialPost';
 import { Project } from '../models/Project';
 import { Campaign } from '../models/Campaign';
 import { User, UserRole } from '../models/User';
@@ -18,6 +19,7 @@ import { AuditAction } from '../models/AuditLog';
 import { searchRegex } from '../utils/regex';
 import { uploadTaskImage, uploadImageFromUrl } from '../utils/s3Service';
 import { generateWithPrompt, generateImageWithPrompt, executeCommandChain } from '../services/llmService';
+import { BUILTIN_IMPROVE_BRIEF, BUILTIN_IMPROVE_CAPTION, CAPTION_STYLES, aiErrorMessage, postContext, runPostCommand } from '../services/postAI';
 import mongoose from 'mongoose';
 
 const router = express.Router();
@@ -171,14 +173,30 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
       query.status = { $in: [...new Set(statuses.map((s) => normalizePostStatus(s)).filter(Boolean))] };
     }
 
-    // Filter by date range if provided
-    if (req.query.dateFrom || req.query.dateTo) {
+    // Filter by date range if provided (unreadable dates are ignored rather than failing the request)
+    const dateParam = (v: unknown) => {
+      if (typeof v !== 'string' || !v) return null;
+      const d = new Date(v);
+      return Number.isNaN(d.getTime()) ? null : d;
+    };
+    const dateFrom = dateParam(req.query.dateFrom);
+    const dateTo = dateParam(req.query.dateTo);
+    if (req.query.unscheduled === 'true') {
+      // Posts without a day yet (the Planner's "Not scheduled" tray).
+      query.taskDate = null;
+    } else if (dateFrom || dateTo) {
       query.taskDate = {};
-      if (req.query.dateFrom) {
-        query.taskDate.$gte = new Date(req.query.dateFrom as string);
-      }
-      if (req.query.dateTo) {
-        query.taskDate.$lte = new Date(req.query.dateTo as string);
+      if (dateFrom) query.taskDate.$gte = dateFrom;
+      if (dateTo) query.taskDate.$lte = dateTo;
+    }
+
+    // Leave out posts of archived campaigns (the Planner and Today).
+    if (req.query.excludeArchived === 'true') {
+      const archived = await Campaign.find({ archived: true }).select('_id');
+      if (archived.length) {
+        const ids = archived.map((c) => String(c._id));
+        if (query.campaignId?.$in) query.campaignId.$in = query.campaignId.$in.filter((id: any) => !ids.includes(String(id)));
+        else query.campaignId = { $nin: archived.map((c) => c._id) };
       }
     }
 
@@ -236,9 +254,37 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
       .skip(skip)
       .limit(limit);
 
+    // include=publishing: where and when each post goes out (one query for the whole page),
+    // so calendar cards can show platforms and times.
+    let out: any[] = tasks;
+    if (String(req.query.include || '').split(',').includes('publishing') && tasks.length) {
+      const records = await SocialPost.find({ taskId: { $in: tasks.map((t) => t._id) }, status: { $ne: 'cancelled' } })
+        .select('taskId platform status scheduledAt publishedAt')
+        .lean();
+      const byTask = new Map<string, any[]>();
+      for (const r of records) byTask.set(String(r.taskId), [...(byTask.get(String(r.taskId)) || []), r]);
+      out = tasks.map((t) => {
+        const list = byTask.get(String(t._id)) || [];
+        const upcoming = list.filter((r) => ['scheduled', 'publishing', 'processing', 'due'].includes(r.status) && r.scheduledAt);
+        const published = list.filter((r) => r.status === 'published');
+        const next = upcoming.sort((a, b) => +new Date(a.scheduledAt) - +new Date(b.scheduledAt))[0];
+        return {
+          ...t.toObject(),
+          publishing: list.length
+            ? {
+                platforms: [...new Set(list.filter((r) => r.status !== 'draft').map((r) => r.platform))],
+                nextAt: next?.scheduledAt || null,
+                publishedAt: published.reduce<Date | null>((latest, r) => (r.publishedAt && (!latest || +new Date(r.publishedAt) > +latest) ? new Date(r.publishedAt) : latest), null),
+                failed: list.some((r) => r.status === 'failed' || r.status === 'due')
+              }
+            : null
+        };
+      });
+    }
+
     res.json({
       success: true,
-      tasks,
+      tasks: out,
       pagination: {
         total,
         page,
@@ -264,20 +310,29 @@ router.get('/:id', isAuthenticated, validateMongoId('id'), checkTaskOwnership, a
   try {
     const task = await Task.findById(req.params.id)
       .populate('projectId', 'name status')
-      .populate('campaignId', 'name')
+      .populate('campaignId', 'name createdBy startDate endDate')
       .populate('createdBy', 'firstName lastName email')
       .populate('lastModifiedBy', 'firstName lastName');
 
     if (!task) {
       return res.status(404).json({
         success: false,
-        message: 'Task not found'
+        message: 'Post not found'
       });
     }
 
+    // The brand the post belongs to (the campaign owner's), for true-to-life previews.
+    const ownerId = (task.campaignId as any)?.createdBy;
+    const owner = ownerId ? await User.findById(ownerId).select('companyInfo.companyName companyInfo.primaryLogoUrl firstName lastName') : null;
+    const brand = {
+      name: owner?.companyInfo?.companyName || (owner ? `${owner.firstName} ${owner.lastName}`.trim() : ''),
+      logoUrl: owner?.companyInfo?.primaryLogoUrl || null
+    };
+
     res.json({
       success: true,
-      task
+      task,
+      brand
     });
   } catch (error: any) {
     console.error('Error fetching task:', error);
@@ -408,81 +463,89 @@ router.post('/:id/upload-image', isAuthenticated, canManageTasks, validateMongoI
 
 /**
  * @route   POST /api/tasks/:id/refine-description
- * @desc    Refine task description using LLM with command-to-prompt mapping
- * @access  Private (System Admin, Hybrid)
+ * @desc    Improve brief: rewrites the post's brief with AI. Returns a suggestion only (nothing is saved).
+ *          Body (optional): { brief } to improve unsaved text. Uses the "refine-task-description"
+ *          command when it's set up, else a built-in prompt.
+ * @access  Private (System Admin, Hybrid; AI on)
  */
 router.post('/:id/refine-description', isAuthenticated, canManageTasks, validateMongoId('id'), checkTaskOwnership, async (req: Request, res: Response) => {
   try {
     const task = await Task.findById(req.params.id);
-    if (!task) {
-      return res.status(404).json({
-        success: false,
-        message: 'Task not found'
-      });
+    if (!task) return res.status(404).json({ success: false, message: 'Post not found' });
+
+    const brief = typeof req.body?.brief === 'string' ? req.body.brief : task.description || '';
+    const caption = typeof req.body?.caption === 'string' ? req.body.caption : task.content || '';
+    if (!brief.trim() && !task.name.trim()) {
+      return res.status(400).json({ success: false, message: 'Write a few words in the brief first.' });
     }
 
-    if (!task.description || task.description.trim().length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Task has no description to refine'
-      });
-    }
-
-    // Resolve command-to-prompt mapping for "refine-task-description"
-    const commandName = 'refine-task-description';
-    const mapping = await CommandMapping.findOne({ command: commandName })
-      .populate('promptId')
-      .populate('chainId')
-      .populate('steps.promptId');
-
-    if (!mapping || (!mapping.promptId && !mapping.chainId && (!mapping.steps || mapping.steps.length === 0))) {
-      return res.status(400).json({
-        success: false,
-        message: `No prompt configured for "${commandName}" command. Please configure it in Settings → Command Mappings.`
-      });
-    }
-
-    // Brand of the campaign owner (an admin refining a client's task gets the client's brand).
-    const refineCampaign = await Campaign.findById(task.campaignId);
-    const user = await User.findById(refineCampaign?.createdBy || req.user!._id);
-    const companyInfo = user?.companyInfo;
-
-    // Build dynamic data for prompt compilation
-    const dynamicData: any = {
-      taskDescription: task.description,
+    const { campaign, companyInfo } = await postContext(task, req.user!._id as mongoose.Types.ObjectId);
+    const data: Record<string, unknown> = {
       taskName: task.name,
-      taskContent: task.content || '',
-      ...(refineCampaign ? { campaignDetails: refineCampaign } : {})
+      taskDescription: brief,
+      taskContent: caption,
+      ...(campaign ? { campaignDetails: campaign } : {}),
+      ...(companyInfo ? { companyInfo } : {})
     };
-
-    // Add company info if available
-    if (companyInfo) {
-      dynamicData.companyInfo = companyInfo;
-    }
-
-    // Execute command using chain execution (supports single prompts, chains, and legacy steps)
-    const result = await executeCommandChain(
-      mapping,
-      dynamicData,
-      {
-        userId: req.user!._id
-      }
+    const { text } = await runPostCommand(
+      'refine-task-description',
+      { name: 'Improve brief', template: BUILTIN_IMPROVE_BRIEF },
+      data,
+      req.user!._id as mongoose.Types.ObjectId
     );
 
-    res.json({
-      success: true,
-      message: 'Task description refined successfully',
-      originalDescription: task.description,
-      refinedDescription: result.content.trim(),
-      usage: result.usage
-    });
-
+    res.json({ success: true, message: 'Suggestion ready', originalDescription: brief, refinedDescription: text });
   } catch (error: any) {
-    console.error('Error refining task description:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Error refining task description'
-    });
+    console.error('Error improving brief:', error);
+    const { status, message } = aiErrorMessage(error, 'Couldn’t improve the brief. Try again.');
+    res.status(status).json({ success: false, message });
+  }
+});
+
+/**
+ * @route   POST /api/tasks/:id/improve-caption
+ * @desc    Improve caption with AI. Returns a suggestion only (nothing is saved).
+ *          Body: { style?: improve|shorter|playful|professional|fix|cta|hashtags|x|linkedin|instagram|write,
+ *                  caption?, brief? }  (caption/brief: unsaved text to work from)
+ *          Uses the "improve-caption" command when it's set up, else a built-in prompt.
+ * @access  Private (System Admin, Hybrid; AI on)
+ */
+router.post('/:id/improve-caption', isAuthenticated, canManageTasks, validateMongoId('id'), checkTaskOwnership, async (req: Request, res: Response) => {
+  try {
+    const task = await Task.findById(req.params.id);
+    if (!task) return res.status(404).json({ success: false, message: 'Post not found' });
+
+    const caption = typeof req.body?.caption === 'string' ? req.body.caption : task.content || '';
+    const brief = typeof req.body?.brief === 'string' ? req.body.brief : task.description || '';
+    let styleKey = typeof req.body?.style === 'string' && CAPTION_STYLES[req.body.style] ? req.body.style : 'improve';
+    if (!caption.trim()) styleKey = 'write';
+    if (styleKey === 'write' && !brief.trim() && !task.name.trim()) {
+      return res.status(400).json({ success: false, message: 'Add a brief or a title first, so the AI knows what to write.' });
+    }
+    const style = CAPTION_STYLES[styleKey];
+
+    const { campaign, companyInfo } = await postContext(task, req.user!._id as mongoose.Types.ObjectId);
+    const data: Record<string, unknown> = {
+      taskName: task.name,
+      taskDescription: brief,
+      taskContent: caption,
+      instruction: style.instruction,
+      platform: style.platform || '',
+      ...(campaign ? { campaignDetails: campaign } : {}),
+      ...(companyInfo ? { companyInfo } : {})
+    };
+    const { text } = await runPostCommand(
+      'improve-caption',
+      { name: 'Improve caption', template: BUILTIN_IMPROVE_CAPTION },
+      data,
+      req.user!._id as mongoose.Types.ObjectId
+    );
+
+    res.json({ success: true, style: styleKey, label: style.label, original: caption, suggestion: text });
+  } catch (error: any) {
+    console.error('Error improving caption:', error);
+    const { status, message } = aiErrorMessage(error, 'Couldn’t improve the caption. Try again.');
+    res.status(status).json({ success: false, message });
   }
 });
 

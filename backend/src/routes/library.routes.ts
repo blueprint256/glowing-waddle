@@ -13,7 +13,8 @@ import { AppConfig } from '../models/AppConfig';
 import { LibraryAsset } from '../models/LibraryAsset';
 import { LibraryVersion } from '../models/LibraryVersion';
 import { LibraryJob } from '../models/LibraryJob';
-import { signedObjectUrl } from '../utils/s3Service';
+import { signedObjectUrl, getObjectBuffer, uploadBufferToS3 } from '../utils/s3Service';
+import { loadTaskForPublishing, PublishingError } from '../publishing/service';
 import { getProviderKey } from '../services/llmService';
 import { logAudit } from '../utils/auditLogger';
 import { AuditAction } from '../models/AuditLog';
@@ -418,6 +419,33 @@ router.post('/items/:id/versions/:versionId/restore', isAuthenticated, requireLi
     res.json({ success: true, item: itemWithVersions(asset, await listVersions(asset._id as Id)) });
   } catch (error) {
     fail(res, error, 'Could not restore the version');
+  }
+});
+
+/**
+ * Use a Library picture (current or an older version) as a post's image. The picture is copied to
+ * the post's own storage, so later Library changes don't alter a post that may already be scheduled.
+ * Body: { taskId, versionId? }. The picture and the post must belong to the same account.
+ */
+router.post('/items/:id/use-on-post', isAuthenticated, requireLibrary, async (req: Request, res: Response) => {
+  try {
+    const asset = await loadAccessibleAsset(req.user!, req.params.id);
+    const versionId = typeof req.body?.versionId === 'string' && mongoose.isValidObjectId(req.body.versionId) ? req.body.versionId : asset.currentVersionId;
+    const version = await LibraryVersion.findOne({ _id: versionId, assetId: asset._id });
+    if (!version) throw new LibraryError(404, 'Version not found');
+    if (!/^image\/(png|jpe?g|webp|gif)$/i.test(version.mime)) throw new LibraryError(400, 'Only pictures (PNG, JPG, WebP, GIF) can be used as a post image');
+    const { task, ownerId } = await loadTaskForPublishing(req.user!, req.body?.taskId);
+    if (String(asset.ownerId) !== String(ownerId)) throw new LibraryError(400, 'That picture is in another account’s Library');
+    const buffer = await getObjectBuffer(version.s3Key, 25 * 1024 * 1024);
+    const url = await uploadBufferToS3(buffer, version.mime.toLowerCase().replace('image/jpg', 'image/jpeg'), 'task-images');
+    task.designedImage = url;
+    task.lastModifiedBy = req.user!._id as Id;
+    await task.save();
+    await logAudit({ action: AuditAction.EVENT_UPDATED, userId: req.user!._id as Id, targetType: 'Task', targetId: task._id as Id, metadata: { action: 'library-image-used', assetId: String(asset._id), versionId: String(version._id) }, req });
+    res.json({ success: true, message: 'Image updated', imageUrl: url, taskId: String(task._id) });
+  } catch (error) {
+    if (error instanceof PublishingError) return res.status(error.status).json({ success: false, message: error.message.replace(/task/gi, 'post') });
+    fail(res, error, 'Could not use this picture on the post');
   }
 });
 

@@ -1,0 +1,82 @@
+/**
+ * Every address in the app comes from here (mirrors backend/src/lib/links.ts), so a page can move
+ * without breaking links. People see "post" and "theme"; the API keeps "task" and "project".
+ *
+ * Any page can open a post in the side panel by adding ?post=<id> (see components/posts/PostPanelHost).
+ */
+
+const id = (v: unknown): string => {
+  if (v && typeof v === 'object' && '_id' in (v as any)) return String((v as any)._id);
+  if (v && typeof v === 'object' && 'id' in (v as any)) return String((v as any).id);
+  return String(v ?? '');
+};
+
+const query = (params: Record<string, string | number | boolean | undefined | null>): string => {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== '' && v !== false) q.set(k, String(v));
+  const s = q.toString();
+  return s ? `?${s}` : '';
+};
+
+export type PlannerView = 'month' | 'week' | 'list';
+export type PublishingTab = 'queue' | 'accounts' | 'history';
+export type SettingsSection = 'profile' | 'brand' | 'ai' | 'accounts' | 'integrations' | 'library' | 'blue' | 'admin';
+
+export interface PlannerParams {
+  view?: PlannerView;
+  date?: string;
+  campaign?: unknown;
+  theme?: unknown;
+  status?: string;
+  group?: 'campaign' | 'theme' | 'none';
+}
+
+export const paths = {
+  today: () => '/',
+  planner: (p: PlannerParams = {}) =>
+    `/planner${query({
+      view: p.view,
+      date: p.date,
+      campaign: p.campaign ? id(p.campaign) : undefined,
+      theme: p.theme ? id(p.theme) : undefined,
+      status: p.status,
+      group: p.group
+    })}`,
+  /** A post on its own page. To open it beside the current page, use useOpenPost(). */
+  post: (taskId: unknown) => `/posts/${id(taskId)}`,
+  campaigns: () => '/campaigns',
+  campaign: (campaignId: unknown, opts: { theme?: unknown } = {}) =>
+    `/campaigns/${id(campaignId)}${query({ theme: opts.theme ? id(opts.theme) : undefined })}`,
+  library: (opts: { view?: 'review' | 'trash' } = {}) => `/library${query({ view: opts.view })}`,
+  libraryItem: (assetId: unknown) => `/library/${id(assetId)}`,
+  inbox: (opts: { box?: string; item?: unknown } = {}) => `/inbox${query({ box: opts.box, item: opts.item ? id(opts.item) : undefined })}`,
+  publishing: (tab?: PublishingTab) => `/publishing${query({ tab })}`,
+  publishingPost: (postId: unknown) => `/publishing${query({ post: id(postId) })}`,
+  blue: (chatId?: unknown) => (chatId ? `/blue/${id(chatId)}` : '/blue'),
+  settings: (section?: SettingsSection) => (section ? `/settings/${section}` : '/settings'),
+  adminUsers: () => '/admin/users',
+  adminUser: (userId: unknown) => `/admin/users/${id(userId)}`,
+  adminOutreach: () => '/admin/outreach'
+};
+
+/** The id of a populated reference ({ _id, name }) or a plain id. */
+export const refId = (v: unknown): string | undefined => {
+  const s = id(v);
+  return s && s !== 'undefined' && s !== 'null' ? s : undefined;
+};
+
+/**
+ * Turns an app link from the API or the connector ("http://host/tasks/1", "/tasks/1") into the
+ * current address, so old links keep working: /tasks/:id → /posts/:id, /projects/:id → theme.
+ */
+export function appPath(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url, window.location.origin);
+    let p = u.pathname;
+    if (/^\/tasks\/[a-f0-9]{24}\/?$/i.test(p)) p = p.replace(/^\/tasks\//i, '/posts/');
+    return p + u.search + u.hash;
+  } catch {
+    return null;
+  }
+}

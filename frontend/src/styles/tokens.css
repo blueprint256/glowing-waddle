@@ -159,6 +159,31 @@
   --glass-bg: rgba(255,255,255,.65);
   --sky-alpha: .55;
 }
+/* ---------- Post statuses (one map everywhere; red only ever means a problem) ----------
+   Idea grey · Draft amber · Ready blue · Scheduled violet · Published green · Needs attention red */
+:root, [data-theme="dark"] {
+  --st-idea-bg:#2e2e2e;      --st-idea-fg:#c9c9c9;      --st-idea-dot:#868e96;
+  --st-draft-bg:#5a3208;     --st-draft-fg:#ffe8cc;     --st-draft-dot:#fd7e14;
+  --st-ready-bg:#16325c;     --st-ready-fg:#d0ebff;     --st-ready-dot:#339af0;
+  --st-scheduled-bg:#33245e; --st-scheduled-fg:#e5dbff; --st-scheduled-dot:#9775fa;
+  --st-published-bg:#16451f; --st-published-fg:#d3f9d8; --st-published-dot:#40c057;
+  --st-attention-bg:#5b1520; --st-attention-fg:#ffe3e3; --st-attention-dot:#fa5252;
+}
+[data-theme="light"] {
+  --st-idea-bg:#f1f3f5;      --st-idea-fg:#495057;      --st-idea-dot:#868e96;
+  --st-draft-bg:#fff4e6;     --st-draft-fg:#a3460b;     --st-draft-dot:#fd7e14;
+  --st-ready-bg:#e7f5ff;     --st-ready-fg:#1864ab;     --st-ready-dot:#228be6;
+  --st-scheduled-bg:#f3f0ff; --st-scheduled-fg:#5f3dc4; --st-scheduled-dot:#7950f2;
+  --st-published-bg:#ebfbee; --st-published-fg:#2b8a3e; --st-published-dot:#37b24d;
+  --st-attention-bg:#fff5f5; --st-attention-fg:#c92a2a; --st-attention-dot:#f03e3e;
+}
+
+/* ---------- Campaign colours (calendar cards, chips). Picked from the campaign id. ---------- */
+:root {
+  --cp-1:#4c6ef5; --cp-2:#12b886; --cp-3:#f76707; --cp-4:#ae3ec9;
+  --cp-5:#1098ad; --cp-6:#e64980; --cp-7:#74b816; --cp-8:#f59f00;
+}
+
 /* nav idle text differs from muted in light mode (measured #51483d) */
 :root, [data-theme="dark"] { --text-nav: var(--dark-1); --text-nav-active: #fff; }
 [data-theme="light"]       { --text-nav: var(--paper-8); --text-nav-active: #18181b; }

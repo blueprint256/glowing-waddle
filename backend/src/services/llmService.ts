@@ -7,6 +7,7 @@ import { AppConfig } from '../models/AppConfig';
 import mongoose from 'mongoose';
 import { downloadImageFromUrl, uploadBufferToS3 } from '../utils/s3Service';
 import { toFile } from 'openai/uploads';
+import { applyPlaceholderAliases, knownPlaceholderRegex } from '../lib/placeholders';
 
 // Cache for LLM clients and keys
 let cachedOpenAI: { client: OpenAI; key: string; timestamp: number } | null = null;
@@ -194,7 +195,8 @@ export async function getPromptByName(name: string): Promise<string | null> {
  * - Any custom placeholder that matches a key in the params
  */
 export function compileSuperPrompt(promptTemplate: string, params: SuperPromptParams): string {
-  let compiledPrompt = promptTemplate;
+  // New names ({brief}, {caption}, {brand} …) are written as the older names the code below fills.
+  let compiledPrompt = applyPlaceholderAliases(promptTemplate);
 
   // Replace {companyInfo} with formatted company information
   if (params.companyInfo) {
@@ -278,14 +280,8 @@ export function compileSuperPrompt(promptTemplate: string, params: SuperPromptPa
   return compiledPrompt;
 }
 
-const KNOWN_PLACEHOLDERS = new RegExp(
-  `\\{(${[
-    'companyInfo', 'companyName', 'sector', 'brandTone', 'brandGuidelines', 'primaryLogo', 'secondaryLogo', 'tertiaryLogo',
-    'campaignDetails', 'campaignName', 'coreMessages', 'hashtags', 'taskDescription', 'taskName', 'taskContent', 'baseImage',
-    'previousOutput', 'attachedImage\\d+'
-  ].join('|')})\\}`,
-  'g'
-);
+// Every placeholder the app knows (old and new names; lib/placeholders.ts).
+const KNOWN_PLACEHOLDERS = knownPlaceholderRegex();
 
 /**
  * Format company information into a readable string
@@ -319,6 +315,9 @@ function formatCompanyInfo(companyInfo: SuperPromptParams['companyInfo']): strin
   if (companyInfo.globalRules) {
     parts.push(`Content Guidelines: ${companyInfo.globalRules}`);
   }
+  if (companyInfo.brandGuidelines) {
+    parts.push(`Brand Guidelines: ${companyInfo.brandGuidelines}`);
+  }
 
   return parts.join('\n');
 }
@@ -346,11 +345,16 @@ function formatCampaignDetails(campaignDetails: SuperPromptParams['campaignDetai
   if (campaignDetails.hashtags && campaignDetails.hashtags.length > 0) {
     parts.push(`Hashtags: ${campaignDetails.hashtags.join(', ')}`);
   }
-  if (campaignDetails.startDate) {
-    parts.push(`Start Date: ${campaignDetails.startDate.toLocaleDateString()}`);
+  // Campaign dates are calendar days (midnight UTC); written as YYYY-MM-DD so the AI can't misread them.
+  const day = (value: unknown) => {
+    const d = new Date(value as any);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+  };
+  if (campaignDetails.startDate && day(campaignDetails.startDate)) {
+    parts.push(`Start Date: ${day(campaignDetails.startDate)}`);
   }
-  if (campaignDetails.endDate) {
-    parts.push(`End Date: ${campaignDetails.endDate.toLocaleDateString()}`);
+  if (campaignDetails.endDate && day(campaignDetails.endDate)) {
+    parts.push(`End Date: ${day(campaignDetails.endDate)}`);
   }
 
   return parts.join('\n');
@@ -761,7 +765,8 @@ export async function generateImageWithPrompt(
     }
 
     // Parse the prompt template to detect which image placeholders are referenced
-    const promptTemplate = prompt.details;
+    // ({image} / {referenceImage1} count as {baseImage} / {attachedImage1}).
+    const promptTemplate = applyPlaceholderAliases(prompt.details);
     const referencedImages: string[] = [];
 
     // Define known image placeholders

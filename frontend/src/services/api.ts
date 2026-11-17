@@ -81,6 +81,9 @@ export const projectAPI = {
 };
 
 // Task API
+/** Ways to improve a caption (backend: services/postAI.ts CAPTION_STYLES). */
+export type CaptionStyle = 'improve' | 'shorter' | 'playful' | 'professional' | 'fix' | 'cta' | 'hashtags' | 'x' | 'linkedin' | 'instagram' | 'write';
+
 export const taskAPI = {
   getAll: (params?: any) => api.get('/tasks', { params }),
   getById: (id: string) => api.get(`/tasks/${id}`),
@@ -89,9 +92,17 @@ export const taskAPI = {
   uploadImage: (id: string, formData: FormData) => api.post(`/tasks/${id}/upload-image`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
-  refineDescription: (id: string) => api.post(`/tasks/${id}/refine-description`),
-  generatePoster: (id: string) => api.post(`/tasks/${id}/generate-poster`),
-  adoptPoster: (id: string, data: { generatedImageUrl: string }) => api.patch(`/tasks/${id}/adopt-poster`, data),
+  /** Improve brief (suggestion only). Pass unsaved text to improve that instead of the saved brief. */
+  refineDescription: (id: string, body: { brief?: string; caption?: string } = {}) => api.post(`/tasks/${id}/refine-description`, body),
+  /** Improve caption (suggestion only). */
+  improveCaption: (id: string, body: { style?: CaptionStyle; caption?: string; brief?: string } = {}) =>
+    api.post<{ suggestion: string; style: CaptionStyle; label: string; original: string }>(`/tasks/${id}/improve-caption`, body),
+  /** Create image with AI: saved as an AI draft image to use or discard. Takes 15–60 seconds. */
+  generatePoster: (id: string) => api.post(`/tasks/${id}/generate-poster`, undefined, { timeout: 180_000 }),
+  /** Use the AI draft image as the post's image (also saved to the Library). */
+  adoptPoster: (id: string) => api.patch(`/tasks/${id}/adopt-poster`),
+  /** Throw the AI draft image away. */
+  discardPoster: (id: string) => api.patch(`/tasks/${id}/discard-poster`),
   delete: (id: string) => api.delete(`/tasks/${id}`)
 };
 

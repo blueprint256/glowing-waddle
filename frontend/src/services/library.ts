@@ -98,6 +98,8 @@ export interface BatchProgress {
 
 export interface LibraryQuery {
   q?: string;
+  /** Admins: whose Library to search (default: their own). */
+  ownerId?: string;
   kind?: string;
   category?: string;
   event?: string;
@@ -130,6 +132,9 @@ export const libraryAPI = {
       })
       .then((r) => r.data),
   get: (id: string) => api.get<{ item: LibraryItem }>(`/library/items/${id}`).then((r) => r.data.item),
+  /** Use this picture (or an older version of it) as a post's image. */
+  useOnPost: (id: string, taskId: string, versionId?: string) =>
+    api.post<{ imageUrl: string; message: string }>(`/library/items/${id}/use-on-post`, { taskId, versionId }).then((r) => r.data),
   update: (id: string, body: Record<string, unknown>) => api.patch<{ item: LibraryItem }>(`/library/items/${id}`, body).then((r) => r.data.item),
   addVersion: (id: string, file: File, note: string, onProgress?: (fraction: number) => void) => {
     const form = new FormData();

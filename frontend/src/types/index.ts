@@ -14,8 +14,8 @@ export enum AccessMode {
 }
 
 export const ACCESS_MODE_LABELS: Record<AccessMode, string> = {
-  [AccessMode.PART_ONE]: 'Part one — AI generation enabled',
-  [AccessMode.PART_TWO]: 'Part two — manual & connectors (AI generation off)'
+  [AccessMode.PART_ONE]: 'AI on',
+  [AccessMode.PART_TWO]: 'AI off (everything else works as usual)'
 };
 
 /** Same rule as the API: System Admins always keep AI access. */
@@ -125,23 +125,36 @@ export interface Project {
   updatedAt: string;
 }
 
-// Task types
+// Posts (the API calls them tasks). Statuses: lib/status.ts.
 export enum TaskStatus {
-  PENDING = 'Pending',
-  IN_PROGRESS = 'In Progress',
-  COMPLETED = 'Completed'
+  IDEA = 'Idea',
+  DRAFT = 'Draft',
+  READY = 'Ready',
+  SCHEDULED = 'Scheduled',
+  PUBLISHED = 'Published',
+  NEEDS_ATTENTION = 'Needs attention'
 }
 
 export interface Task {
   _id: string;
+  /** Post title (internal; not published). */
   name: string;
+  /** The brief: what the post should achieve and show. */
   description?: string;
+  /** Theme (API: project). */
   projectId: any;
   campaignId: any;
-  status: TaskStatus;
-  taskDate?: string; // Single date for when task should be carried out
+  status: TaskStatus | string;
+  /** The day it goes out (stored as midnight UTC). */
+  taskDate?: string;
+  /** The caption: the text that gets published. */
   content?: string;
+  /** The post's image. */
   designedImage?: string;
+  /** An AI image waiting to be used or discarded. */
+  pendingGeneratedImage?: string;
+  /** Reference images (for the AI or a designer). */
+  attachedImages?: string[];
   createdBy: any;
   lastModifiedBy?: any;
   createdAt: string;

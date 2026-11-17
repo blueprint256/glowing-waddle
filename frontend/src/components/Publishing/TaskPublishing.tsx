@@ -1,16 +1,20 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Box, Button, Paper, Snackbar, Typography } from '@mui/material';
+import { Box, Button, Typography } from '@mui/material';
 import { Send as SendIcon } from '@mui/icons-material';
 import PostList from './PostList';
 import PublishDialog from './PublishDialog';
 import { publishingAPI, type Post } from '../../services/publishing';
+import { notify } from '../../store/toastStore';
+import { announcePostChanged } from '../../store/aiJobsStore';
 
-/** Task page section: this task's posts and the Publish button. Hidden when publishing is off. */
+/**
+ * A post's publishing: where and when it goes out, and the Publish button. Hidden when Publishing
+ * is off. Any change here also updates the post's status (Scheduled / Published / Needs attention).
+ */
 export default function TaskPublishing({ taskId }: { taskId: string }) {
   const [available, setAvailable] = useState(false);
   const [posts, setPosts] = useState<Post[]>([]);
   const [open, setOpen] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -22,15 +26,21 @@ export default function TaskPublishing({ taskId }: { taskId: string }) {
   }, [taskId]);
 
   useEffect(() => {
+    let alive = true;
     publishingAPI
       .status()
       .then((s) => {
+        if (!alive) return;
         setAvailable(s.available);
         if (s.available) load();
       })
-      .catch(() => setAvailable(false));
+      .catch(() => alive && setAvailable(false));
+    return () => {
+      alive = false;
+    };
   }, [load]);
 
+  // While something is going out, check back so the result shows without reloading.
   useEffect(() => {
     if (!posts.some((p) => ['publishing', 'processing'].includes(p.status))) return;
     const t = setInterval(load, 8000);
@@ -38,24 +48,28 @@ export default function TaskPublishing({ taskId }: { taskId: string }) {
   }, [posts, load]);
 
   if (!available) return null;
+
+  const changed = (message?: string) => {
+    if (message) notify(message);
+    load();
+    announcePostChanged(taskId);
+  };
+
   return (
-    <Paper sx={{ p: 3, mb: 3 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 2 }}>
-        <Typography variant="h6" sx={{ flex: 1 }}>
+    <Box component="section" aria-label="Publishing">
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+        <Typography component="h3" sx={{ flex: 1, fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.03em' }}>
           Publishing
         </Typography>
-        <Button variant="contained" startIcon={<SendIcon />} onClick={() => setOpen(true)}>
-          Publish
+        <Button size="small" variant="contained" startIcon={<SendIcon sx={{ fontSize: 16 }} />} onClick={() => setOpen(true)}>
+          Publish or schedule
         </Button>
       </Box>
       <PostList
         posts={posts}
         showTask={false}
-        onChanged={(m) => {
-          if (m) setToast(m);
-          load();
-        }}
-        emptyText="Not published yet. Press Publish to post it now, schedule it, or set a post-by-hand reminder."
+        onChanged={(m) => changed(m)}
+        emptyText="Not scheduled yet. Publish it now, schedule it, or set a reminder to post it by hand."
       />
       <PublishDialog
         open={open}
@@ -63,11 +77,9 @@ export default function TaskPublishing({ taskId }: { taskId: string }) {
         onClose={() => setOpen(false)}
         onDone={(m) => {
           setOpen(false);
-          setToast(m);
-          load();
+          changed(m);
         }}
       />
-      <Snackbar open={!!toast} autoHideDuration={4000} onClose={() => setToast(null)} message={toast} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
-    </Paper>
+    </Box>
   );
 }

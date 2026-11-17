@@ -11,6 +11,7 @@ import {
   ACCEPTED_STATUS_VALUES
 } from '../lib/postStatus';
 import { links, absolute } from '../lib/links';
+import { applyPlaceholderAliases, checkPlaceholders, knownPlaceholderRegex, isKnownPlaceholder } from '../lib/placeholders';
 
 const failures: string[] = [];
 let passed = 0;
@@ -93,6 +94,30 @@ async function main() {
     assert.equal(links.blue('chat1'), '/blue/chat1');
     assert.equal(absolute('http://localhost:3000/', '/posts/1'), 'http://localhost:3000/posts/1');
     assert.equal(absolute('https://app.example.com', 'posts/1'), 'https://app.example.com/posts/1');
+  });
+
+  await test('placeholders: new names stand for the older ones', () => {
+    assert.equal(applyPlaceholderAliases('{brand} {brandName} {campaign} {postTitle} {brief} {caption} {image}'),
+      '{companyInfo} {companyName} {campaignDetails} {taskName} {taskDescription} {taskContent} {baseImage}');
+    assert.equal(applyPlaceholderAliases('{referenceImage2} {attachedImage3}'), '{attachedImage2} {attachedImage3}');
+    // Older names, custom names and JSON are left alone.
+    assert.equal(applyPlaceholderAliases('{taskDescription} {tone} {"a": 1}'), '{taskDescription} {tone} {"a": 1}');
+  });
+
+  await test('placeholders: unknown names are found, with the likely intended one', () => {
+    const r = checkPlaceholders('Hi {brandName}, {companyNmae} {captoin} {brief} {"json": true} {zzqqxx}');
+    assert.deepEqual(r.used.sort(), ['brandName', 'brief']);
+    const byName = Object.fromEntries(r.unknown.map((u) => [u.name, u.suggestion]));
+    assert.equal(byName.companyNmae, 'brandName');
+    assert.equal(byName.captoin, 'caption');
+    assert.equal(byName.zzqqxx, undefined);
+    assert.ok(!('json' in byName));
+  });
+
+  await test('placeholders: every name is cleared when it has no data', () => {
+    const re = knownPlaceholderRegex();
+    assert.equal('a{brief}b{taskDescription}c{referenceImage4}d{attachedImage12}e{custom}'.replace(re, ''), 'abcde{custom}');
+    assert.ok(isKnownPlaceholder('attachedImage7') && isKnownPlaceholder('referenceImage7') && !isKnownPlaceholder('tone'));
   });
 
   if (failures.length) {
