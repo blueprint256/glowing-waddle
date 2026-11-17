@@ -238,7 +238,7 @@ export default function PostCard({
           <Typography noWrap sx={{ fontSize: 12, fontWeight: 600, color: 'var(--text-strong)', lineHeight: 1.25 }}>{post.name}</Typography>
           {(time || post.publishing?.platforms?.length) && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: '1px' }}>
-              {time && <Typography sx={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.2 }}>{time}</Typography>}
+              {time && <Typography sx={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.2 }}>{time}</Typography>}
               <PlatformBadges platforms={post.publishing?.platforms} size={12} />
             </Box>
           )}

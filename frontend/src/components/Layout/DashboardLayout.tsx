@@ -15,7 +15,8 @@ import {
   Logout as LogoutIcon,
   DarkMode as DarkModeIcon,
   LightMode as LightModeIcon,
-  OpenInFull as FullScreenIcon
+  OpenInFull as FullScreenIcon,
+  Search as SearchIcon
 } from '@mui/icons-material';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
@@ -25,6 +26,7 @@ import { useInboxStore } from '../../store/inboxStore';
 import BluePanel, { BlueMark } from '../Blue/BluePanel';
 import PostPanelHost from '../posts/PostPanelHost';
 import ToastHost from '../ui/ToastHost';
+import CommandPalette, { openSearch } from '../ui/CommandPalette';
 import { paths } from '../../lib/paths';
 
 /** Accent names map to --accent-<name>-bg / -fg in styles/tokens.css. */
@@ -183,9 +185,22 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         >
           B
         </Box>
-        <Typography noWrap sx={{ fontSize: 14, fontWeight: 600, color: 'var(--text-strong)' }}>
+        <Typography noWrap sx={{ flex: 1, fontSize: 14, fontWeight: 600, color: 'var(--text-strong)' }}>
           Blueprint
         </Typography>
+        <Tooltip title="Search (Ctrl K)">
+          <IconButton
+            size="small"
+            aria-label="Search"
+            onClick={() => {
+              onNavigate?.();
+              openSearch();
+            }}
+            sx={{ color: 'var(--text-muted)' }}
+          >
+            <SearchIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
       </Box>
 
       {blueAllowed && <BlueToggle onNavigate={onNavigate} />}
@@ -257,7 +272,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           <Typography noWrap sx={{ fontSize: 12, fontWeight: 600, color: 'var(--text-strong)', lineHeight: 1.3 }}>
             {user?.firstName} {user?.lastName}
           </Typography>
-          <Typography noWrap sx={{ fontSize: 11, color: 'var(--text-subtle)', lineHeight: 1.3 }}>
+          <Typography noWrap sx={{ fontSize: 12, color: 'var(--text-subtle)', lineHeight: 1.3 }}>
             {isAdmin ? 'Admin' : user?.email}
           </Typography>
         </Box>
@@ -306,6 +321,9 @@ export default function DashboardLayout() {
 
   return (
     <div className="bp-shell">
+      <a className="bp-skip" href="#main">
+        Skip to content
+      </a>
       {/* ≥768px: persistent sidebar (CSS in styles/global.css) */}
       <aside className="bp-sidebar" aria-label="Sidebar">
         <SidebarContent />
@@ -319,6 +337,9 @@ export default function DashboardLayout() {
         <Typography component="span" sx={{ flex: 1, fontSize: 15, fontWeight: 700, color: 'var(--text-strong)' }}>
           Blueprint
         </Typography>
+        <IconButton onClick={openSearch} aria-label="Search" size="small" sx={{ color: 'var(--text-strong)' }}>
+          <SearchIcon />
+        </IconButton>
         {blueAllowed && !flush && (
           <IconButton onClick={toggleBlue} aria-label="Open Blue" size="small">
             <BlueMark size={26} />
@@ -336,7 +357,7 @@ export default function DashboardLayout() {
         <SidebarContent onNavigate={() => setDrawerOpen(false)} />
       </Drawer>
 
-      <main className={`bp-panel${flush ? ' bp-panel--flush' : ''}`} id="main">
+      <main className={`bp-panel${flush ? ' bp-panel--flush' : ''}`} id="main" tabIndex={-1}>
         <div className={`bp-page${flush ? ' bp-page--flush' : ''}`}>
           {/* Re-mounts the page after Blue changes data, so it shows the latest (not the Blue page itself). */}
           <Outlet key={flush ? 'blue' : refreshKey} />
@@ -348,6 +369,7 @@ export default function DashboardLayout() {
       {/* A post opened from anywhere (?post=<id>), and short confirmations */}
       <PostPanelHost />
       <ToastHost />
+      <CommandPalette />
     </div>
   );
 }

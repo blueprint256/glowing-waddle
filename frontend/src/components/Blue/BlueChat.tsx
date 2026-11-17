@@ -241,7 +241,7 @@ export default function BlueChat({ surface, autoFocus }: { surface: BlueSurface;
                   {busy ? <CircularProgress size={14} sx={{ color: 'inherit' }} /> : <SendIcon sx={{ fontSize: 18 }} />}
                 </IconButton>
               </Box>
-              <Typography sx={{ fontSize: 11, color: 'var(--text-faint)', mt: 0.75, textAlign: 'center' }}>
+              <Typography sx={{ fontSize: 12, color: 'var(--text-faint)', mt: 0.75, textAlign: 'center' }}>
                 Blue acts with your permissions and asks before deleting anything.
                 {typeof remaining === 'number' ? ` ${remaining} message${remaining === 1 ? '' : 's'} left ${remainingLabel}.` : ''}
               </Typography>

@@ -38,7 +38,7 @@ export function ConversationList({ dense, onPicked }: { dense?: boolean; onPicke
             primary={c.title}
             secondary={when(c.updatedAt)}
             primaryTypographyProps={{ noWrap: true, fontSize: 13, color: 'var(--text-strong)' }}
-            secondaryTypographyProps={{ fontSize: 11 }}
+            secondaryTypographyProps={{ fontSize: 12 }}
           />
           <IconButton
             className="del"

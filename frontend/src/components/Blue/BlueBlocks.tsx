@@ -147,7 +147,7 @@ function Thumb({ src, size, label }: { src?: string | null; size: number | strin
       {show ? (
         <img src={src!} alt="" loading="lazy" onError={() => setBroken(true)} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
       ) : label ? (
-        <Typography sx={{ fontSize: 10, textTransform: 'uppercase' }}>{label}</Typography>
+        <Typography sx={{ fontSize: 11.5, textTransform: 'uppercase' }}>{label}</Typography>
       ) : (
         <ImageIcon sx={{ fontSize: 16 }} />
       )}
@@ -537,8 +537,8 @@ function LibraryGallery({ items, total }: { items: any[]; total?: number }) {
             sx={{ cursor: 'pointer', minWidth: 0, '&:hover img': { opacity: 0.85 } }}
           >
             <Thumb src={librarySrc(i.thumbnail_url)} size="100%" label={i.kind || 'file'} />
-            <Typography sx={{ fontSize: 11, mt: 0.25, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{i.title}</Typography>
-            <Typography sx={{ fontSize: 10, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <Typography sx={{ fontSize: 12, mt: 0.25, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{i.title}</Typography>
+            <Typography sx={{ fontSize: 11.5, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {[libDate(i.date), i.versions > 1 ? `v${i.current_version}` : null].filter(Boolean).join(' · ')}
             </Typography>
           </Box>

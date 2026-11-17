@@ -31,7 +31,7 @@
   /* ---------- Typography ---------- */
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  --fs-3xs: 9px;   /* "Coming soon" micro-badge */
+  --fs-3xs: 10.5px; /* micro-badges (kept readable) */
   --fs-2xs: 11px;  /* section labels, mono chips */
   --fs-xs: 12px;   /* descriptions, table heads, hints */
   --fs-sm: 13px;   /* DEFAULT UI size: nav, buttons, inputs, rows */
@@ -105,7 +105,7 @@
   --text-strong:#ffffff;         /* titles, active nav */
   --text-muted: var(--dark-1);   /* descriptions, idle nav, table heads */
   --text-subtle:var(--dark-2);   /* section labels */
-  --text-faint: var(--dark-3);   /* placeholder */
+  --text-faint: var(--dark-2);   /* placeholder, incidental notes (4.8:1 on the panel) */
   --primary-bg: var(--gray-2);   /* #e9ecef primary button */
   --primary-bg-hover: var(--gray-3);
   --primary-fg: #000000;
@@ -141,9 +141,9 @@
   --border-strong: #ccc5ba;
   --text:       #000000;
   --text-strong:#18181b;
-  --text-muted: var(--paper-6);
-  --text-subtle:var(--paper-6);
-  --text-faint: var(--paper-5);
+  --text-muted: var(--paper-7);  /* 5.9:1 on white (paper-6 was 3.9:1, too faint to read) */
+  --text-subtle:var(--paper-7);
+  --text-faint: var(--paper-6);  /* incidental notes only */
   --primary-bg: var(--dark-6);   /* #2e2e2e */
   --primary-bg-hover: var(--dark-7);
   --primary-fg: #ffffff;

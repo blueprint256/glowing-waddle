@@ -89,6 +89,15 @@ export default function PlannerPage() {
     [params, setParams]
   );
 
+  // ?new=1 (from search's "New post") opens the new-post form once.
+  useEffect(() => {
+    if (params.get('new') !== '1') return;
+    setNewPost({});
+    const next = new URLSearchParams(params);
+    next.delete('new');
+    setParams(next, { replace: true });
+  }, [params, setParams]);
+
   // Search is typed freely and applied after a short pause.
   useEffect(() => setSearch(q), [q]);
   useEffect(() => {

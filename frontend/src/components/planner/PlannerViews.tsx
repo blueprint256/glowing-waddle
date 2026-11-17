@@ -185,7 +185,7 @@ export function MonthView({ posts, anchor, onOpen, onMove, onAdd }: ViewProps) {
       <Box>
         <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', textAlign: 'center', mb: 0.5 }}>
           {WEEKDAYS.map((w) => (
-            <Typography key={w} sx={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>
+            <Typography key={w} sx={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>
               {w}
             </Typography>
           ))}
@@ -273,7 +273,7 @@ function WeekColumn({ day, posts, onOpen, onMove, onAdd }: { day: string; posts:
       <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75, px: 0.25 }}>
         <Typography sx={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{date.toLocaleDateString(undefined, { weekday: 'short', timeZone: 'UTC' })}</Typography>
         <Typography sx={{ fontSize: 18, fontWeight: today ? 800 : 600, color: 'var(--text-strong)' }}>{date.getUTCDate()}</Typography>
-        {today && <Typography sx={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>Today</Typography>}
+        {today && <Typography sx={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>Today</Typography>}
       </Box>
       {posts.map((p) => (
         <PostCard key={p._id} post={p} onOpen={onOpen} variant="tall" />
