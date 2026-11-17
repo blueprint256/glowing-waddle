@@ -38,6 +38,7 @@ import inboxRoutes from './routes/inbox.routes';
 import { startInboxWorker } from './inbox/rules';
 import { startPublishingWorker } from './publishing/worker';
 import { startLibraryWorker } from './library/worker';
+import { migrateTaskStatuses } from './services/postStatus';
 import mcpRouter from './mcp/router';
 
 const app = express();
@@ -234,6 +235,7 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 API: http://localhost:${PORT}`);
+  migrateTaskStatuses().catch((e) => console.error('[posts] status migration failed:', e));
   startLibraryWorker();
   startPublishingWorker();
   startInboxWorker();

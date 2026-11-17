@@ -15,6 +15,7 @@ import { PublishError } from '../publishing/types';
 import { PublishingError, loadTaskForPublishing } from '../publishing/service';
 import { loadAccessibleAsset, ingest, LibraryError } from '../library/service';
 import { queueTaskImage } from '../library/hooks';
+import { links } from '../lib/links';
 import {
   loadCanvaSettings,
   canvaAuthorizeUrl,
@@ -138,7 +139,7 @@ router.post('/edits', isAuthenticated, async (req: Request, res: Response) => {
       title = asset.title;
       ownerId = asset.ownerId as Id;
       assetId = asset._id as Id;
-      back = `/library/${asset._id}`;
+      back = links.libraryItem(asset._id);
     } else {
       const { task, ownerId: owner } = await loadTaskForPublishing(req.user!, req.body?.taskId);
       if (!task.designedImage) throw new PublishingError(400, 'This task has no image yet');
@@ -146,7 +147,7 @@ router.post('/edits', isAuthenticated, async (req: Request, res: Response) => {
       title = task.name;
       ownerId = owner;
       taskId = task._id as Id;
-      back = `/tasks/${task._id}`;
+      back = links.post(task._id);
     }
     const token = await canvaToken(req.user!);
     if (!token) {
@@ -187,11 +188,11 @@ router.get('/return', async (req: Request, res: Response) => {
   try {
     const { correlationState } = correlationFromJwt(String(req.query.correlation_jwt || ''));
     const edit = correlationState ? await CanvaEdit.findOne({ correlationState }) : null;
-    if (!edit) return res.redirect(`${front}/library?canva=unknown`);
-    const page = edit.target === 'task' ? `/tasks/${edit.taskId}` : `/library/${edit.assetId}`;
+    if (!edit) return res.redirect(`${front}${links.library()}?canva=unknown`);
+    const page = edit.target === 'task' ? links.post(edit.taskId) : links.libraryItem(edit.assetId);
     res.redirect(`${front}${page}?canvaEdit=${edit._id}`);
   } catch {
-    res.redirect(`${front}/library`);
+    res.redirect(`${front}${links.library()}`);
   }
 });
 

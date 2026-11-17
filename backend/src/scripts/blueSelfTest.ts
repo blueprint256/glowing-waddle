@@ -57,10 +57,10 @@ function startFakeApi(): Promise<http.Server> {
       if (rec.method === 'GET' && rec.path === '/api/projects') {
         body = { success: true, projects: [{ _id: ID(10), name: 'Shoe sale posts', status: 'planning', campaignId: { _id: ID(1), name: 'Shoes' } }], pagination: { total: 1, page: 1, limit: 50, pages: 1 } };
       } else if (rec.method === 'POST' && rec.path === '/api/tasks') {
-        body = { success: true, message: 'Task created successfully', task: { _id: ID(100), name: rec.body.name, status: 'Pending', taskDate: rec.body.taskDate, projectId: { _id: ID(10), name: 'Shoe sale posts' } } };
+        body = { success: true, message: 'Task created successfully', task: { _id: ID(100), name: rec.body.name, status: 'Draft', taskDate: rec.body.taskDate, projectId: { _id: ID(10), name: 'Shoe sale posts' } } };
         status = 201;
       } else if (rec.method === 'GET' && rec.path === `/api/tasks/${ID(100)}`) {
-        body = { success: true, task: { _id: ID(100), name: 'Friday shoe sale post', status: 'Pending' } };
+        body = { success: true, task: { _id: ID(100), name: 'Friday shoe sale post', status: 'Draft' } };
       } else if (rec.method === 'DELETE' && rec.path === `/api/tasks/${ID(100)}`) {
         body = { success: true, message: 'Task deleted successfully' };
       } else {
@@ -163,13 +163,13 @@ async function main() {
   await test('OpenAI: response parsing tolerates bad JSON arguments', () => {
     const t = parseOpenAIResponse({
       choices: [{ message: { content: null, tool_calls: [
-        { id: 'call_1', type: 'function', function: { name: 'list_tasks', arguments: '{"status":["Pending"]}' } },
+        { id: 'call_1', type: 'function', function: { name: 'list_tasks', arguments: '{"status":["Draft"]}' } },
         { id: 'call_2', type: 'function', function: { name: 'get_task', arguments: '{oops' } }
       ] } }],
       usage: { prompt_tokens: 10, completion_tokens: 5 }
     });
     assert.equal(t.text, '');
-    assert.deepEqual(t.toolCalls[0].args, { status: ['Pending'] });
+    assert.deepEqual(t.toolCalls[0].args, { status: ['Draft'] });
     assert.deepEqual(t.toolCalls[1].args, {});
     assert.deepEqual(t.usage, { input: 10, output: 5 });
   });

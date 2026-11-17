@@ -9,6 +9,7 @@ import { ADAPTERS, PLATFORM_PROVIDER, PLATFORM_NAMES, simulatePublish } from './
 import { loadPublishingSetup } from './setup';
 import { accountAuth } from './service';
 import { openMedia } from './media';
+import { syncRecentlyChangedPosts } from '../services/postStatus';
 
 /**
  * The scheduler. Every few seconds it:
@@ -174,6 +175,12 @@ async function tick() {
     }
   } catch (error) {
     console.error('[publishing] scheduler error:', error);
+  }
+  try {
+    // Keep each post's status (Scheduled / Published / Needs attention) in step with its records.
+    await syncRecentlyChangedPosts();
+  } catch (error) {
+    console.error('[publishing] could not update post statuses:', error);
   }
 }
 

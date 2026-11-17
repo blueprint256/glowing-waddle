@@ -1,10 +1,8 @@
 import mongoose, { Document, Schema } from 'mongoose';
+import { TaskStatus } from '../lib/postStatus';
 
-export enum TaskStatus {
-  PENDING = 'Pending',
-  IN_PROGRESS = 'In Progress',
-  COMPLETED = 'Completed'
-}
+// Statuses and their rules: lib/postStatus.ts (re-exported here for existing imports).
+export { TaskStatus };
 
 export interface ITask extends Document {
   name: string;
@@ -47,7 +45,7 @@ const taskSchema = new Schema<ITask>(
     status: {
       type: String,
       enum: Object.values(TaskStatus),
-      default: TaskStatus.PENDING
+      default: TaskStatus.DRAFT
     },
     taskDate: {
       type: Date

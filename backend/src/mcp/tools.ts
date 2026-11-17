@@ -1,6 +1,7 @@
 import { ApiClient } from './apiClient';
 import { ToolDefinition, ToolError } from './protocol';
 import { JsonSchema } from './validate';
+import { links, absolute } from '../lib/links';
 
 /**
  * Tools exposed to Claude through the MCP connector.
@@ -43,7 +44,10 @@ const DATE_PATTERN = '^\\d{4}-\\d{2}-\\d{2}(T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,3})?
 
 const CAMPAIGN_STATUSES = ['draft', 'planning', 'active', 'paused', 'completed', 'archived'];
 const PROJECT_STATUSES = ['planning', 'in_progress', 'review', 'completed', 'on_hold'];
-const TASK_STATUSES = ['Pending', 'In Progress', 'Completed'];
+// Post (task) statuses. Scheduled / Published / Needs attention also follow Publishing automatically.
+const TASK_STATUSES = ['Idea', 'Draft', 'Ready', 'Scheduled', 'Published', 'Needs attention'];
+const SETTABLE_TASK_STATUSES = ['Idea', 'Draft', 'Ready', 'Published'];
+const emptyTaskCounts = (): Record<string, number> => Object.fromEntries([['total', 0], ...TASK_STATUSES.map((s) => [s, 0])]);
 const PROJECT_ROLES = ['project_manager', 'project_marketer', 'project_designer', 'viewer'];
 
 const id = (what: string): JsonSchema => ({ type: 'string', pattern: OBJECT_ID_PATTERN, description: `${what} (24-character hex ID)` });
@@ -120,7 +124,7 @@ function shapeCampaign(c: any, appUrl: string) {
     created_by: person(c.createdBy),
     created_at: c.createdAt,
     updated_at: c.updatedAt,
-    url: `${appUrl}/campaigns/${c._id}`
+    url: absolute(appUrl, links.campaign(c._id))
   });
 }
 
@@ -139,7 +143,7 @@ function shapeProject(p: any, appUrl: string) {
     created_by: person(p.createdBy),
     created_at: p.createdAt,
     updated_at: p.updatedAt,
-    url: `${appUrl}/projects/${p._id}`
+    url: absolute(appUrl, links.theme(p.campaignId, p._id))
   });
 }
 
@@ -160,7 +164,7 @@ function shapeTask(t: any, appUrl: string) {
     last_modified_by: person(t.lastModifiedBy),
     created_at: t.createdAt,
     updated_at: t.updatedAt,
-    url: `${appUrl}/tasks/${t._id}`
+    url: absolute(appUrl, links.post(t._id))
   });
 }
 
@@ -376,7 +380,7 @@ const campaignTools: Tool[] = [
       const counts = new Map<string, Record<string, number>>();
       for (const t of tasksRes.tasks) {
         const pid = refId(t.projectId) || 'unknown';
-        const c = counts.get(pid) || { total: 0, Pending: 0, 'In Progress': 0, Completed: 0 };
+        const c = counts.get(pid) || emptyTaskCounts();
         c.total += 1;
         c[t.status] = (c[t.status] || 0) + 1;
         counts.set(pid, c);
@@ -385,7 +389,7 @@ const campaignTools: Tool[] = [
         campaign: shapeCampaign(campaignRes.campaign, ctx.appUrl),
         projects: projectsRes.projects.map((p: any) => ({
           ...shapeProject(p, ctx.appUrl),
-          task_counts: counts.get(String(p._id)) || { total: 0, Pending: 0, 'In Progress': 0, Completed: 0 }
+          task_counts: counts.get(String(p._id)) || emptyTaskCounts()
         })),
         total_tasks: tasksRes.tasks.length
       };
@@ -582,7 +586,11 @@ const projectTools: Tool[] = [
 // Tasks
 // ---------------------------------------------------------------------------
 
-const taskStatus: JsonSchema = { type: 'string', enum: TASK_STATUSES, description: 'Task status.' };
+const taskStatus: JsonSchema = {
+  type: 'string',
+  enum: SETTABLE_TASK_STATUSES,
+  description: 'Post status: Idea, Draft, Ready, or Published (posted by hand). Scheduled and Needs attention are set by Publishing.'
+};
 const taskContent = text(
   'The deliverable text of the task, e.g. the social post copy (caption, hashtags, call to action). This is what the app shows in social previews.',
   50000
@@ -683,7 +691,7 @@ const taskTools: Tool[] = [
   {
     name: 'create_task',
     title: 'Create task',
-    description: 'Create a task in a project. Put the finished post copy in "content". Status defaults to "Pending".',
+    description: 'Create a task in a project. Put the finished post copy in "content". Status defaults to "Draft".',
     inputSchema: obj({ project_id: id('Project the task belongs to.'), ...newTaskFields }, ['project_id', 'name']),
     annotations: CREATE,
     handler: async (args, ctx) => {
@@ -1057,7 +1065,7 @@ function shapeLibraryItem(i: any, appUrl: string, detail = false) {
     needs_review: i.needsReview || undefined,
     ai_status: i.aiStatus !== 'done' ? i.aiStatus : undefined,
     in_trash: i.deletedAt ? true : undefined,
-    url: `${appUrl}/library/${i.id}`,
+    url: absolute(appUrl, links.libraryItem(i.id)),
     thumbnail_url: i.thumbnailUrl || undefined
   });
 }
@@ -1251,7 +1259,7 @@ function shapePublishPost(p: any, appUrl: string) {
     files: p.media?.length || undefined,
     problem: p.lastError || undefined,
     test_account: p.channel?.simulated || undefined,
-    url: `${appUrl}/publishing?post=${p.id}`
+    url: absolute(appUrl, links.publishingPost(p.id))
   });
 }
 
@@ -1270,7 +1278,7 @@ const publishingTools: Tool[] = [
         accounts: channels.channels.map((c: any) => clean({ id: c.id, platform: c.platformName, name: c.name, username: c.username || undefined, test_account: c.simulated || undefined, needs_reconnect: c.status !== 'active' || undefined })),
         platforms_switched_on: status.platforms.filter((p: any) => p.ready).map((p: any) => p.name),
         test_mode: status.testMode,
-        connect_more_at: `${ctx.appUrl}/publishing?tab=channels`
+        connect_more_at: absolute(ctx.appUrl, links.publishing('accounts'))
       };
     }
   },
@@ -1392,7 +1400,7 @@ const inboxTools: Tool[] = [
             text: i.body ? String(i.body).slice(0, 300) : undefined,
             from: i.fromName,
             actions: i.actions?.filter((a: any) => !a.link).map((a: any) => clean({ id: a.id, label: a.label, needs_value: a.input ? a.input.label : undefined })),
-            open_in_app: `${ctx.appUrl}/inbox?box=${i.box}&item=${i.id}`
+            open_in_app: absolute(ctx.appUrl, links.inbox({ box: i.box, item: i.id }))
           })
         )
       };
@@ -1626,7 +1634,7 @@ const aiAdminTools: Tool[] = [
     isAvailable: canUseAI,
     handler: async (args, ctx) => {
       const res = await ctx.api.request('POST', `/api/tasks/${args.task_id}/generate-poster`, { timeoutMs: 240000 });
-      return { message: res.message, pending_image_url: res.generatedImageUrl, task_url: `${ctx.appUrl}/tasks/${args.task_id}` };
+      return { message: res.message, pending_image_url: res.generatedImageUrl, task_url: absolute(ctx.appUrl, links.post(args.task_id)) };
     }
   },
   {

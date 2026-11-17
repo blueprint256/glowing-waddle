@@ -9,6 +9,7 @@ import { User } from '../models/User';
 import { PLATFORM_NAMES } from '../publishing/registry';
 import { loadLibrarySetup } from '../library/setup';
 import { upsertSystemItem, sendAnnouncementNow } from './service';
+import { links } from '../lib/links';
 
 /**
  * The Inbox's reminder rules. Every minute each rule finds what currently needs the user's attention,
@@ -72,7 +73,7 @@ async function upcomingPosts(now: Date) {
       actions: [
         ...(auto ? [{ id: 'publish_now', label: 'Publish now', style: 'primary' as const, confirm: `Publish to ${where} now instead of ${when(first.scheduledAt!, now)}?` }] : []),
         { id: 'keep', label: 'Keep the schedule', style: 'secondary' },
-        { id: 'open', label: first.taskId ? 'Open the task' : 'Open Publishing', link: first.taskId ? `/tasks/${(first.taskId as any)._id || first.taskId}` : '/publishing' }
+        { id: 'open', label: first.taskId ? 'Open the task' : 'Open Publishing', link: first.taskId ? links.post(first.taskId) : links.publishing('queue') }
       ],
       ref: { type: 'post', id: first._id as Id },
       expiresAt: first.scheduledAt
@@ -96,7 +97,7 @@ async function duePosts() {
       actions: [
         { id: 'mark_posted', label: 'Mark as posted', style: 'primary', input: { label: 'Link to the live post', placeholder: 'https://…', optional: true } },
         { id: 'snooze', label: 'Remind me in an hour', style: 'secondary' },
-        { id: 'open', label: 'Get the caption and files', link: '/publishing?tab=attention' }
+        { id: 'open', label: 'Get the caption and files', link: links.publishing('queue') }
       ],
       ref: { type: 'post', id: p._id as Id }
     });
@@ -122,9 +123,9 @@ async function failedPosts(now: Date) {
       body: `${account ? `Account: ${account}\n` : ''}${p.lastError || 'The platform did not accept the post.'}`,
       actions: [
         ...(p.mode === 'auto' && !/reconnect/i.test(p.lastError || '') ? [{ id: 'retry', label: 'Try again', style: 'primary' as const }] : []),
-        ...(/reconnect/i.test(p.lastError || '') ? [{ id: 'open_accounts', label: 'Reconnect the account', link: '/publishing?tab=channels' }] : []),
+        ...(/reconnect/i.test(p.lastError || '') ? [{ id: 'open_accounts', label: 'Reconnect the account', link: links.publishing('accounts') }] : []),
         { id: 'cancel_post', label: "Don't post it", style: 'danger' },
-        { id: 'open', label: 'Open', link: '/publishing?tab=attention' }
+        { id: 'open', label: 'Open', link: links.publishing('queue') }
       ],
       ref: { type: 'post', id: p._id as Id }
     });
@@ -143,7 +144,7 @@ async function reconnectChannels() {
       category: 'channel_reconnect',
       title: `Reconnect ${PLATFORM_NAMES[c.platform]} · ${c.name}`,
       body: `Posts can't go out to this account until it's reconnected.${c.lastError ? `\n\n${c.lastError}` : ''}`,
-      actions: [{ id: 'reconnect', label: 'Reconnect', link: '/publishing?tab=channels' }],
+      actions: [{ id: 'reconnect', label: 'Reconnect', link: links.publishing('accounts') }],
       ref: { type: 'channel', id: c._id as Id }
     });
   }
@@ -173,7 +174,7 @@ async function libraryReviews(now: Date) {
         category: 'library_review',
         title: `${r.n} Library item${r.n === 1 ? '' : 's'} to review`,
         body: `${r.n === 1 ? 'An upload looks' : 'Some uploads look'} like a new version of something already in your Library. Decide whether to keep ${r.n === 1 ? 'it' : 'them'} as versions or separate items.`,
-        actions: [{ id: 'review', label: 'Review now', link: '/library?view=review' }]
+        actions: [{ id: 'review', label: 'Review now', link: links.library({ view: 'review' }) }]
       },
       true
     );
@@ -203,7 +204,7 @@ async function aiLimits(now: Date) {
       body: full
         ? `New Library uploads are still stored and searchable by name, folder and text, and the AI reads them next month. Used: ${r.n} of ${setup.monthlyAiLimit}.`
         : `You've used ${r.n} of ${setup.monthlyAiLimit} AI-read items this month.`,
-      actions: [{ id: 'open', label: 'Open the Library', link: '/library' }],
+      actions: [{ id: 'open', label: 'Open the Library', link: links.library() }],
       expiresAt: end
     });
   }

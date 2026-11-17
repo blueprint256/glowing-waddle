@@ -4,6 +4,7 @@ import { Campaign, CampaignStatus } from '../models/Campaign';
 import { User, UserRole } from '../models/User';
 import { Project, ProjectStatus } from '../models/Project';
 import { Task, TaskStatus } from '../models/Task';
+import { normalizePostStatus } from '../services/postStatus';
 import { CommandMapping } from '../models/CommandMapping';
 import { isAuthenticated } from '../middleware/auth';
 import { canCreateCampaign } from '../middleware/rbac';
@@ -696,23 +697,11 @@ router.post('/:id/generate', isAuthenticated, validateMongoId('id'), async (req:
         }
       };
 
-      // Helper function to normalize task status from LLM response
-      const normalizeTaskStatus = (status: any): TaskStatus => {
-        if (!status || typeof status !== 'string') return TaskStatus.PENDING;
-
-        const normalized = status.toLowerCase().trim();
-        switch (normalized) {
-          case 'pending':
-            return TaskStatus.PENDING;
-          case 'in progress':
-          case 'in-progress':
-          case 'inprogress':
-            return TaskStatus.IN_PROGRESS;
-          case 'completed':
-            return TaskStatus.COMPLETED;
-          default:
-            return TaskStatus.PENDING;
-        }
+      // Posts the AI plans start as Draft (or Idea / Ready when it says so); Scheduled and Published
+      // only ever come from Publishing.
+      const normalizeTaskStatus = (status: unknown): TaskStatus => {
+        const s = normalizePostStatus(status);
+        return s === TaskStatus.IDEA || s === TaskStatus.READY ? s : TaskStatus.DRAFT;
       };
 
       // The AI sometimes writes "TBD" or "next Monday": an unreadable date is left empty instead of

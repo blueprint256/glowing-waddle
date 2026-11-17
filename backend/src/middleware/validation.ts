@@ -1,5 +1,6 @@
 import { body, param, query, validationResult } from 'express-validator';
 import { Request, Response, NextFunction } from 'express';
+import { ACCEPTED_STATUS_VALUES } from '../lib/postStatus';
 
 /**
  * Middleware to handle validation errors
@@ -89,22 +90,6 @@ export const validateProjectCreation = [
 ];
 
 /**
- * Task validation rules
- */
-export const validateTaskCreation = [
-  body('name').trim().notEmpty().withMessage('Task name is required'),
-  body('description').optional().trim(),
-  body('type').isIn(['post', 'launch', 'activation', 'deliverable', 'other'])
-    .withMessage('Invalid task type'),
-  body('projectId').isMongoId().withMessage('Valid project ID is required'),
-  body('taskDate').optional().isISO8601(),
-  body('content').optional().trim(),
-  body('status').optional().isIn(['Pending', 'In Progress', 'Completed'])
-    .withMessage('Invalid task status'),
-  handleValidationErrors
-];
-
-/**
  * Comment validation rules
  */
 export const validateCommentCreation = [
@@ -152,7 +137,8 @@ const optionalText = (field: string) =>
 
 export const CAMPAIGN_STATUS_VALUES = ['draft', 'planning', 'active', 'paused', 'completed', 'archived'];
 export const PROJECT_STATUS_VALUES = ['planning', 'in_progress', 'review', 'completed', 'on_hold'];
-export const TASK_STATUS_VALUES = ['Pending', 'In Progress', 'Completed'];
+// Post statuses: the new names plus the older ones (translated by services/postStatus.ts).
+export const TASK_STATUS_VALUES = ACCEPTED_STATUS_VALUES;
 export const PROJECT_ROLE_VALUES = ['project_manager', 'project_marketer', 'project_designer', 'viewer'];
 
 export const validateCampaignFields = [

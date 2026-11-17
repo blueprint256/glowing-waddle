@@ -14,6 +14,7 @@ import { loadPublishingSetup } from './setup';
 import { encryptSecret, decryptSecret, pkcePair } from './secrets';
 import { validatePost, hasErrors, Problem } from './rules';
 import { describeMedia, mediaDownloadUrl } from './media';
+import { syncTaskStatus } from '../services/postStatus';
 
 type Id = mongoose.Types.ObjectId;
 const defaultFetch: FetchLike = (url, init) => fetch(url, init) as any;
@@ -371,6 +372,7 @@ export async function createPosts(user: IUser, ownerId: Id, input: CreatePostsIn
       createdBy: user._id
     }))
   );
+  await syncTaskStatus([extra.taskId]);
   return posts;
 }
 
@@ -403,6 +405,7 @@ export async function updatePost(user: IUser, post: ISocialPost, body: { text?: 
   post.events.push({ at: new Date(), type: 'edited', by: user._id as Id });
   post.markModified('options');
   await post.save();
+  await syncTaskStatus([post.taskId as Id]);
   return post;
 }
 
@@ -415,6 +418,7 @@ export async function cancelPost(user: IUser, post: ISocialPost) {
     { new: true }
   );
   if (!updated) throw new PublishingError(409, 'The post changed in the meantime; refresh and try again');
+  await syncTaskStatus([updated.taskId as Id]);
   return updated;
 }
 
@@ -432,6 +436,7 @@ export async function retryPost(user: IUser, post: ISocialPost) {
   post.lastError = undefined;
   post.events.push({ at: new Date(), type: 'retry', by: user._id as Id });
   await post.save();
+  await syncTaskStatus([post.taskId as Id]);
   return post;
 }
 
@@ -444,12 +449,14 @@ export async function markPublished(user: IUser, post: ISocialPost, url?: string
   post.lastError = undefined;
   post.events.push({ at: new Date(), type: 'marked_published', message: url, by: user._id as Id });
   await post.save();
+  await syncTaskStatus([post.taskId as Id]);
   return post;
 }
 
 export async function deletePost(post: ISocialPost) {
   if (['publishing', 'processing'].includes(post.status)) throw new PublishingError(409, 'Wait until publishing finishes');
   await post.deleteOne();
+  await syncTaskStatus([post.taskId as Id]);
 }
 
 export async function postDownloadUrl(post: ISocialPost, index: number) {

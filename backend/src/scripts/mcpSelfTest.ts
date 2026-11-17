@@ -55,7 +55,7 @@ const projectDoc = (n: number, campaign = 1, extra: any = {}) => ({
   _id: ID(n), name: `Project ${n}`, status: 'planning', campaignId: { _id: ID(campaign), name: `Campaign ${campaign}` }, assignments: [], ...extra
 });
 const taskDoc = (n: number, project = 10, extra: any = {}) => ({
-  _id: ID(n), name: `Task ${n}`, status: 'Pending', taskDate: '2026-11-20T00:00:00.000Z', content: 'Post copy',
+  _id: ID(n), name: `Task ${n}`, status: 'Draft', taskDate: '2026-11-20T00:00:00.000Z', content: 'Post copy',
   projectId: { _id: ID(project), name: `Project ${project}` }, campaignId: { _id: ID(1), name: 'Campaign 1' }, ...extra
 });
 
@@ -303,7 +303,7 @@ async function main() {
   routes['GET /api/tasks'] = () => ({
     body: {
       success: true,
-      tasks: [taskDoc(100), taskDoc(101, 10, { status: 'Completed', taskDate: '2026-11-21T09:00:00.000Z' }), taskDoc(102, 11, { taskDate: null })],
+      tasks: [taskDoc(100), taskDoc(101, 10, { status: 'Ready', taskDate: '2026-11-21T09:00:00.000Z' }), taskDoc(102, 11, { taskDate: null })],
       pagination: { total: 3, page: 1, limit: 50, pages: 1 }
     }
   });
@@ -352,7 +352,7 @@ async function main() {
     const data = jsonOf(await call(hybrid, 'get_campaign', { campaign_id: ID(1) }));
     assert.equal(data.campaign.name, 'Campaign 1');
     assert.equal(data.projects.length, 2);
-    assert.deepEqual(data.projects[0].task_counts, { total: 2, Pending: 1, 'In Progress': 0, Completed: 1 });
+    assert.deepEqual(data.projects[0].task_counts, { total: 2, Idea: 0, Draft: 1, Ready: 1, Scheduled: 0, Published: 0, 'Needs attention': 0 });
     assert.equal(data.projects[1].task_counts.total, 1);
     assert.equal(data.total_tasks, 3);
   });
@@ -383,13 +383,13 @@ async function main() {
     assert.equal(data.project.status, 'in_progress');
   });
   await test('create_task / update_task / delete_task', async () => {
-    const created = jsonOf(await call(hybrid, 'create_task', { project_id: ID(10), name: 'Teaser', content: 'Coming soon', task_date: '2026-11-25', status: 'Pending' }));
-    assert.deepEqual(lastReq().body, { projectId: ID(10), name: 'Teaser', content: 'Coming soon', taskDate: '2026-11-25', status: 'Pending' });
+    const created = jsonOf(await call(hybrid, 'create_task', { project_id: ID(10), name: 'Teaser', content: 'Coming soon', task_date: '2026-11-25', status: 'Draft' }));
+    assert.deepEqual(lastReq().body, { projectId: ID(10), name: 'Teaser', content: 'Coming soon', taskDate: '2026-11-25', status: 'Draft' });
     assert.equal(created.task.name, 'Teaser');
-    assert.ok(created.task.url.startsWith('http://localhost:3000/tasks/'));
-    const updated = jsonOf(await call(hybrid, 'update_task', { task_id: ID(100), status: 'Completed', task_date: null }));
-    assert.deepEqual(lastReq().body, { status: 'Completed', taskDate: null });
-    assert.equal(updated.task.status, 'Completed');
+    assert.ok(created.task.url.startsWith('http://localhost:3000/posts/'));
+    const updated = jsonOf(await call(hybrid, 'update_task', { task_id: ID(100), status: 'Ready', task_date: null }));
+    assert.deepEqual(lastReq().body, { status: 'Ready', taskDate: null });
+    assert.equal(updated.task.status, 'Ready');
     const deleted = jsonOf(await call(hybrid, 'delete_task', { task_id: ID(100) }));
     assert.equal(lastReq().method, 'DELETE');
     assert.equal(deleted.message, 'Task deleted successfully');

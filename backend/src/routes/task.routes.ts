@@ -12,6 +12,7 @@ import { validateMongoId, validateTaskCreate, validateTaskUpdate } from '../midd
 import { Comment } from '../models/Comment';
 import { queueTaskImage } from '../library/hooks';
 import { onTaskDeleted } from '../services/lifecycle';
+import { USER_SETTABLE_STATUSES, hasPublishingInPlay, normalizePostStatus } from '../services/postStatus';
 import { logAudit } from '../utils/auditLogger';
 import { AuditAction } from '../models/AuditLog';
 import { searchRegex } from '../utils/regex';
@@ -43,7 +44,11 @@ const upload = multer({
  */
 router.post('/', isAuthenticated, canManageTasks, validateTaskCreate, async (req: Request, res: Response) => {
   try {
-    const { name, description, projectId, taskDate, content, status } = req.body;
+    const { name, description, projectId, taskDate, content } = req.body;
+    const status = req.body.status === undefined ? TaskStatus.DRAFT : normalizePostStatus(req.body.status);
+    if (!status || !USER_SETTABLE_STATUSES.includes(status)) {
+      return res.status(400).json({ success: false, message: `A new post can be ${USER_SETTABLE_STATUSES.join(', ')}` });
+    }
 
     // Verify project exists and get hierarchy info
     const project = await Project.findById(projectId);
@@ -80,7 +85,7 @@ router.post('/', isAuthenticated, canManageTasks, validateTaskCreate, async (req
       description,
       projectId: new mongoose.Types.ObjectId(projectId),
       campaignId: project.campaignId,
-      status: status || TaskStatus.PENDING,
+      status,
       taskDate,
       content,
       createdBy: req.user!._id
@@ -162,7 +167,8 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
       const statuses = Array.isArray(req.query.status)
         ? req.query.status
         : typeof req.query.status === 'string' ? req.query.status.split(',') : [];
-      query.status = { $in: statuses };
+      // Older names (Pending, Completed…) are translated, so saved filters and links keep working.
+      query.status = { $in: [...new Set(statuses.map((s) => normalizePostStatus(s)).filter(Boolean))] };
     }
 
     // Filter by date range if provided
@@ -298,12 +304,29 @@ router.put('/:id', isAuthenticated, canManageTasks, validateMongoId('id'), valid
     }
 
     const oldData = { ...task.toObject() };
-    const { name, description, status, taskDate, content } = req.body;
+    const { name, description, taskDate, content } = req.body;
+
+    if (req.body.status !== undefined && req.body.status !== null && req.body.status !== '') {
+      const status = normalizePostStatus(req.body.status);
+      if (!status) return res.status(400).json({ success: false, message: 'Unknown status' });
+      if (status !== task.status) {
+        // Scheduled and Needs attention follow Publishing; they can't be set by hand.
+        if (!USER_SETTABLE_STATUSES.includes(status)) {
+          return res.status(400).json({ success: false, message: `${status} is set by Publishing. Choose ${USER_SETTABLE_STATUSES.join(', ')}.` });
+        }
+        if (await hasPublishingInPlay(task._id as mongoose.Types.ObjectId)) {
+          return res.status(409).json({
+            success: false,
+            message: 'This post is scheduled or needs attention in Publishing. Cancel or fix it there first.'
+          });
+        }
+        task.status = status;
+      }
+    }
 
     // Update fields
     if (name) task.name = name;
     if (description !== undefined) task.description = description;
-    if (status) task.status = status;
     if (taskDate !== undefined) task.taskDate = taskDate;
     if (content !== undefined) task.content = content;
 

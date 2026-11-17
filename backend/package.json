@@ -15,7 +15,8 @@
     "library:selftest": "ts-node --transpile-only src/scripts/librarySelfTest.ts",
     "publishing:selftest": "ts-node --transpile-only src/scripts/publishingSelfTest.ts",
     "inbox:selftest": "ts-node --transpile-only src/scripts/inboxSelfTest.ts",
-    "selftest": "npm run mcp:selftest && npm run blue:selftest && npm run library:selftest && npm run publishing:selftest && npm run inbox:selftest"
+    "posts:selftest": "ts-node --transpile-only src/scripts/postsSelfTest.ts",
+    "selftest": "npm run posts:selftest && npm run mcp:selftest && npm run blue:selftest && npm run library:selftest && npm run publishing:selftest && npm run inbox:selftest"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",

@@ -238,7 +238,7 @@ async function main() {
     project_id: projectId,
     tasks: [
       { name: 'Teaser post', task_date: '2026-12-02', content: 'Something big is coming… #smoketest' },
-      { name: 'Launch post', task_date: '2026-12-05', content: 'It\'s here! #smoketest', status: 'In Progress' }
+      { name: 'Launch post', task_date: '2026-12-05', content: 'It\'s here! #smoketest', status: 'Draft' }
     ]
   });
   ok(!tasks.isError && tasks.data.results.every((r: any) => r.created), 'create_tasks (2)', tasks.text);
@@ -250,8 +250,8 @@ async function main() {
   const cal = await tool(access, 'get_calendar', { date_from: '2026-12-01', date_to: '2026-12-07', project_id: projectId });
   ok(!cal.isError && cal.data.total_tasks === 2 && cal.data.days['2026-12-02'], 'get_calendar', cal.text);
 
-  const upd = await tool(access, 'update_task', { task_id: taskId, status: 'Completed', content: 'Updated copy #smoketest' });
-  ok(!upd.isError && upd.data.task.status === 'Completed', 'update_task', upd.text);
+  const upd = await tool(access, 'update_task', { task_id: taskId, status: 'Ready', content: 'Updated copy #smoketest' });
+  ok(!upd.isError && upd.data.task.status === 'Ready', 'update_task', upd.text);
 
   const comment = await tool(access, 'add_comment', { target_type: 'task', target_id: taskId, content: 'Looks good (smoke test)' });
   ok(!comment.isError && comment.data.comment.id, 'add_comment on a task', comment.text);

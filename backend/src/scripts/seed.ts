@@ -121,7 +121,7 @@ async function seed() {
       description: 'Instagram teaser post announcing the summer collection',
       projectId: project._id,
       campaignId: campaignA._id,
-      status: TaskStatus.IN_PROGRESS,
+      status: TaskStatus.DRAFT,
       taskDate: new Date('2025-06-05'),
       content: 'Check out our stunning new summer collection! 🌞 Coming soon...',
       createdBy: hybridA._id
@@ -132,7 +132,7 @@ async function seed() {
       description: 'Official product launch announcement with carousel images',
       projectId: project._id,
       campaignId: campaignA._id,
-      status: TaskStatus.PENDING,
+      status: TaskStatus.IDEA,
       taskDate: new Date('2025-06-15'),
       createdBy: hybridA._id
     });

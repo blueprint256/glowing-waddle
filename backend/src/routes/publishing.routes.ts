@@ -15,6 +15,7 @@ import { ADAPTERS } from '../publishing/registry';
 import { RULES } from '../publishing/rules';
 import { loadPublishingSetup, invalidatePublishingSetup } from '../publishing/setup';
 import { encryptSecret, decryptSecret, maskSecret } from '../publishing/secrets';
+import { links } from '../lib/links';
 import {
   PublishingError,
   resolveOwner,
@@ -72,22 +73,22 @@ async function requirePublishing(req: Request, res: Response, next: NextFunction
 // ---------------------------------------------------------------------------
 
 router.get('/oauth/:provider/callback', async (req: Request, res: Response) => {
-  const front = `${getFrontendUrl()}/publishing`;
+  const front = `${getFrontendUrl()}${links.publishing('accounts')}`;
   const q = req.query as Record<string, string | undefined>;
   if (q.error || q.error_description) {
-    return res.redirect(`${front}?tab=channels&connect=error&message=${encodeURIComponent(q.error_description || q.error || 'Sign-in was cancelled')}`);
+    return res.redirect(`${front}&connect=error&message=${encodeURIComponent(q.error_description || q.error || 'Sign-in was cancelled')}`);
   }
   try {
     if (!q.code || !q.state) throw new PublishingError(400, 'The sign-in did not complete');
     const result = await finishConnect(req.params.provider, q.code, q.state, req);
     await logAudit({ action: AuditAction.CHANNEL_CONNECTED, userId: result.ownerId, targetType: 'User', targetId: result.ownerId, metadata: { provider: req.params.provider, accounts: result.saved } });
-    const back = result.returnTo && result.returnTo.startsWith('/') && !result.returnTo.startsWith('//') ? `${getFrontendUrl()}${result.returnTo}` : `${front}?tab=channels`;
+    const back = result.returnTo && result.returnTo.startsWith('/') && !result.returnTo.startsWith('//') ? `${getFrontendUrl()}${result.returnTo}` : front;
     const sep = back.includes('?') ? '&' : '?';
     res.redirect(`${back}${sep}connect=ok&count=${result.saved.length}`);
   } catch (error: any) {
     console.error('[publishing] connect failed:', error);
     const message = error instanceof PublishingError || error?.name === 'PublishError' ? error.message : 'Could not connect the account';
-    res.redirect(`${front}?tab=channels&connect=error&message=${encodeURIComponent(String(message).slice(0, 300))}`);
+    res.redirect(`${front}&connect=error&message=${encodeURIComponent(String(message).slice(0, 300))}`);
   }
 });
 
