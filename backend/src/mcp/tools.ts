@@ -1419,6 +1419,230 @@ const inboxTools: Tool[] = [
   }
 ];
 
+// ---------------------------------------------------------------------------
+// AI setup (System Admin): prompts, commands, connection test, usage, posters
+// ---------------------------------------------------------------------------
+
+/** The commands the app's buttons call. */
+const APP_COMMANDS: Record<string, string> = {
+  'generate-campaign': 'Generate Campaign button: must return a JSON array of projects with tasks',
+  'refine-task-description': 'Refine button on a task: returns the improved description as plain text',
+  'generate-poster': 'Generate Poster with AI on a task: an image prompt (gpt-image-1.5)'
+};
+
+const PROVIDERS = ['openai', 'anthropic', 'grok', 'gemini'];
+
+function shapePrompt(p: any, full = false) {
+  return clean({
+    id: String(p._id),
+    name: p.name,
+    makes_image: Boolean(p.imageLLMProvider || p.imageLLMModel) || undefined,
+    provider: p.llmProvider || undefined,
+    model: p.llmModel || undefined,
+    text: full ? p.details : String(p.details || '').slice(0, 300) + (String(p.details || '').length > 300 ? '…' : ''),
+    updated: p.updatedAt ? String(p.updatedAt).slice(0, 10) : undefined
+  });
+}
+
+function shapeMapping(m: any) {
+  return clean({
+    id: String(m._id),
+    command: m.command,
+    used_by: APP_COMMANDS[m.command],
+    prompt: m.promptId ? { id: String(m.promptId._id || m.promptId), name: m.promptId.name } : undefined,
+    chain: m.chainId ? { id: String(m.chainId._id || m.chainId), name: m.chainId.name, steps: m.chainId.steps?.length } : undefined,
+    steps: m.steps?.length ? m.steps.length : undefined
+  });
+}
+
+const aiAdminTools: Tool[] = [
+  {
+    name: 'ai_setup_status',
+    title: 'AI setup status',
+    description:
+      "System Admin: which AI providers have API keys, every prompt, every command mapping, and which of the app's own commands (generate-campaign, refine-task-description, generate-poster) are still missing.",
+    inputSchema: obj({}),
+    annotations: READ,
+    isAvailable: isAdmin,
+    handler: async (_args, ctx) => {
+      const [status, prompts, mappings] = await Promise.all([
+        ctx.api.request('GET', '/api/integrations/status'),
+        ctx.api.request('GET', '/api/prompts'),
+        ctx.api.request('GET', '/api/command-mappings')
+      ]);
+      const i = status.integrations || {};
+      const configured = new Set((mappings.mappings || []).map((m: any) => m.command));
+      return {
+        api_keys: Object.fromEntries(PROVIDERS.map((p) => [p, Boolean(i[p]?.configured)])),
+        prompts: (prompts.prompts || []).map((p: any) => shapePrompt(p)),
+        commands: (mappings.mappings || []).map(shapeMapping),
+        app_commands_missing: Object.keys(APP_COMMANDS).filter((c) => !configured.has(c)).map((c) => ({ command: c, used_by: APP_COMMANDS[c] })),
+        placeholders:
+          'Prompts can use {companyInfo} {companyName} {sector} {brandTone} {brandGuidelines} {campaignDetails} {campaignName} {coreMessages} {hashtags} {taskName} {taskDescription} {taskContent} {baseImage} {primaryLogo} {previousOutput}; unknown or empty ones are removed before sending.'
+      };
+    }
+  },
+  {
+    name: 'get_prompt',
+    title: 'Get prompt',
+    description: 'System Admin: the full text and settings of one prompt.',
+    inputSchema: obj({ prompt_id: id('Prompt ID (from ai_setup_status).') }, ['prompt_id']),
+    annotations: READ,
+    isAvailable: isAdmin,
+    handler: async (args, ctx) => shapePrompt((await ctx.api.request('GET', `/api/prompts/${args.prompt_id}`)).prompt, true)
+  },
+  {
+    name: 'save_prompt',
+    title: 'Create or update a prompt',
+    description:
+      'System Admin: create a prompt, or update the one with the same name. For text, optionally pin a provider/model (default: the app default, gpt-4o-mini). Set makes_image=true for poster prompts (always gpt-image-1.5).',
+    inputSchema: obj(
+      {
+        name: name('Prompt name (unique). Updating keeps the same name.'),
+        text: text('The prompt. Use {placeholders} for app data, e.g. {companyInfo}, {campaignDetails}, {taskDescription}.', 50000),
+        provider: { type: ['string', 'null'], enum: [...PROVIDERS, null], description: 'Text provider for this prompt; null = app default.' },
+        model: { type: ['string', 'null'], maxLength: 100, description: 'Text model, e.g. gpt-4o-mini; null = app default.' },
+        makes_image: { type: 'boolean', description: 'This prompt generates an image (poster).' }
+      },
+      ['name', 'text']
+    ),
+    annotations: UPDATE,
+    isAvailable: isAdmin,
+    handler: async (args, ctx) => {
+      const all = (await ctx.api.request('GET', '/api/prompts')).prompts || [];
+      const existing = all.find((p: any) => p.name === args.name);
+      const settings: Record<string, unknown> = {};
+      if (args.provider !== undefined) settings.llmProvider = args.provider || null;
+      if (args.model !== undefined) settings.llmModel = args.model || null;
+      if (args.makes_image !== undefined) {
+        settings.imageLLMProvider = args.makes_image ? 'openai' : null;
+        settings.imageLLMModel = args.makes_image ? 'gpt-image-1.5' : null;
+      }
+      let prompt;
+      if (existing) {
+        prompt = (await ctx.api.request('PATCH', `/api/prompts/${existing._id}`, { body: { details: args.text, ...settings } })).prompt;
+      } else {
+        prompt = (await ctx.api.request('POST', '/api/prompts', { body: { name: args.name, details: args.text, ...settings } })).prompt;
+      }
+      return { message: existing ? 'Prompt updated' : 'Prompt created', prompt: shapePrompt(prompt) };
+    }
+  },
+  {
+    name: 'delete_prompt',
+    title: 'Delete prompt',
+    description: 'System Admin: delete a prompt. Commands that use it stop working until pointed at another prompt. Confirm with the user first.',
+    inputSchema: obj({ prompt_id: id('Prompt ID.') }, ['prompt_id']),
+    annotations: DESTRUCTIVE,
+    isAvailable: isAdmin,
+    handler: async (args, ctx) => ({ message: (await ctx.api.request('DELETE', `/api/prompts/${args.prompt_id}`)).message || 'Deleted' })
+  },
+  {
+    name: 'set_command',
+    title: 'Point a command at a prompt',
+    description:
+      "System Admin: make a command (e.g. generate-campaign, refine-task-description, generate-poster, or your own) run a prompt, by prompt name. Creates the command or re-points it.",
+    inputSchema: obj(
+      {
+        command: { type: 'string', minLength: 1, maxLength: 100, pattern: '^[a-z0-9][a-z0-9-]*$', description: 'Command name, lower-case with dashes.' },
+        prompt_name: name('Name of the prompt to run.')
+      },
+      ['command', 'prompt_name']
+    ),
+    annotations: UPDATE,
+    isAvailable: isAdmin,
+    handler: async (args, ctx) => {
+      const [prompts, mappings] = await Promise.all([ctx.api.request('GET', '/api/prompts'), ctx.api.request('GET', '/api/command-mappings')]);
+      const prompt = (prompts.prompts || []).find((p: any) => p.name === args.prompt_name);
+      if (!prompt) throw new ToolError(`No prompt named "${args.prompt_name}". Create it first with save_prompt.`);
+      const existing = (mappings.mappings || []).find((m: any) => m.command === args.command);
+      const res = existing
+        ? await ctx.api.request('PATCH', `/api/command-mappings/${existing._id}`, { body: { promptId: String(prompt._id) } })
+        : await ctx.api.request('POST', '/api/command-mappings', { body: { command: args.command, promptId: String(prompt._id) } });
+      return { message: existing ? 'Command re-pointed' : 'Command created', command: shapeMapping(res.mapping || { _id: existing?._id, command: args.command, promptId: prompt }) };
+    }
+  },
+  {
+    name: 'delete_command',
+    title: 'Delete command',
+    description: "System Admin: remove a command mapping. The app's button for it stops working. Confirm with the user first.",
+    inputSchema: obj({ command_id: id('Command mapping ID (from ai_setup_status).') }, ['command_id']),
+    annotations: DESTRUCTIVE,
+    isAvailable: isAdmin,
+    handler: async (args, ctx) => ({ message: (await ctx.api.request('DELETE', `/api/command-mappings/${args.command_id}`)).message || 'Deleted' })
+  },
+  {
+    name: 'run_prompt',
+    title: 'Test a prompt',
+    description:
+      'System Admin: run a saved prompt once with sample values for its placeholders and see the AI reply, model usage and cost. Use it to test the AI connection and prompt quality. Text prompts only.',
+    inputSchema: obj(
+      {
+        prompt_name: name('Prompt to run.'),
+        values: { type: 'object', additionalProperties: true, description: 'Values for placeholders, e.g. {"taskDescription": "…", "companyInfo": {"companyName": "…"}}.' }
+      },
+      ['prompt_name']
+    ),
+    annotations: CREATE,
+    isAvailable: isAdmin,
+    handler: async (args, ctx) => {
+      const res = await ctx.api.request('POST', '/api/llm/run', { body: { promptName: args.prompt_name, dynamicData: args.values || {} }, timeoutMs: 120000 });
+      return { reply: res.content, usage: res.usage, compiled_prompt: String(res.compiledPrompt || '').slice(0, 4000) };
+    }
+  },
+  {
+    name: 'ai_usage',
+    title: 'AI usage and cost',
+    description: 'System Admin: recent AI calls (feature, model, tokens, estimated cost, success) and the totals.',
+    inputSchema: obj({ limit: limit(15, 100), failures_only: { type: 'boolean', description: 'Only failed calls.' } }),
+    annotations: READ,
+    isAvailable: isAdmin,
+    handler: async (args, ctx) => {
+      const res = await ctx.api.request('GET', '/api/llm/usage', { query: { limit: args.limit ?? 15, success: args.failures_only ? 'false' : undefined } });
+      return {
+        totals: { calls: (res.totals.successCount || 0) + (res.totals.failureCount || 0), failed: res.totals.failureCount || 0, tokens: res.totals.totalTokens, estimated_cost_usd: Number((res.totals.totalCost || 0).toFixed(4)) },
+        recent: (res.usageLogs || []).map((u: any) =>
+          clean({
+            at: u.createdAt,
+            feature: u.promptName,
+            model: u.llmModel,
+            tokens: u.totalTokens,
+            cost_usd: u.estimatedCost !== undefined ? Number(Number(u.estimatedCost).toFixed(5)) : undefined,
+            ok: u.success,
+            error: u.errorMessage || undefined,
+            user: u.userId ? `${u.userId.firstName || ''} ${u.userId.lastName || ''}`.trim() : undefined,
+            seconds: u.requestDuration ? Math.round(u.requestDuration / 100) / 10 : undefined
+          })
+        )
+      };
+    }
+  },
+  {
+    name: 'generate_task_poster',
+    title: 'Generate a poster for a task (app AI)',
+    description:
+      "Run the app's generate-poster command on a task. The image is saved as a pending poster: adopt it with adopt_task_poster (it becomes the task image and a new Library version) or discard it. Costs an image generation; confirm with the user first.",
+    inputSchema: obj({ task_id: id('Task ID.') }, ['task_id']),
+    annotations: CREATE,
+    isAvailable: canUseAI,
+    handler: async (args, ctx) => {
+      const res = await ctx.api.request('POST', `/api/tasks/${args.task_id}/generate-poster`, { timeoutMs: 240000 });
+      return { message: res.message, pending_image_url: res.generatedImageUrl, task_url: `${ctx.appUrl}/tasks/${args.task_id}` };
+    }
+  },
+  {
+    name: 'adopt_task_poster',
+    title: 'Use or discard a generated poster',
+    description: 'Keep the pending AI poster as the task image (adopt) or throw it away (discard).',
+    inputSchema: obj({ task_id: id('Task ID.'), action: { type: 'string', enum: ['adopt', 'discard'], description: 'adopt or discard' } }, ['task_id', 'action']),
+    annotations: UPDATE,
+    isAvailable: canUseAI,
+    handler: async (args, ctx) => {
+      const res = await ctx.api.request('PATCH', `/api/tasks/${args.task_id}/${args.action === 'adopt' ? 'adopt-poster' : 'discard-poster'}`);
+      return { message: res.message, image_url: res.task?.designedImage || undefined };
+    }
+  }
+];
+
 export const TOOLS: Tool[] = [
   ...accountTools,
   ...campaignTools,
@@ -1429,6 +1653,7 @@ export const TOOLS: Tool[] = [
   ...publishingTools,
   ...inboxTools,
   ...aiTools,
+  ...aiAdminTools,
   ...adminTools
 ];
 

@@ -419,13 +419,17 @@ router.post('/:id/refine-description', isAuthenticated, canManageTasks, validate
       });
     }
 
-    // Get user's company info for placeholders
-    const user = await User.findById(req.user!._id);
+    // Brand of the campaign owner (an admin refining a client's task gets the client's brand).
+    const refineCampaign = await Campaign.findById(task.campaignId);
+    const user = await User.findById(refineCampaign?.createdBy || req.user!._id);
     const companyInfo = user?.companyInfo;
 
     // Build dynamic data for prompt compilation
     const dynamicData: any = {
-      taskDescription: task.description
+      taskDescription: task.description,
+      taskName: task.name,
+      taskContent: task.content || '',
+      ...(refineCampaign ? { campaignDetails: refineCampaign } : {})
     };
 
     // Add company info if available
@@ -509,16 +513,16 @@ router.post('/:id/generate-poster', isAuthenticated, canManageTasks, validateMon
       console.log('✅ Command Mapping Found: Legacy Steps -', mapping.steps?.length, 'step(s)');
     }
 
-    // Get user's company info for placeholders
-    const user = await User.findById(req.user!._id);
-    const companyInfo = user?.companyInfo;
-
-    // Get campaign details for placeholders
+    // Campaign details, and the campaign owner's brand/logos (not the clicking admin's).
     const campaign = await Campaign.findById(task.campaignId);
+    const user = await User.findById(campaign?.createdBy || req.user!._id);
+    const companyInfo = user?.companyInfo;
 
     // Build dynamic data for prompt compilation
     const dynamicData: any = {
-      taskDescription: task.description || task.name
+      taskDescription: task.description || task.name,
+      taskName: task.name,
+      taskContent: task.content || ''
     };
 
     // Add available image URLs as individual placeholders (NOT automatically sent to API)

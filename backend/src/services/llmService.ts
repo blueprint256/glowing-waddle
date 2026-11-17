@@ -262,6 +262,7 @@ export function compileSuperPrompt(promptTemplate: string, params: SuperPromptPa
   // Replace any custom placeholders
   Object.keys(params).forEach(key => {
     if (key !== 'companyInfo' && key !== 'campaignDetails' && key !== 'taskDescription' && key !== 'baseImage' && key !== 'previousOutput') {
+      if (params[key] === undefined || params[key] === null) return;
       const value = typeof params[key] === 'object'
         ? JSON.stringify(params[key], null, 2)
         : String(params[key]);
@@ -270,8 +271,21 @@ export function compileSuperPrompt(promptTemplate: string, params: SuperPromptPa
     }
   });
 
+  // Known placeholders with no data (e.g. a company without a logo) are removed rather than sent to
+  // the AI as literal "{primaryLogo}" text, which it would copy into posts.
+  compiledPrompt = compiledPrompt.replace(KNOWN_PLACEHOLDERS, '');
+
   return compiledPrompt;
 }
+
+const KNOWN_PLACEHOLDERS = new RegExp(
+  `\\{(${[
+    'companyInfo', 'companyName', 'sector', 'brandTone', 'brandGuidelines', 'primaryLogo', 'secondaryLogo', 'tertiaryLogo',
+    'campaignDetails', 'campaignName', 'coreMessages', 'hashtags', 'taskDescription', 'taskName', 'taskContent', 'baseImage',
+    'previousOutput', 'attachedImage\\d+'
+  ].join('|')})\\}`,
+  'g'
+);
 
 /**
  * Format company information into a readable string

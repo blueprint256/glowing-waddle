@@ -583,8 +583,8 @@ router.post('/:id/generate', isAuthenticated, validateMongoId('id'), async (req:
       });
     }
 
-    // Get user with company info
-    const user = await User.findById(req.user!._id);
+    // The campaign owner's brand is used (an admin generating for a client gets the client's brand).
+    const user = await User.findById(campaign.createdBy);
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -644,15 +644,21 @@ router.post('/:id/generate', isAuthenticated, validateMongoId('id'), async (req:
         // LLM might return JSON wrapped in markdown code blocks or plain text
         const content = result.content.trim();
 
-        // Remove markdown code blocks if present
-        let jsonString = content;
-        if (content.startsWith('```json')) {
-          jsonString = content.replace(/^```json\n/, '').replace(/\n```$/, '');
-        } else if (content.startsWith('```')) {
-          jsonString = content.replace(/^```\n/, '').replace(/\n```$/, '');
+        // Accept the array however the AI wraps it: code fences, a sentence before/after, or an
+        // object like {"projects": [...]}.
+        const fenced = content.match(/```(?:json)?\s*([\s\S]*?)```/i);
+        const body = (fenced ? fenced[1] : content).trim();
+        let parsed: any;
+        try {
+          parsed = JSON.parse(body);
+        } catch {
+          const start = body.indexOf('[');
+          const end = body.lastIndexOf(']');
+          if (start === -1 || end <= start) throw new Error('No JSON array found in the AI reply');
+          parsed = JSON.parse(body.slice(start, end + 1));
         }
-
-        projectsData = JSON.parse(jsonString);
+        if (!Array.isArray(parsed) && parsed && Array.isArray(parsed.projects)) parsed = parsed.projects;
+        projectsData = parsed;
 
         if (!Array.isArray(projectsData)) {
           throw new Error('Expected an array of projects');

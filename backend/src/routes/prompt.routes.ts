@@ -107,7 +107,7 @@ router.get('/:id', isAuthenticated, isSystemAdmin, validateMongoId('id'), async 
  */
 router.post('/', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
   try {
-    const { name, details } = req.body;
+    const { name, details, llmProvider, llmModel, imageLLMProvider, imageLLMModel } = req.body;
 
     if (!name || !details) {
       return res.status(400).json({
@@ -125,7 +125,15 @@ router.post('/', isAuthenticated, isSystemAdmin, async (req: Request, res: Respo
       });
     }
 
-    const prompt = await Prompt.create({ name, details });
+    // Keep the model settings sent with a new prompt (they used to be dropped until a later edit).
+    const prompt = await Prompt.create({
+      name,
+      details,
+      ...(llmProvider ? { llmProvider } : {}),
+      ...(llmModel ? { llmModel } : {}),
+      ...(imageLLMProvider ? { imageLLMProvider } : {}),
+      ...(imageLLMModel ? { imageLLMModel } : {})
+    });
 
     res.status(201).json({
       success: true,
