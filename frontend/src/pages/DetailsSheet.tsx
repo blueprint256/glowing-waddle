@@ -455,23 +455,23 @@ export default function DetailsSheet() {
     }
   };
 
-  const handleSaveDescription = async (taskId: string, description: string) => {
+  const handleSaveContent = async (taskId: string, content: string) => {
     try {
-      await taskAPI.update(taskId, { description });
+      await taskAPI.update(taskId, { content });
       setCampaigns(prev =>
         prev.map(c => ({
           ...c,
           projects: c.projects?.map(p => ({
             ...p,
             tasks: p.tasks?.map(t =>
-              t._id === taskId ? { ...t, description } : t
+              t._id === taskId ? { ...t, content } : t
             )
           }))
         }))
       );
     } catch (error: any) {
-      console.error('Error updating task description:', error);
-      alert(error.response?.data?.message || 'Failed to update task description');
+      console.error('Error updating post content:', error);
+      alert(error.response?.data?.message || 'Failed to update the post content');
       throw error;
     }
   };
@@ -827,7 +827,7 @@ export default function DetailsSheet() {
                               <TableCell sx={{ fontWeight: 600 }}>Task Name</TableCell>
                               <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
                               <TableCell sx={{ fontWeight: 600 }}>Photos</TableCell>
-                              <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
+                              <TableCell sx={{ fontWeight: 600 }}>Post content</TableCell>
                               <TableCell sx={{ fontWeight: 600 }}>Last Updated</TableCell>
                               <TableCell align="right" sx={{ fontWeight: 600 }}>Actions</TableCell>
                             </TableRow>
@@ -944,7 +944,7 @@ export default function DetailsSheet() {
                                         noWrap
                                         sx={{ maxWidth: 200, flex: 1 }}
                                       >
-                                        {task.description || '-'}
+                                        {task.content || <Box component="span" sx={{ color: 'var(--text-faint)' }}>No post content yet</Box>}
                                       </Typography>
                                       <IconButton
                                         className="edit-icon"
@@ -1264,14 +1264,14 @@ export default function DetailsSheet() {
         />
       )}
 
-      {/* Edit Description Modal (Editable with Live Preview) */}
+      {/* Edit post content with live preview */}
       {editDescriptionTask && (
         <SocialPreviewModal
           open={!!editDescriptionTask}
           onClose={() => setEditDescriptionTask(null)}
           task={editDescriptionTask}
           editable={true}
-          onSave={handleSaveDescription}
+          onSave={handleSaveContent}
         />
       )}
     </Box>

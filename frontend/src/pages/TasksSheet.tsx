@@ -185,19 +185,19 @@ export default function TasksSheet() {
     }
   };
 
-  const handleSaveDescription = async (taskId: string, description: string) => {
+  const handleSaveContent = async (taskId: string, content: string) => {
     try {
-      await taskAPI.update(taskId, { description });
+      await taskAPI.update(taskId, { content });
 
       // Update local state
       setTasks((prev) =>
         prev.map((task) =>
-          task._id === taskId ? { ...task, description } : task
+          task._id === taskId ? { ...task, content } : task
         )
       );
     } catch (error: any) {
-      console.error('Error updating task description:', error);
-      alert(error.response?.data?.message || 'Failed to update task description');
+      console.error('Error updating post content:', error);
+      alert(error.response?.data?.message || 'Failed to update the post content');
       throw error;
     }
   };
@@ -382,7 +382,7 @@ export default function TasksSheet() {
                   <TableCell sx={{ fontWeight: 700, width: '9%' }}>Status</TableCell>
                   <TableCell sx={{ fontWeight: 700, width: '9%' }}>Date</TableCell>
                   <TableCell sx={{ fontWeight: 700, width: '8%' }}>Photos</TableCell>
-                  <TableCell sx={{ fontWeight: 700, width: '25%' }}>Description</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: '25%' }}>Post content</TableCell>
                   <TableCell sx={{ fontWeight: 700, width: '10%', textAlign: 'center' }}>Preview</TableCell>
                 </TableRow>
               </TableHead>
@@ -503,7 +503,7 @@ export default function TasksSheet() {
                         onClick={() => setEditDescriptionTask(task)}
                       >
                         <Typography variant="body2" sx={{ flex: 1 }}>
-                          {task.description || '-'}
+                          {task.content || <Box component="span" sx={{ color: 'var(--text-faint)' }}>No post content yet</Box>}
                         </Typography>
                         <IconButton
                           className="edit-icon"
@@ -546,14 +546,14 @@ export default function TasksSheet() {
             />
           )}
 
-          {/* Edit Description Modal (Editable with Live Preview) */}
+          {/* Edit post content with live preview */}
           {editDescriptionTask && (
             <SocialPreviewModal
               open={!!editDescriptionTask}
               onClose={() => setEditDescriptionTask(null)}
               task={editDescriptionTask}
               editable={true}
-              onSave={handleSaveDescription}
+              onSave={handleSaveContent}
             />
           )}
 

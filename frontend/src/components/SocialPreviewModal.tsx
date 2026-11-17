@@ -39,7 +39,8 @@ interface SocialPreviewModalProps {
     taskDate?: string;
   };
   editable?: boolean;
-  onSave?: (taskId: string, description: string) => Promise<void>;
+  /** Saves the edited post content (the text that gets published). */
+  onSave?: (taskId: string, content: string) => Promise<void>;
 }
 
 interface TabPanelProps {
@@ -65,12 +66,13 @@ const SocialPreviewModal: React.FC<SocialPreviewModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState(0);
   const [copied, setCopied] = useState(false);
-  const [editedDescription, setEditedDescription] = useState('');
+  // The preview shows the task's post content (what gets published) — not its description/brief.
+  const [editedContent, setEditedContent] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open) {
-      setEditedDescription(task?.description || task?.content || '');
+      setEditedContent(task?.content || '');
     }
   }, [open, task]);
 
@@ -83,19 +85,19 @@ const SocialPreviewModal: React.FC<SocialPreviewModalProps> = ({
 
     try {
       setSaving(true);
-      await onSave(task._id, editedDescription);
+      await onSave(task._id, editedContent);
       onClose();
     } catch (error) {
-      console.error('Error saving description:', error);
+      console.error('Error saving post content:', error);
     } finally {
       setSaving(false);
     }
   };
 
+  const postText = (editable ? editedContent : task.content || '').trim();
+
   const handleCopyCaption = () => {
-    const description = editable ? editedDescription : (task.description || task.content || '');
-    const caption = `${task.name}\n\n${description}`;
-    navigator.clipboard.writeText(caption.trim());
+    navigator.clipboard.writeText(postText);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -105,12 +107,8 @@ const SocialPreviewModal: React.FC<SocialPreviewModalProps> = ({
     return text.slice(0, maxLength) + '...';
   };
 
-  const formatCaption = () => {
-    let caption = task.name;
-    const description = editable ? editedDescription : (task.description || task.content || '');
-    if (description) caption += `\n\n${description}`;
-    return caption;
-  };
+  /** The caption exactly as it would be published: the post content only. */
+  const formatCaption = () => postText || 'No post content yet. Add it in the task’s Content field.';
 
   // Instagram Feed Preview
   const InstagramFeedPreview = () => (
@@ -272,7 +270,7 @@ const SocialPreviewModal: React.FC<SocialPreviewModalProps> = ({
       </Box>
 
       {/* Story Caption (if text exists) */}
-      {(task.name || task.description) && (
+      {postText && (
         <Box
           sx={{
             position: 'absolute',
@@ -285,7 +283,7 @@ const SocialPreviewModal: React.FC<SocialPreviewModalProps> = ({
           }}
         >
           <Typography variant="body2" sx={{ color: '#fff' }}>
-            {task.name}
+            {truncateText(postText, 120)}
           </Typography>
         </Box>
       )}
@@ -625,7 +623,7 @@ const SocialPreviewModal: React.FC<SocialPreviewModalProps> = ({
     >
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1 }}>
         <Typography variant="h6" component="div">
-          {editable ? 'Edit Description - Live Preview' : 'Social Media Preview'}
+          {editable ? 'Edit post content - live preview' : 'Social Media Preview'}
         </Typography>
         <IconButton onClick={onClose} size="small">
           <CloseIcon />
@@ -636,15 +634,15 @@ const SocialPreviewModal: React.FC<SocialPreviewModalProps> = ({
         {editable && (
           <Box sx={{ p: 3, backgroundColor: '#fff', borderBottom: '1px solid #e0e0e0' }}>
             <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600 }}>
-              Edit Description
+              Post content
             </Typography>
             <TextField
               multiline
               rows={4}
               fullWidth
-              value={editedDescription}
-              onChange={(e) => setEditedDescription(e.target.value)}
-              placeholder="Enter description for your social media post..."
+              value={editedContent}
+              onChange={(e) => setEditedContent(e.target.value)}
+              placeholder="Write the post exactly as it should be published..."
               variant="outlined"
               sx={{
                 '& .MuiOutlinedInput-root': {
@@ -716,7 +714,7 @@ const SocialPreviewModal: React.FC<SocialPreviewModalProps> = ({
                   }
                 }}
               >
-                {saving ? 'Saving...' : 'Save Description'}
+                {saving ? 'Saving...' : 'Save post content'}
               </Button>
             </>
           ) : (
