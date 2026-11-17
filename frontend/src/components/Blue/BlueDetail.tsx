@@ -267,7 +267,7 @@ function ProjectView({ id, preview, go, onCampaign }: { id: string; preview?: an
                   <Thumb src={t.designedImage} />
                   <Box sx={{ minWidth: 0 }}>
                     <Typography noWrap sx={{ fontSize: 13, color: 'var(--text-strong)' }}>{t.name}</Typography>
-                    <Typography noWrap sx={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{day(t.taskDate) || 'Not scheduled yet'}</Typography>
+                    <Typography noWrap sx={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{day(t.taskDate) || 'No day yet'}</Typography>
                   </Box>
                 </Box>
               }

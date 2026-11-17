@@ -4,6 +4,7 @@ import { Campaign } from '../models/Campaign';
 import { User } from '../models/User';
 import type { ITask } from '../models/Task';
 import { compileSuperPrompt, executeCommandChain, sendToLLM } from './llmService';
+import { AIError } from '../lib/aiError';
 
 /**
  * AI writing help on a post (Improve caption, Improve brief).
@@ -15,11 +16,8 @@ import { compileSuperPrompt, executeCommandChain, sendToLLM } from './llmService
 
 type Id = mongoose.Types.ObjectId;
 
-export class PostAIError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
-  }
-}
+/** Kept under its first name for the post routes. */
+export { AIError as PostAIError } from '../lib/aiError';
 
 /** Ways to improve a caption, as offered in the app. */
 export const CAPTION_STYLES: Record<string, { label: string; instruction: string; platform?: string }> = {
@@ -124,13 +122,13 @@ export async function runPostCommand(
     source = 'builtin';
   }
   const text = cleanAIText(content);
-  if (!text) throw new PostAIError(502, 'The AI returned an empty answer. Try again.');
+  if (!text) throw new AIError(502, 'The AI returned an empty answer. Try again.');
   return { text, source };
 }
 
 /** Turns provider failures into messages people can act on. */
 export function aiErrorMessage(error: any, fallback: string): { status: number; message: string } {
-  if (error instanceof PostAIError) return { status: error.status, message: error.message };
+  if (error instanceof AIError) return { status: error.status, message: error.message };
   const m = String(error?.message || '');
   if (/api key/i.test(m)) return { status: 503, message: 'AI isn’t set up yet. Ask your admin to add an AI key in Settings.' };
   if (/rate limit|429/i.test(m)) return { status: 429, message: 'The AI is busy right now. Try again in a minute.' };

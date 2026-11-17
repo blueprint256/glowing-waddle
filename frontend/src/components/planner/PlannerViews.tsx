@@ -350,7 +350,7 @@ export function ListView({ posts, onOpen, group }: { posts: PlannerPost[]; onOpe
       } else {
         const k = dayKey(p.taskDate);
         key = k || 'none';
-        title = k ? formatDay(p.taskDate, { relative: true }) : 'Not scheduled yet';
+        title = k ? formatDay(p.taskDate, { relative: true }) : 'No day yet';
         order = k ? +keyToDate(k) : Infinity;
       }
       const g = map.get(key) || { key, title, color, posts: [], order };

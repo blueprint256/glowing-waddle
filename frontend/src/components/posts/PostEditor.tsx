@@ -40,6 +40,7 @@ import ImageViewer from '../ui/ImageViewer';
 import PostPreview, { type PreviewPlatform } from './PostPreview';
 import { ImproveBriefButton, ImproveCaptionButton } from './AISuggestion';
 import LibraryImagePicker from './LibraryImagePicker';
+import MovePostDialog from './MovePostDialog';
 import TaskPublishing from '../Publishing/TaskPublishing';
 import EditInCanvaButton from '../Canva/EditInCanvaButton';
 
@@ -119,6 +120,7 @@ export default function PostEditor({ taskId, variant = 'panel', onDirtyChange, r
   const [platform, setPlatform] = useState<PreviewPlatform>('instagram');
   const [viewer, setViewer] = useState<{ src: string; title: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
   const [comments, setComments] = useState<Comment[]>([]);
   const [note, setNote] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
@@ -385,6 +387,11 @@ export default function PostEditor({ taskId, variant = 'panel', onDirtyChange, r
               {theme.name}
             </Box>
           )}
+          {campaign && theme && (
+            <Button size="small" onClick={() => setMoveOpen(true)} sx={{ ml: 0.5, minWidth: 0, px: 0.75, py: 0, fontSize: 12.5, color: 'var(--text-muted)' }}>
+              Move
+            </Button>
+          )}
         </Box>
       )}
 
@@ -441,7 +448,7 @@ export default function PostEditor({ taskId, variant = 'panel', onDirtyChange, r
           inputProps={{ 'aria-label': 'Day it goes out' }}
           sx={{ width: 170, '& input': { py: '6.5px' } }}
         />
-        {!dayValue && <Typography sx={{ fontSize: 13, color: 'var(--text-muted)' }}>Not on the calendar yet</Typography>}
+        {!dayValue && <Typography sx={{ fontSize: 13, color: 'var(--text-muted)' }}>No day yet</Typography>}
       </Box>
 
       {/* Image */}
@@ -711,6 +718,18 @@ export default function PostEditor({ taskId, variant = 'panel', onDirtyChange, r
       />
 
       <ImageViewer src={viewer?.src || null} title={viewer?.title} onClose={() => setViewer(null)} />
+
+      {campaign && theme && (
+        <MovePostDialog
+          open={moveOpen}
+          taskId={taskId}
+          campaignId={refId(campaign) || ''}
+          themeId={refId(theme) || ''}
+          ownerId={ownerId || undefined}
+          onClose={() => setMoveOpen(false)}
+          onMoved={() => load({ keepDraft: true })}
+        />
+      )}
 
       <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Delete this post?</DialogTitle>

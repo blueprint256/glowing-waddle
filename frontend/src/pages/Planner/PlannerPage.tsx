@@ -33,7 +33,7 @@ import { announcePostChanged } from '../../store/aiJobsStore';
  * Planner: every post in one place, as a calendar (month or week) or a list. Replaces the old
  * Calendar, Tasks Sheet and Details Sheet. Everything you choose (view, date, filters) is kept in the
  * address, so Back and shared links work. Drag a card to another day to move it (with Undo); posts
- * without a day wait in "Not scheduled yet".
+ * without a day wait in "No day yet".
  */
 
 type View = 'month' | 'week' | 'list';
@@ -215,7 +215,7 @@ export default function PlannerPage() {
     try {
       await taskAPI.update(id, { taskDate: after });
       announcePostChanged(id);
-      notify(day ? `Moved “${post.name}” to ${formatDay(after, { relative: true })}` : `“${post.name}” is now not scheduled`, {
+      notify(day ? `Moved “${post.name}” to ${formatDay(after, { relative: true })}` : `“${post.name}” no longer has a day`, {
         undo: async () => {
           try {
             await taskAPI.update(id, { taskDate: before });
@@ -298,13 +298,13 @@ export default function PlannerPage() {
   const tray = (
     <Box
       {...trayDrop.bind}
-      aria-label="Not scheduled yet"
+      aria-label="No day yet"
       sx={{
         display: 'flex', flexDirection: 'column', gap: 0.75, p: 1, borderRadius: 'var(--r-card)', border: '1px solid var(--border)', minHeight: 160,
         bgcolor: trayDrop.over ? 'var(--bg-hover)' : 'var(--bg-subtle)', outline: trayDrop.over ? '2px dashed var(--border-strong)' : 'none', outlineOffset: -3
       }}
     >
-      <Typography sx={{ fontSize: 13, fontWeight: 700, color: 'var(--text-strong)' }}>Not scheduled yet · {unscheduled.length}</Typography>
+      <Typography sx={{ fontSize: 13, fontWeight: 700, color: 'var(--text-strong)' }}>No day yet · {unscheduled.length}</Typography>
       <Typography sx={{ fontSize: 12, color: 'var(--text-muted)', mb: 0.5 }}>{phone ? 'Open a post to give it a day.' : 'Drag a post onto a day to plan it.'}</Typography>
       {unscheduled.map((p) => (
         <PostCard key={p._id} post={p} onOpen={openPost} variant="compact" draggable={!phone} />
@@ -394,7 +394,7 @@ export default function PlannerPage() {
         {posts === null && !error && <CircularProgress size={16} sx={{ color: 'var(--text-muted)' }} />}
         {view !== 'list' && !wide && (
           <Button size="small" startIcon={<TrayIcon />} onClick={() => setTrayOpen(true)}>
-            Not scheduled ({unscheduled.length})
+            No day yet ({unscheduled.length})
           </Button>
         )}
       </Box>

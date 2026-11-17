@@ -27,7 +27,8 @@ export interface PlannerParams {
   date?: string;
   campaign?: unknown;
   theme?: unknown;
-  status?: string;
+  /** One status or several ("Idea", or ["Idea", "Draft"]). */
+  status?: string | string[];
   /** List view grouping (day is the default). */
   group?: 'day' | 'campaign' | 'theme';
 }
@@ -40,7 +41,7 @@ export const paths = {
       date: p.date,
       campaign: p.campaign ? id(p.campaign) : undefined,
       theme: p.theme ? id(p.theme) : undefined,
-      status: p.status,
+      status: Array.isArray(p.status) ? p.status.join(',') : p.status,
       group: p.group
     })}`,
   /** A post on its own page. To open it beside the current page, use useOpenPost(). */

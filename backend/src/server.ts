@@ -156,6 +156,7 @@ app.use(
   requireAI
 );
 app.post('/api/campaigns/:id/generate', requireAI);
+app.post('/api/campaigns/:id/plan', requireAI);
 app.post('/api/campaigns/:id/generate-tasks', requireAI);
 app.post('/api/tasks/:id/generate-poster', requireAI);
 app.post('/api/tasks/:id/refine-description', requireAI);

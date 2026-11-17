@@ -11,6 +11,7 @@ import { canManageTasks } from '../middleware/rbac';
 import { checkTaskOwnership } from '../middleware/ownership';
 import { validateMongoId, validateTaskCreate, validateTaskUpdate } from '../middleware/validation';
 import { Comment } from '../models/Comment';
+import { LibraryAsset } from '../models/LibraryAsset';
 import { queueTaskImage } from '../library/hooks';
 import { onTaskDeleted } from '../services/lifecycle';
 import { USER_SETTABLE_STATUSES, hasPublishingInPlay, normalizePostStatus } from '../services/postStatus';
@@ -379,6 +380,21 @@ router.put('/:id', isAuthenticated, canManageTasks, validateMongoId('id'), valid
       }
     }
 
+    // Move to another theme (in this campaign, or in another campaign of the same account).
+    let movedTo: { projectId: mongoose.Types.ObjectId; campaignId: mongoose.Types.ObjectId } | null = null;
+    if (req.body.projectId && String(req.body.projectId) !== String(task.projectId)) {
+      const target = await Project.findById(req.body.projectId);
+      if (!target) return res.status(404).json({ success: false, message: 'Theme not found' });
+      const [from, to] = await Promise.all([Campaign.findById(task.campaignId).select('createdBy'), Campaign.findById(target.campaignId).select('createdBy archived')]);
+      if (!to || !from || String(to.createdBy) !== String(from.createdBy)) {
+        return res.status(403).json({ success: false, message: 'A post can only move to a theme in your own campaigns.' });
+      }
+      if (to.archived) return res.status(409).json({ success: false, message: 'That campaign is archived. Restore it first.' });
+      task.projectId = target._id as any;
+      task.campaignId = target.campaignId as any;
+      movedTo = { projectId: target._id as any, campaignId: target.campaignId as any };
+    }
+
     // Update fields
     if (name) task.name = name;
     if (description !== undefined) task.description = description;
@@ -387,6 +403,14 @@ router.put('/:id', isAuthenticated, canManageTasks, validateMongoId('id'), valid
 
     task.lastModifiedBy = req.user!._id;
     await task.save();
+
+    // Its scheduled copies and Library items follow it to the new campaign and theme.
+    if (movedTo) {
+      await Promise.all([
+        SocialPost.updateMany({ taskId: task._id }, { $set: { campaignId: movedTo.campaignId } }),
+        LibraryAsset.updateMany({ 'links.taskId': task._id }, { $set: { 'links.campaignId': movedTo.campaignId, 'links.projectId': movedTo.projectId } })
+      ]);
+    }
 
     // Log update
     await logAudit({

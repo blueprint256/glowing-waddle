@@ -184,5 +184,6 @@ export const validateTaskUpdate = [
   optionalDate('taskDate'),
   optionalText('description'),
   optionalText('content'),
+  body('projectId').optional().isMongoId().withMessage('projectId must be a theme id'),
   handleValidationErrors
 ];

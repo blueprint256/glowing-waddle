@@ -1,4 +1,5 @@
 import express, { Request, Response } from 'express';
+import { Task } from '../models/Task';
 import { Project, ProjectRole, ProjectStatus } from '../models/Project';
 import { Campaign } from '../models/Campaign';
 import { UserRole } from '../models/User';
@@ -273,6 +274,28 @@ router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), va
       success: false,
       message: 'Error updating project'
     });
+  }
+});
+
+/**
+ * @route   DELETE /api/projects/:id
+ * @desc    Delete an empty theme. A theme that still has posts is refused: move or delete them first.
+ * @access  Private (System Admin, Hybrid owner)
+ */
+router.delete('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), checkProjectOwnership, async (req: Request, res: Response) => {
+  try {
+    const project = await Project.findById(req.params.id);
+    if (!project) return res.status(404).json({ success: false, message: 'Theme not found' });
+    const posts = await Task.countDocuments({ projectId: project._id });
+    if (posts > 0) {
+      return res.status(409).json({ success: false, message: `This theme still has ${posts} post${posts === 1 ? '' : 's'}. Move or delete them first.`, posts });
+    }
+    await project.deleteOne();
+    await logAudit({ action: AuditAction.PROJECT_UPDATED, userId: req.user!._id, targetType: 'Project', targetId: project._id, metadata: { deleted: true, name: project.name }, req });
+    res.json({ success: true, message: 'Theme deleted' });
+  } catch (error: any) {
+    console.error('Error deleting project:', error);
+    res.status(500).json({ success: false, message: 'Error deleting theme' });
   }
 });
 

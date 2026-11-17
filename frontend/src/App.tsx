@@ -12,9 +12,9 @@ import { OldProjectRedirect, OldTaskRedirect } from './pages/Redirects';
 // (Settings, the Planner and Blue are the heaviest — they no longer load at login.)
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const SignupPage = lazy(() => import('./pages/SignupPage'));
-const Dashboard = lazy(() => import('./pages/Dashboard'));
+const TodayPage = lazy(() => import('./pages/Today/TodayPage'));
 const CampaignsList = lazy(() => import('./pages/Campaigns/CampaignsList'));
-const CampaignDetail = lazy(() => import('./pages/Campaigns/CampaignDetail'));
+const CampaignPage = lazy(() => import('./pages/Campaigns/CampaignPage'));
 const PostPage = lazy(() => import('./pages/Posts/PostPage'));
 const PlannerPage = lazy(() => import('./pages/Planner/PlannerPage'));
 const UserManagement = lazy(() => import('./pages/Admin/UserManagement'));
@@ -104,9 +104,9 @@ function App() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<Dashboard />} />
+        <Route index element={<TodayPage />} />
         <Route path="campaigns" element={<CampaignsList />} />
-        <Route path="campaigns/:id" element={<CampaignDetail />} />
+        <Route path="campaigns/:id" element={<CampaignPage />} />
         <Route path="planner" element={<PlannerPage />} />
         <Route path="posts/:id" element={<PostPage />} />
         <Route path="settings" element={<Settings />} />

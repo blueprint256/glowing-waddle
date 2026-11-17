@@ -12,6 +12,7 @@ import {
 } from '../lib/postStatus';
 import { links, absolute } from '../lib/links';
 import { applyPlaceholderAliases, checkPlaceholders, knownPlaceholderRegex, isKnownPlaceholder } from '../lib/placeholders';
+import { normalizePlan, parsePlanReply, planDay, planWindow, validatePlan, PLAN_LIMITS } from '../lib/campaignPlan';
 
 const failures: string[] = [];
 let passed = 0;
@@ -118,6 +119,49 @@ async function main() {
     const re = knownPlaceholderRegex();
     assert.equal('a{brief}b{taskDescription}c{referenceImage4}d{attachedImage12}e{custom}'.replace(re, ''), 'abcde{custom}');
     assert.ok(isKnownPlaceholder('attachedImage7') && isKnownPlaceholder('referenceImage7') && !isKnownPlaceholder('tone'));
+  });
+
+  await test('plan with AI: days, period and replies are read safely', () => {
+    assert.equal(planDay('2026-11-20'), '2026-11-20');
+    assert.equal(planDay('2026-11-20T09:00:00Z'), '2026-11-20');
+    assert.equal(planDay('TBD'), null);
+    assert.equal(planDay(undefined), null);
+    const now = new Date('2026-11-17T10:00:00Z');
+    assert.deepEqual(planWindow({ startDate: new Date('2026-12-01'), endDate: new Date('2026-12-31') } as any, {}, now), { from: '2026-12-01', to: '2026-12-31' });
+    // A campaign that started in the past is planned from today; no end date → 4 weeks.
+    assert.deepEqual(planWindow({ startDate: new Date('2026-10-01') } as any, {}, now), { from: '2026-11-17', to: '2026-12-14' });
+    assert.deepEqual(planWindow({} as any, { from: '2026-11-20', to: '2026-11-10' }, now), { from: '2026-11-20', to: '2026-12-17' });
+    assert.equal(parsePlanReply('Here you go:\n```json\n[{"projectName":"A"}]\n```').length, 1);
+    assert.equal(parsePlanReply('{"projects":[{"projectName":"A"},{"projectName":"B"}]}').length, 2);
+    assert.equal(parsePlanReply('Sure! [{"projectName":"A"}] Hope it helps').length, 1);
+    assert.throws(() => parsePlanReply('I cannot help with that'));
+    assert.throws(() => parsePlanReply('[{"projectName": "A", "tasks": [{"taskName": "cut off'));
+  });
+
+  await test('plan with AI: drafts are cleaned and limited', () => {
+    const themes = normalizePlan([
+      { projectName: ' Launch ', projectDescription: 'Big week', tasks: [
+        { taskName: 'Teaser', taskDescription: 'Brief', content: 'Caption', taskDate: '2026-11-20', status: 'Completed' },
+        { taskName: '', content: 'no title is skipped' },
+        { title: 'Other names work', caption: 'c', date: 'soon', status: 'Idea' }
+      ] },
+      { name: '' },
+      'junk'
+    ]);
+    assert.equal(themes.length, 1);
+    assert.equal(themes[0].name, 'Launch');
+    assert.deepEqual(themes[0].posts.map((p) => [p.name, p.day, p.status]), [['Teaser', '2026-11-20', 'Ready'], ['Other names work', null, 'Idea']]);
+    const many = normalizePlan([{ projectName: 'X', tasks: Array.from({ length: 100 }, (_, i) => ({ taskName: `P${i}` })) }]);
+    assert.equal(many[0].posts.length, PLAN_LIMITS.postsPerTheme);
+    // What the app sends back after review keeps the chosen existing theme (and only valid ids).
+    const back = validatePlan([
+      { name: 'Existing', existingId: '64b7f0c2a1b2c3d4e5f60718', posts: [{ name: 'One', day: '2026-11-21', status: 'Draft' }] },
+      { name: 'Bad id', existingId: 'nope', posts: [{ name: 'Two' }] }
+    ]);
+    assert.equal(back[0].existingId, '64b7f0c2a1b2c3d4e5f60718');
+    assert.equal(back[1].existingId, null);
+    assert.throws(() => validatePlan([{ name: 'Empty', posts: [] }]));
+    assert.throws(() => validatePlan('nope'));
   });
 
   if (failures.length) {

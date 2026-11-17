@@ -657,7 +657,7 @@ function Calendar({ data }: { data: any }) {
     <Table head={`${data.total_tasks} post${data.total_tasks === 1 ? '' : 's'} · ${day(data.date_from, false)} – ${day(data.date_to, false)}`}>
       {days.map((d) => (
         <Box key={d} sx={{ display: 'grid', gridTemplateColumns: '72px minmax(0,1fr)', gap: 1, px: 1.25, py: 0.75, '& + &': { borderTop: '1px solid var(--border)' } }}>
-          <Typography sx={{ fontSize: 12, fontWeight: 600, color: 'var(--text-strong)', pt: '6px' }}>{d === 'undated' ? 'Not scheduled' : day(d)}</Typography>
+          <Typography sx={{ fontSize: 12, fontWeight: 600, color: 'var(--text-strong)', pt: '6px' }}>{d === 'undated' ? 'No day yet' : day(d)}</Typography>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
             {data.days[d].map((t: any) => (
               <Box

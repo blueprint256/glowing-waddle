@@ -66,9 +66,43 @@ export const campaignAPI = {
   create: (data: any) => api.post('/campaigns', data),
   update: (id: string, data: any) => api.put(`/campaigns/${id}`, data),
   archive: (id: string) => api.put(`/campaigns/${id}/archive`),
+  unarchive: (id: string) => api.put(`/campaigns/${id}/unarchive`),
   delete: (id: string) => api.delete(`/campaigns/${id}`),
-  generate: (id: string, data: { command: string }) => api.post(`/campaigns/${id}/generate`, data)
+  /** Plan with AI, step 1: a draft to review (nothing is saved). Can take a minute or two. */
+  plan: (id: string, body: PlanRequest) => api.post<PlanDraft>(`/campaigns/${id}/plan`, body, { timeout: 240000 }).then((r) => r.data),
+  /** Plan with AI, step 2: create the reviewed themes and posts. */
+  applyPlan: (id: string, themes: PlanTheme[]) =>
+    api.post<{ message: string; themes: { id: string; name: string; isNew: boolean; posts: number }[]; postIds: string[]; postCount: number }>(`/campaigns/${id}/plan/apply`, { themes }).then((r) => r.data)
 };
+
+/** Plan with AI (backend: lib/campaignPlan.ts). */
+export interface PlanPost {
+  name: string;
+  brief: string;
+  caption: string;
+  day: string | null;
+  status: 'Idea' | 'Draft' | 'Ready';
+}
+export interface PlanTheme {
+  name: string;
+  description: string;
+  startDate: string | null;
+  dueDate: string | null;
+  existingId?: string | null;
+  posts: PlanPost[];
+}
+export interface PlanRequest {
+  notes?: string;
+  from?: string;
+  to?: string;
+  perWeek?: number;
+}
+export interface PlanDraft {
+  themes: PlanTheme[];
+  from: string;
+  to: string;
+  source: 'command' | 'builtin';
+}
 
 // Project API
 export const projectAPI = {
@@ -76,6 +110,8 @@ export const projectAPI = {
   getById: (id: string) => api.get(`/projects/${id}`),
   create: (data: any) => api.post('/projects', data),
   update: (id: string, data: any) => api.put(`/projects/${id}`, data),
+  /** Only an empty theme can be deleted. */
+  remove: (id: string) => api.delete(`/projects/${id}`),
   assignUser: (id: string, data: any) => api.post(`/projects/${id}/assignments`, data),
   removeUser: (id: string, userId: string) => api.delete(`/projects/${id}/assignments/${userId}`)
 };

@@ -2,17 +2,18 @@ import express, { Request, Response } from 'express';
 import { onCampaignArchived } from '../services/lifecycle';
 import { Campaign, CampaignStatus } from '../models/Campaign';
 import { User, UserRole } from '../models/User';
-import { Project, ProjectStatus } from '../models/Project';
-import { Task, TaskStatus } from '../models/Task';
+import { Project } from '../models/Project';
+import { Task } from '../models/Task';
 import { normalizePostStatus } from '../services/postStatus';
-import { CommandMapping } from '../models/CommandMapping';
+import { applyCampaignPlan, draftCampaignPlan, validatePlan, type PlanOptions } from '../services/campaignPlan';
+import { aiErrorMessage } from '../services/postAI';
 import { isAuthenticated } from '../middleware/auth';
 import { canCreateCampaign } from '../middleware/rbac';
 import { validateCampaignCreation, validateCampaignFields, validateMongoId } from '../middleware/validation';
 import { logAudit } from '../utils/auditLogger';
 import { AuditAction } from '../models/AuditLog';
 import { searchRegex } from '../utils/regex';
-import { fetchAndCompilePrompt, generateWithPrompt, executeCommandChain } from '../services/llmService';
+import { generateWithPrompt } from '../services/llmService';
 
 const router = express.Router();
 
@@ -143,9 +144,35 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
       .skip(skip)
       .limit(limit);
 
+    // ?include=counts: posts by status and number of themes, for the campaign cards.
+    let counts: Record<string, { posts: number; themes: number; byStatus: Record<string, number>; nextDay: Date | null }> | undefined;
+    if (String(req.query.include || '').split(',').includes('counts') && campaigns.length) {
+      const ids = campaigns.map((c) => c._id);
+      const [byStatus, themes, next] = await Promise.all([
+        Task.aggregate([{ $match: { campaignId: { $in: ids } } }, { $group: { _id: { c: '$campaignId', s: '$status' }, n: { $sum: 1 } } }]),
+        Project.aggregate([{ $match: { campaignId: { $in: ids } } }, { $group: { _id: '$campaignId', n: { $sum: 1 } } }]),
+        Task.aggregate([
+          { $match: { campaignId: { $in: ids }, taskDate: { $gte: new Date(new Date().toISOString().slice(0, 10)) } } },
+          { $group: { _id: '$campaignId', d: { $min: '$taskDate' } } }
+        ])
+      ]);
+      counts = {};
+      for (const c of campaigns) counts[String(c._id)] = { posts: 0, themes: 0, byStatus: {}, nextDay: null };
+      for (const r of byStatus) {
+        const e = counts[String(r._id.c)];
+        if (!e) continue;
+        const s = normalizePostStatus(r._id.s) || String(r._id.s);
+        e.byStatus[s] = (e.byStatus[s] || 0) + r.n;
+        e.posts += r.n;
+      }
+      for (const r of themes) if (counts[String(r._id)]) counts[String(r._id)].themes = r.n;
+      for (const r of next) if (counts[String(r._id)]) counts[String(r._id)].nextDay = r.d;
+    }
+
     res.json({
       success: true,
       campaigns,
+      ...(counts ? { counts } : {}),
       pagination: {
         total,
         page,
@@ -550,274 +577,118 @@ router.post('/:id/generate-tasks', isAuthenticated, async (req: Request, res: Re
   }
 });
 
+/** The campaign, if this person may plan for it (owner, or a System Admin). Sends the error otherwise. */
+async function campaignForPlanning(req: Request, res: Response) {
+  const campaign = await Campaign.findById(req.params.id);
+  if (!campaign) {
+    res.status(404).json({ success: false, message: 'Campaign not found' });
+    return null;
+  }
+  if (req.user!.role !== UserRole.SYSTEM_ADMIN && campaign.createdBy.toString() !== req.user!._id.toString()) {
+    res.status(403).json({ success: false, message: 'Access denied: You can only plan campaigns you created' });
+    return null;
+  }
+  if (campaign.archived) {
+    res.status(409).json({ success: false, message: 'This campaign is archived. Restore it to plan posts.' });
+    return null;
+  }
+  return campaign;
+}
+
+const planOptions = (body: any): PlanOptions => ({
+  notes: typeof body?.notes === 'string' ? body.notes : undefined,
+  from: typeof body?.from === 'string' ? body.from : undefined,
+  to: typeof body?.to === 'string' ? body.to : undefined,
+  perWeek: body?.perWeek !== undefined && body?.perWeek !== null && body?.perWeek !== '' ? Number(body.perWeek) : undefined,
+  command: typeof body?.command === 'string' && body.command.trim() ? body.command.trim() : undefined
+});
+
+/**
+ * @route   POST /api/campaigns/:id/plan
+ * @desc    Plan with AI, step 1: a draft of themes and posts to review. Nothing is saved.
+ *          Body: { notes?, from?, to?, perWeek?, command? }
+ * @access  Private (campaign owner or System Admin; AI on)
+ */
+router.post('/:id/plan', isAuthenticated, validateMongoId('id'), async (req: Request, res: Response) => {
+  try {
+    const campaign = await campaignForPlanning(req, res);
+    if (!campaign) return;
+    const draft = await draftCampaignPlan(campaign, planOptions(req.body), req.user!._id as any);
+    res.json({ success: true, ...draft });
+  } catch (error: any) {
+    console.error('Error planning campaign:', error);
+    const { status, message } = aiErrorMessage(error, 'The AI couldn’t plan this campaign. Try again.');
+    res.status(status).json({ success: false, message });
+  }
+});
+
+/**
+ * @route   POST /api/campaigns/:id/plan/apply
+ * @desc    Plan with AI, step 2: creates the reviewed themes and posts. Body: { themes: PlanTheme[] }
+ * @access  Private (campaign owner or System Admin)
+ */
+router.post('/:id/plan/apply', isAuthenticated, validateMongoId('id'), async (req: Request, res: Response) => {
+  try {
+    const campaign = await campaignForPlanning(req, res);
+    if (!campaign) return;
+    const themes = validatePlan(req.body?.themes);
+    const result = await applyCampaignPlan(campaign, themes, req.user!._id as any);
+    await logAudit({
+      action: AuditAction.CAMPAIGN_UPDATED,
+      userId: req.user!._id,
+      targetType: 'Campaign',
+      targetId: campaign._id,
+      metadata: { action: 'plan_with_ai', themes: result.themes.length, posts: result.postCount },
+      req
+    });
+    const newThemes = result.themes.filter((t) => t.isNew).length;
+    res.status(201).json({
+      success: true,
+      message: `Created ${result.postCount} post${result.postCount === 1 ? '' : 's'}${newThemes ? ` and ${newThemes} new theme${newThemes === 1 ? '' : 's'}` : ''}.`,
+      ...result
+    });
+  } catch (error: any) {
+    console.error('Error creating the plan:', error);
+    const { status, message } = aiErrorMessage(error, 'Couldn’t create the posts. Try again.');
+    res.status(status).json({ success: false, message });
+  }
+});
+
 /**
  * @route   POST /api/campaigns/:id/generate
- * @desc    Generate projects and tasks for campaign using LLM (Hybrid User only, owner verification)
- * @access  Private (Hybrid User - must own campaign)
+ * @desc    Plan with AI in one step (draft + create), for the connector's generate_campaign_content.
+ *          Body: { command?, notes?, from?, to?, perWeek? }
+ * @access  Private (campaign owner or System Admin; AI on)
  */
 router.post('/:id/generate', isAuthenticated, validateMongoId('id'), async (req: Request, res: Response) => {
   try {
-    const { command } = req.body;
-
-    if (!command || typeof command !== 'string' || command.trim().length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Command is required'
-      });
-    }
-
-    // Get campaign
-    const campaign = await Campaign.findById(req.params.id);
-    if (!campaign) {
-      return res.status(404).json({
-        success: false,
-        message: 'Campaign not found'
-      });
-    }
-
-    // CRITICAL: Hybrid users can only generate for their own campaigns
-    // System Admins can generate for any campaign
-    if (req.user!.role === UserRole.HYBRID && campaign.createdBy.toString() !== req.user!._id.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied: You can only generate content for campaigns you created'
-      });
-    }
-
-    // The campaign owner's brand is used (an admin generating for a client gets the client's brand).
-    const user = await User.findById(campaign.createdBy);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-
-    // Look up command mapping (supports prompts, chains, and legacy steps)
-    const commandMapping = await CommandMapping.findOne({ command: command.trim() })
-      .populate('promptId', 'name details')
-      .populate('chainId')
-      .populate('steps.promptId');
-
-    if (!commandMapping) {
-      // List what does exist, so people (and assistants) can pick a valid command.
-      const available = (await CommandMapping.distinct('command')).filter(Boolean).sort();
-      return res.status(404).json({
-        success: false,
-        message: available.length
-          ? `Command '${command.trim()}' is not configured. Available commands: ${available.join(', ')}.`
-          : `Command '${command.trim()}' is not configured, and no AI commands are set up yet. A System Admin adds them in Settings → Command Mappings.`,
-        availableCommands: available
-      });
-    }
-
-    if (!commandMapping.promptId && !commandMapping.chainId && (!commandMapping.steps || commandMapping.steps.length === 0)) {
-      return res.status(500).json({
-        success: false,
-        message: 'Command mapping is invalid - no prompt, chain, or steps configured'
-      });
-    }
-
-    // Prepare parameters for prompt compilation
-    const promptParams = {
-      companyInfo: user.companyInfo || {},
-      campaignDetails: {
-        name: campaign.name,
-        description: campaign.description,
-        goals: campaign.goals,
-        coreMessages: campaign.coreMessages,
-        hashtags: campaign.hashtags,
-        startDate: campaign.startDate,
-        endDate: campaign.endDate
-      }
-    };
-
-    try {
-      // Execute command using chain execution (supports single prompts, chains, and legacy steps)
-      const result = await executeCommandChain(commandMapping, promptParams, {
-        userId: req.user!._id
-      });
-
-      // Parse JSON response from LLM
-      let projectsData: any[];
-      try {
-        // Try to extract JSON from the response
-        // LLM might return JSON wrapped in markdown code blocks or plain text
-        const content = result.content.trim();
-
-        // Accept the array however the AI wraps it: code fences, a sentence before/after, or an
-        // object like {"projects": [...]}.
-        const fenced = content.match(/```(?:json)?\s*([\s\S]*?)```/i);
-        const body = (fenced ? fenced[1] : content).trim();
-        let parsed: any;
-        try {
-          parsed = JSON.parse(body);
-        } catch {
-          const start = body.indexOf('[');
-          const end = body.lastIndexOf(']');
-          if (start === -1 || end <= start) throw new Error('No JSON array found in the AI reply');
-          parsed = JSON.parse(body.slice(start, end + 1));
-        }
-        if (!Array.isArray(parsed) && parsed && Array.isArray(parsed.projects)) parsed = parsed.projects;
-        projectsData = parsed;
-
-        if (!Array.isArray(projectsData)) {
-          throw new Error('Expected an array of projects');
-        }
-      } catch (parseError: any) {
-        console.error('JSON parse error:', parseError);
-        return res.status(500).json({
-          success: false,
-          message: 'Failed to parse AI response. The prompt should return a JSON array of projects with tasks.',
-          error: parseError.message,
-          rawContent: result.content
-        });
-      }
-
-      // Helper function to normalize project status from LLM response
-      const normalizeProjectStatus = (status: any): ProjectStatus => {
-        if (!status || typeof status !== 'string') return ProjectStatus.PLANNING;
-
-        const normalized = status.toLowerCase().trim();
-        switch (normalized) {
-          case 'planning':
-            return ProjectStatus.PLANNING;
-          case 'in progress':
-          case 'in-progress':
-          case 'inprogress':
-            return ProjectStatus.IN_PROGRESS;
-          case 'completed':
-            return ProjectStatus.COMPLETED;
-          case 'on hold':
-          case 'on-hold':
-          case 'onhold':
-            return ProjectStatus.ON_HOLD;
-          default:
-            return ProjectStatus.PLANNING;
-        }
-      };
-
-      // Posts the AI plans start as Draft (or Idea / Ready when it says so); Scheduled and Published
-      // only ever come from Publishing.
-      const normalizeTaskStatus = (status: unknown): TaskStatus => {
-        const s = normalizePostStatus(status);
-        return s === TaskStatus.IDEA || s === TaskStatus.READY ? s : TaskStatus.DRAFT;
-      };
-
-      // The AI sometimes writes "TBD" or "next Monday": an unreadable date is left empty instead of
-      // failing the whole generation half-way.
-      const aiDate = (value: unknown): Date | undefined => {
-        if (!value || (typeof value !== 'string' && typeof value !== 'number')) return undefined;
-        const d = new Date(value);
-        return Number.isNaN(d.getTime()) ? undefined : d;
-      };
-
-      // Create projects and tasks
-      const createdProjects: any[] = [];
-      const createdTasksCount: number[] = [];
-
-      for (const projectData of projectsData) {
-        if (!projectData.projectName || typeof projectData.projectName !== 'string') {
-          console.warn('Skipping project with invalid name:', projectData);
-          continue;
-        }
-
-        // Create the project
-        const project = await Project.create({
-          name: projectData.projectName,
-          description: projectData.projectDescription || '',
-          campaignId: campaign._id,
-          createdBy: req.user!._id,
-          status: normalizeProjectStatus(projectData.status),
-          startDate: aiDate(projectData.startDate),
-          dueDate: aiDate(projectData.dueDate),
-          assignments: [] // No assignments initially
-        });
-
-        let taskCount = 0;
-
-        // Create tasks for this project
-        if (Array.isArray(projectData.tasks)) {
-          for (const taskData of projectData.tasks) {
-            if (!taskData.taskName || typeof taskData.taskName !== 'string') {
-              console.warn('Skipping task with invalid name:', taskData);
-              continue;
-            }
-
-            await Task.create({
-              name: taskData.taskName,
-              description: taskData.taskDescription || taskData.description || '',
-              projectId: project._id,
-              campaignId: campaign._id,
-              createdBy: req.user!._id,
-              status: normalizeTaskStatus(taskData.status),
-              taskDate: aiDate(taskData.taskDate),
-              content: typeof taskData.content === 'string' ? taskData.content : taskData.content ? JSON.stringify(taskData.content) : ''
-            });
-
-            taskCount++;
-          }
-        }
-
-        createdProjects.push(project);
-        createdTasksCount.push(taskCount);
-      }
-
-      // Log the generation
-      await logAudit({
-        action: AuditAction.CAMPAIGN_UPDATED,
-        userId: req.user!._id,
-        targetType: 'Campaign',
-        targetId: campaign._id,
-        metadata: {
-          action: 'generate_campaign_content',
-          command: command.trim(),
-          mappingType: commandMapping.chainId ? 'chain' : (commandMapping.promptId ? 'prompt' : 'steps'),
-          projectsCreated: createdProjects.length,
-          tasksCreated: createdTasksCount.reduce((a, b) => a + b, 0),
-          tokens: result.usage.total_tokens
-        },
-        req
-      });
-
-      res.json({
-        success: true,
-        message: `Successfully generated ${createdProjects.length} project(s) with ${createdTasksCount.reduce((a, b) => a + b, 0)} task(s)`,
-        projects: createdProjects,
-        taskCounts: createdTasksCount,
-        campaignId: campaign._id,
-        campaignName: campaign.name,
-        usage: result.usage
-      });
-    } catch (error: any) {
-      console.error('Error generating campaign content:', error);
-
-      if (error.message.includes('not found')) {
-        return res.status(404).json({
-          success: false,
-          message: `Command '${command.trim()}' mapping not found or invalid. Please contact your administrator.`
-        });
-      } else if (error.message.includes('API key')) {
-        return res.status(500).json({
-          success: false,
-          message: 'OpenAI API is not configured. Please contact your administrator.'
-        });
-      } else if (error.message.includes('rate limit')) {
-        return res.status(429).json({
-          success: false,
-          message: error.message
-        });
-      }
-
-      throw error;
-    }
+    const campaign = await campaignForPlanning(req, res);
+    if (!campaign) return;
+    const draft = await draftCampaignPlan(campaign, planOptions(req.body), req.user!._id as any);
+    const result = await applyCampaignPlan(campaign, draft.themes, req.user!._id as any);
+    await logAudit({
+      action: AuditAction.CAMPAIGN_UPDATED,
+      userId: req.user!._id,
+      targetType: 'Campaign',
+      targetId: campaign._id,
+      metadata: { action: 'generate_campaign_content', source: draft.source, themes: result.themes.length, posts: result.postCount },
+      req
+    });
+    const projects = await Project.find({ _id: { $in: result.themes.map((t) => t.id) } });
+    const order = new Map(result.themes.map((t, i) => [t.id, i]));
+    projects.sort((a, b) => (order.get(String(a._id)) ?? 0) - (order.get(String(b._id)) ?? 0));
+    res.json({
+      success: true,
+      message: `Created ${result.postCount} post${result.postCount === 1 ? '' : 's'} in ${result.themes.length} theme${result.themes.length === 1 ? '' : 's'}.`,
+      projects,
+      taskCounts: projects.map((p) => result.themes.find((t) => t.id === String(p._id))?.posts ?? 0),
+      campaignId: campaign._id,
+      campaignName: campaign.name
+    });
   } catch (error: any) {
     console.error('Error in generate campaign:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error generating campaign content',
-      error: error.message
-    });
+    const { status, message } = aiErrorMessage(error, 'The AI couldn’t plan this campaign. Try again.');
+    res.status(status).json({ success: false, message });
   }
 });
 
