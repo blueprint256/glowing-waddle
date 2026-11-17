@@ -71,7 +71,7 @@ export default function BlueText({ text }: { text: string }) {
   const open = useBlueOpen();
   const blocks = text.replace(/\r\n/g, '\n').split(/\n{2,}/);
   return (
-    <Box sx={{ fontSize: 14, lineHeight: 1.55, color: 'var(--text)', '& p': { m: 0 }, '& p + p, & ul, & ol': { mt: 1 }, '& ul, & ol': { pl: 2.5, mb: 0 } }}>
+    <Box sx={{ fontSize: 14, lineHeight: 1.55, color: 'var(--text)', overflowWrap: 'anywhere', minWidth: 0, '& p': { m: 0 }, '& p + p, & ul, & ol': { mt: 1 }, '& ul, & ol': { pl: 2.5, mb: 0 } }}>
       {blocks.map((block, i) => {
         const lines = block.split('\n').filter((l) => l.trim() !== '');
         const bullet = lines.length > 0 && lines.every((l) => /^\s*[-*•]\s+/.test(l));
