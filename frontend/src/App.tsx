@@ -21,7 +21,7 @@ const UserManagement = lazy(() => import('./pages/Admin/UserManagement'));
 const OutreachPage = lazy(() => import('./pages/Admin/OutreachPage'));
 const InboxPage = lazy(() => import('./pages/Inbox/InboxPage'));
 const UserDetail = lazy(() => import('./pages/Admin/UserDetail'));
-const Settings = lazy(() => import('./pages/Settings'));
+const Settings = lazy(() => import('./pages/Settings/SettingsPage'));
 const OAuthConsent = lazy(() => import('./pages/OAuth/OAuthConsent'));
 const LibraryPage = lazy(() => import('./pages/Library/LibraryPage'));
 const LibraryItemPage = lazy(() => import('./pages/Library/LibraryItemPage'));

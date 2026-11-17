@@ -19,7 +19,8 @@ const query = (params: Record<string, string | undefined | null>): string => {
 };
 
 export type PublishingTab = 'queue' | 'accounts' | 'history';
-export type SettingsSection = 'profile' | 'brand' | 'ai' | 'accounts' | 'integrations' | 'library' | 'blue' | 'admin';
+/** Settings sections (Profile, Brand, Integrations; admins also AI and Prompts). */
+export type SettingsSection = 'profile' | 'brand' | 'integrations' | 'ai' | 'prompts';
 
 export const links = {
   today: () => '/',

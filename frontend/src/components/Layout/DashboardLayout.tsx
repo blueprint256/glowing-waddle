@@ -67,7 +67,7 @@ function isActive(item: NavItem, pathname: string) {
   );
 }
 
-/** Blue, shown above Dashboard in the sidebar: the button opens the side panel, the icon opens Blue full screen. */
+/** Blue, shown above Today in the sidebar: the button opens the side panel, the icon opens Blue full screen. */
 function BlueToggle({ onNavigate }: { onNavigate?: () => void }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -283,6 +283,13 @@ export default function DashboardLayout() {
   const { toggle: toggleBlue, refreshKey } = useBlueStore();
   const { pathname } = useLocation();
   const flush = pathname === '/blue';
+
+  // The browser tab says where you are: "Planner · Blueprint".
+  useEffect(() => {
+    const item = pathname === '/' ? NAV[0] : NAV.find((n) => n.path !== '/' && isActive(n, pathname));
+    const page = pathname === '/blue' || pathname.startsWith('/blue/') ? 'Blue' : pathname.startsWith('/posts/') ? 'Post' : item?.text;
+    document.title = page ? `${page} · Blueprint` : 'Blueprint';
+  }, [pathname]);
 
   // Ctrl/⌘ + J opens and closes Blue.
   useEffect(() => {

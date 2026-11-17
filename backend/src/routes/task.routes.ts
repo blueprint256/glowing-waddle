@@ -20,6 +20,7 @@ import { AuditAction } from '../models/AuditLog';
 import { searchRegex } from '../utils/regex';
 import { uploadTaskImage, uploadImageFromUrl } from '../utils/s3Service';
 import { generateWithPrompt, generateImageWithPrompt, executeCommandChain } from '../services/llmService';
+import { assertAllowance } from '../services/aiAllowance';
 import { BUILTIN_IMPROVE_BRIEF, BUILTIN_IMPROVE_CAPTION, CAPTION_STYLES, aiErrorMessage, postContext, runPostCommand } from '../services/postAI';
 import mongoose from 'mongoose';
 
@@ -595,6 +596,13 @@ router.post('/:id/generate-poster', isAuthenticated, canManageTasks, validateMon
         success: false,
         message: 'Task not found'
       });
+    }
+
+    // Monthly AI image allowance (decision 20; admins have none).
+    try {
+      await assertAllowance(req.user!, 'images');
+    } catch (limit: any) {
+      return res.status(limit?.status || 429).json({ success: false, code: 'AI_IMAGE_LIMIT', message: limit?.message || 'You’ve used this month’s AI images.' });
     }
 
     console.log('📋 Task Found:', task.name);

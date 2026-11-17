@@ -20,7 +20,7 @@ import { BlueMark } from '../../components/Blue/BluePanel';
 import { useBlueStore } from '../../store/blueStore';
 import { useAuthStore } from '../../store/authStore';
 import { useInboxStore } from '../../store/inboxStore';
-import { campaignAPI, taskAPI } from '../../services/api';
+import api, { campaignAPI, taskAPI } from '../../services/api';
 import { publishingAPI, type PublishingStatus } from '../../services/publishing';
 import { addDays, dayKey, dayToISO, formatDay, formatDayRange, formatTime, todayKey } from '../../lib/dates';
 import { paths } from '../../lib/paths';
@@ -69,6 +69,7 @@ export default function TodayPage() {
   const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);
   const [status, setStatus] = useState<PublishingStatus | null>(null);
   const [accounts, setAccounts] = useState<number | null>(null);
+  const [brandDone, setBrandDone] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [newPost, setNewPost] = useState<string | null | undefined>(undefined); // undefined = closed; null = no day
   const dismissKey = `bp.setup.hidden.${user?._id || user?.id || ''}`;
@@ -99,6 +100,10 @@ export default function TodayPage() {
     } catch (e) {
       setError(errorMessage(e, 'Today couldn’t load. Try again.'));
     }
+    api
+      .get('/users/me/company-info')
+      .then((r) => setBrandDone(Boolean(r.data.companyInfo?.companyName?.trim() && r.data.companyInfo?.about?.trim())))
+      .catch(() => setBrandDone(false));
     if (publishingOn) {
       publishingAPI.status().then(setStatus).catch(() => setStatus(null));
       publishingAPI
@@ -126,9 +131,8 @@ export default function TodayPage() {
   }, [week, today]);
 
   const live = (campaigns || []).filter((c) => !c.archived && (c.status === 'active' || c.status === 'planning'));
-  const brandDone = Boolean(user?.companyInfo?.companyName?.trim() && user?.companyInfo?.about?.trim());
   const steps: { label: string; hint: string; done: boolean; to?: string; onClick?: () => void }[] = [
-    { label: 'Tell Blueprint about your brand', hint: 'Name, what you do, your tone. AI uses it in every caption and image.', done: brandDone, to: paths.settings('brand') },
+    { label: 'Tell Blueprint about your brand', hint: 'Name, what you do, your tone. AI uses it in every caption and image.', done: Boolean(brandDone), to: paths.settings('brand') },
     { label: 'Create a campaign', hint: 'A campaign holds your posts for a season, launch or event.', done: (campaigns || []).length > 0, to: paths.campaigns() },
     { label: 'Add your first post', hint: 'Give it a day, a caption and an image.', done: Boolean(anyPost), onClick: () => setNewPost(null) }
   ];
@@ -140,7 +144,7 @@ export default function TodayPage() {
       done: Boolean(status?.counts && status.counts.upcoming + status.counts.published > 0)
     });
   }
-  const loadedSetup = campaigns !== null && anyPost !== null && (!publishingOn || accounts !== null);
+  const loadedSetup = campaigns !== null && anyPost !== null && brandDone !== null && (!publishingOn || accounts !== null);
   const doneCount = steps.filter((s) => s.done).length;
   const showSetup = loadedSetup && !setupHidden && doneCount < steps.length;
 

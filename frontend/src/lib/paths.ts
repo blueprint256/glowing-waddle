@@ -20,7 +20,8 @@ const query = (params: Record<string, string | number | boolean | undefined | nu
 
 export type PlannerView = 'month' | 'week' | 'list';
 export type PublishingTab = 'queue' | 'accounts' | 'history';
-export type SettingsSection = 'profile' | 'brand' | 'ai' | 'accounts' | 'integrations' | 'library' | 'blue' | 'admin';
+/** Settings sections (Profile, Brand, Integrations; admins also AI and Prompts). */
+export type SettingsSection = 'profile' | 'brand' | 'integrations' | 'ai' | 'prompts';
 
 export interface PlannerParams {
   view?: PlannerView;

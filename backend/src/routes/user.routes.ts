@@ -9,6 +9,8 @@ import { canManageUsers } from '../middleware/rbac';
 import { validateUserCreation, validateUserUpdate, validateMongoId } from '../middleware/validation';
 import { logUserCreated, logAudit } from '../utils/auditLogger';
 import { AuditAction } from '../models/AuditLog';
+import { AppConfig } from '../models/AppConfig';
+import { DEFAULT_ALLOWANCE, aiUsage } from '../services/aiAllowance';
 import { uploadToS3, deleteFromS3 } from '../utils/s3Service';
 
 const router = express.Router();
@@ -107,14 +109,16 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
     }
 
     // Pagination parameters
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit as string) || 10));
     const skip = (page - 1) * limit;
+    // Deactivated accounts are listed only when asked for (Admin › Users shows them).
+    const filter = req.query.includeInactive === 'true' ? {} : { isActive: true };
 
     // Get total count for pagination metadata
-    const total = await User.countDocuments({ isActive: true });
+    const total = await User.countDocuments(filter);
 
-    const users = await User.find({ isActive: true })
+    const users = await User.find(filter)
       .select('-password')
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -222,6 +226,19 @@ router.put('/:id', isAuthenticated, canManageUsers, validateMongoId('id'), valid
       // Labels for targeting Inbox messages: lower-case, unique, short.
       user.tags = [...new Set(tags.filter((t: unknown) => typeof t === 'string').map((t: string) => t.trim().toLowerCase().slice(0, 40)).filter(Boolean))].slice(0, 30) as string[];
     }
+    // Monthly AI allowance for this account: a whole number (0 = no limit), or null for the default.
+    if (req.body.aiAllowance && typeof req.body.aiAllowance === 'object') {
+      const next = { images: user.aiAllowance?.images ?? null, blueMessages: user.aiAllowance?.blueMessages ?? null };
+      for (const key of ['images', 'blueMessages'] as const) {
+        if (!(key in req.body.aiAllowance)) continue;
+        const v = req.body.aiAllowance[key];
+        if (v === null || v === '') next[key] = null;
+        else if (Number.isInteger(v) && v >= 0 && v <= 100000) next[key] = v;
+        else return res.status(400).json({ success: false, message: `${key === 'images' ? 'AI images' : 'Blue messages'} must be a whole number (0 = no limit)` });
+      }
+      user.aiAllowance = next;
+      user.markModified('aiAllowance');
+    }
     const deactivating = isActive === false && user.isActive !== false;
     if (typeof isActive === 'boolean') user.isActive = isActive;
 
@@ -277,6 +294,122 @@ router.put('/:id', isAuthenticated, canManageUsers, validateMongoId('id'), valid
       success: false,
       message: 'Error updating user'
     });
+  }
+});
+
+/**
+ * @route   PATCH /api/users/me
+ * @desc    Change your own name. Body: { firstName?, lastName? }
+ * @access  Private
+ */
+router.patch('/me', isAuthenticated, async (req: Request, res: Response) => {
+  try {
+    const user = await User.findById(req.user!._id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    const clean = (v: unknown) => (typeof v === 'string' ? v.trim().slice(0, 80) : undefined);
+    const firstName = clean(req.body?.firstName);
+    const lastName = clean(req.body?.lastName);
+    if (firstName === '' || lastName === '') return res.status(400).json({ success: false, message: 'First and last name can’t be empty.' });
+    if (firstName !== undefined) user.firstName = firstName;
+    if (lastName !== undefined) user.lastName = lastName;
+    await user.save();
+    await logAudit({ action: AuditAction.USER_UPDATED, userId: req.user!._id, targetType: 'User', targetId: user._id, metadata: { self: true, fields: ['firstName', 'lastName'] }, req });
+    res.json({ success: true, message: 'Saved', user: { id: user._id, firstName: user.firstName, lastName: user.lastName, email: user.email } });
+  } catch (error: any) {
+    console.error('Error updating own profile:', error);
+    res.status(500).json({ success: false, message: 'Couldn’t save your name.' });
+  }
+});
+
+/**
+ * @route   POST /api/users/me/password
+ * @desc    Change your own password. Body: { currentPassword, newPassword }. Google sign-in accounts
+ *          without a password can set one (no current password needed).
+ * @access  Private
+ */
+router.post('/me/password', isAuthenticated, async (req: Request, res: Response) => {
+  try {
+    const user = await User.findById(req.user!._id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    const current = typeof req.body?.currentPassword === 'string' ? req.body.currentPassword : '';
+    const next = typeof req.body?.newPassword === 'string' ? req.body.newPassword : '';
+    if (next.length < 8) return res.status(400).json({ success: false, message: 'Use at least 8 characters for the new password.' });
+    if (next.length > 200) return res.status(400).json({ success: false, message: 'That password is too long.' });
+    if (user.password) {
+      if (!current || !(await user.comparePassword(current))) {
+        return res.status(400).json({ success: false, message: 'Your current password isn’t right.' });
+      }
+      if (await user.comparePassword(next)) return res.status(400).json({ success: false, message: 'Choose a password different from the current one.' });
+    }
+    user.password = next;
+    await user.save();
+    await logAudit({ action: AuditAction.USER_UPDATED, userId: req.user!._id, targetType: 'User', targetId: user._id, metadata: { self: true, passwordChanged: true }, req });
+    res.json({ success: true, message: 'Password changed' });
+  } catch (error: any) {
+    console.error('Error changing password:', error);
+    res.status(500).json({ success: false, message: 'Couldn’t change your password.' });
+  }
+});
+
+/**
+ * @route   GET /api/users/me/ai-usage
+ * @desc    This month's AI images and Blue messages, and the allowance.
+ * @access  Private
+ */
+router.get('/me/ai-usage', isAuthenticated, async (req: Request, res: Response) => {
+  try {
+    res.json({ success: true, usage: await aiUsage(req.user!) });
+  } catch (error) {
+    console.error('Error loading AI usage:', error);
+    res.status(500).json({ success: false, message: 'Couldn’t load your AI use.' });
+  }
+});
+
+/**
+ * @route   GET /api/users/settings/ai-allowance
+ * @desc    The workspace's monthly AI allowance per account (System Admin).
+ * @route   PATCH /api/users/settings/ai-allowance  Body: { aiImagesPerMonth?, blueMessagesPerMonth? } (0 = no limit)
+ */
+router.get('/settings/ai-allowance', isAuthenticated, canManageUsers, async (_req: Request, res: Response) => {
+  try {
+    const config = await AppConfig.getConfig();
+    res.json({ success: true, aiImagesPerMonth: config.aiImagesPerMonth ?? DEFAULT_ALLOWANCE.images, blueMessagesPerMonth: config.blueMessagesPerMonth ?? DEFAULT_ALLOWANCE.blueMessages });
+  } catch (error) {
+    console.error('Error loading AI allowance:', error);
+    res.status(500).json({ success: false, message: 'Couldn’t load the AI allowance.' });
+  }
+});
+
+router.patch('/settings/ai-allowance', isAuthenticated, canManageUsers, async (req: Request, res: Response) => {
+  try {
+    const config = await AppConfig.getConfig();
+    for (const key of ['aiImagesPerMonth', 'blueMessagesPerMonth'] as const) {
+      if (req.body?.[key] === undefined) continue;
+      const v = req.body[key];
+      if (!Number.isInteger(v) || v < 0 || v > 100000) return res.status(400).json({ success: false, message: 'Use a whole number (0 = no limit).' });
+      config[key] = v;
+    }
+    await config.save();
+    await logAudit({ action: AuditAction.USER_UPDATED, userId: req.user!._id, targetType: 'AppConfig', targetId: config._id as any, metadata: { aiAllowance: { images: config.aiImagesPerMonth, blueMessages: config.blueMessagesPerMonth } }, req });
+    res.json({ success: true, aiImagesPerMonth: config.aiImagesPerMonth, blueMessagesPerMonth: config.blueMessagesPerMonth });
+  } catch (error) {
+    console.error('Error saving AI allowance:', error);
+    res.status(500).json({ success: false, message: 'Couldn’t save the AI allowance.' });
+  }
+});
+
+/**
+ * @route   GET /api/users/:id/ai-usage
+ * @desc    An account's AI use this month (System Admin).
+ */
+router.get('/:id/ai-usage', isAuthenticated, canManageUsers, validateMongoId('id'), async (req: Request, res: Response) => {
+  try {
+    const user = await User.findById(req.params.id).select('role aiAllowance');
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    res.json({ success: true, usage: await aiUsage(user), aiAllowance: { images: user.aiAllowance?.images ?? null, blueMessages: user.aiAllowance?.blueMessages ?? null } });
+  } catch (error) {
+    console.error('Error loading AI usage:', error);
+    res.status(500).json({ success: false, message: 'Couldn’t load AI use.' });
   }
 });
 

@@ -71,7 +71,7 @@ export default function LoginPage() {
       >
         <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
           <Typography variant="h4" component="h1" gutterBottom align="center">
-            Campaign Management
+            Blueprint
           </Typography>
           <Typography variant="subtitle1" gutterBottom align="center" color="text.secondary">
             Sign in to your account
@@ -88,6 +88,7 @@ export default function LoginPage() {
               fullWidth
               label="Email"
               type="email"
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               margin="normal"
@@ -98,6 +99,7 @@ export default function LoginPage() {
               fullWidth
               label="Password"
               type="password"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               margin="normal"

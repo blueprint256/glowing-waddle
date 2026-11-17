@@ -77,6 +77,11 @@ export interface IUser extends Document {
   publishingEnabled: boolean;
   /** Labels a System Admin gives users to target Inbox messages (e.g. "pharmacy", "vip"). */
   tags: string[];
+  /**
+   * Monthly AI allowance set by a System Admin for this account. null (or missing) uses the
+   * workspace default; 0 means no limit. See services/aiAllowance.ts.
+   */
+  aiAllowance?: { images?: number | null; blueMessages?: number | null };
   /** Inbox reminder types this user turned off (only optional ones, e.g. "post_upcoming"). */
   inboxMuted: string[];
   isActive: boolean;
@@ -174,6 +179,10 @@ const userSchema = new Schema<IUser>(
     tags: {
       type: [String],
       default: []
+    },
+    aiAllowance: {
+      images: { type: Number, default: null, min: 0 },
+      blueMessages: { type: Number, default: null, min: 0 }
     },
     inboxMuted: {
       type: [String],

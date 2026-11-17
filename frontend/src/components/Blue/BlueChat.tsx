@@ -143,7 +143,11 @@ export default function BlueChat({ surface, autoFocus }: { surface: BlueSurface;
   };
 
   const unavailable = status && !status.available;
-  const remaining = status?.remainingToday;
+  // Whichever runs out first: today's messages or this month's allowance.
+  const today = status?.remainingToday;
+  const month = status?.remainingThisMonth;
+  const remaining = typeof month === 'number' && (typeof today !== 'number' || month < today) ? month : today;
+  const remainingLabel = remaining === month && typeof month === 'number' && month !== today ? 'this month' : 'today';
   const last = items[items.length - 1];
   const lastIsWorking = busy && !(last && last.kind === 'tool' && last.running);
   const column = wide ? { width: '100%', maxWidth: 760, mx: 'auto' } : {};
@@ -239,7 +243,7 @@ export default function BlueChat({ surface, autoFocus }: { surface: BlueSurface;
               </Box>
               <Typography sx={{ fontSize: 11, color: 'var(--text-faint)', mt: 0.75, textAlign: 'center' }}>
                 Blue acts with your permissions and asks before deleting anything.
-                {typeof remaining === 'number' ? ` ${remaining} messages left today.` : ''}
+                {typeof remaining === 'number' ? ` ${remaining} message${remaining === 1 ? '' : 's'} left ${remainingLabel}.` : ''}
               </Typography>
             </>
           )}

@@ -484,12 +484,12 @@ async function logLLMUsage(
 
 /**
  * Image quality for gpt-image-1.5, from IMAGE_QUALITY in the server's .env:
- * low (~$0.009 per square image), medium (~$0.034), high (~$0.133) or auto (default; OpenAI decides,
- * usually high).
+ * low (~$0.009 per square image), medium (~$0.034; the default, decision 21), high (~$0.133) or
+ * auto (OpenAI decides, usually high).
  */
 export function imageQuality(): 'low' | 'medium' | 'high' | 'auto' {
   const q = String(process.env.IMAGE_QUALITY || '').trim().toLowerCase();
-  return q === 'low' || q === 'medium' || q === 'high' ? q : 'auto';
+  return q === 'low' || q === 'medium' || q === 'high' || q === 'auto' ? q : 'medium';
 }
 
 /** Records an image generation with its real token usage and cost (gpt-image-1.5 prices per 1M tokens). */

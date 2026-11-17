@@ -13,7 +13,6 @@ import {
   MenuItem,
   Radio,
   RadioGroup,
-  Snackbar,
   Switch,
   Tab,
   Tabs,
@@ -26,6 +25,9 @@ import { outreachAPI, timeAgo, type Announcement, type Audience, type MessageTem
 import { userAPI } from '../../services/api';
 import { toLocalInput } from '../../services/publishing';
 import { useInboxStore } from '../../store/inboxStore';
+import PageHeader from '../../components/ui/PageHeader';
+import { useConfirm } from '../../components/ui/useConfirm';
+import { notify } from '../../store/toastStore';
 
 type TabId = 'overview' | 'compose' | 'sent' | 'support' | 'templates';
 
@@ -55,16 +57,13 @@ const emptyAudience = (): Audience => ({ everyone: false, roles: [], accessModes
 export default function OutreachPage() {
   const [params, setParams] = useSearchParams();
   const tab = (params.get('tab') as TabId) || 'overview';
-  const [toast, setToast] = useState<string | null>(null);
+  const setToast = (m: string) => notify(m);
   const [draftFrom, setDraftFrom] = useState<{ title: string; body: string; category: string } | null>(null);
   const setTab = (t: TabId) => setParams(t === 'overview' ? {} : { tab: t }, { replace: true });
 
   return (
     <Box>
-      <Typography variant="h4">Outreach</Typography>
-      <Typography sx={{ color: 'var(--text-muted)', fontSize: 'var(--fs-xs)', mt: 0.5, mb: 2 }}>
-        Send messages to chosen users (they arrive in their Inbox), follow up on what they do with them, and answer their questions.
-      </Typography>
+      <PageHeader title="Outreach" subtitle="Send messages to chosen users (they arrive in their Inbox), follow up on what they do with them, and answer their questions." />
       <Tabs value={tab} onChange={(_e, v) => setTab(v)} variant="scrollable" sx={{ mb: 2, minHeight: 36, '& .MuiTab-root': { minHeight: 36, textTransform: 'none' } }}>
         <Tab value="overview" label="Overview" />
         <Tab value="compose" label="New message" />
@@ -95,7 +94,6 @@ export default function OutreachPage() {
           onToast={setToast}
         />
       )}
-      <Snackbar open={!!toast} autoHideDuration={5000} onClose={() => setToast(null)} message={toast} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
     </Box>
   );
 }
@@ -160,6 +158,7 @@ function Overview({ onGo }: { onGo: (t: TabId) => void }) {
 // ---------------------------------------------------------------------------
 
 function Compose({ initial, onDone, onToast }: { initial: { title: string; body: string; category: string } | null; onDone: (m: string) => void; onToast: (m: string) => void }) {
+  const [confirm, confirmDialog] = useConfirm();
   const [title, setTitle] = useState(initial?.title || '');
   const [body, setBody] = useState(initial?.body || '');
   const [category, setCategory] = useState(initial?.category || 'announcement');
@@ -197,7 +196,7 @@ function Compose({ initial, onDone, onToast }: { initial: { title: string; body:
   const chosenUsers = useMemo(() => users.filter((u) => audience.userIds.includes(u.id)), [users, audience.userIds]);
 
   const submit = async () => {
-    if (when === 'now' && count && !window.confirm(`Send “${title}” to ${count.count} user${count.count === 1 ? '' : 's'} now?`)) return;
+    if (when === 'now' && count && !(await confirm({ title: `Send “${title}” now?`, body: `It goes to ${count.count} user${count.count === 1 ? '' : 's'}’ Inbox straight away.`, action: 'Send' }))) return;
     setBusy(true);
     setError(null);
     try {
@@ -328,6 +327,7 @@ function Compose({ initial, onDone, onToast }: { initial: { title: string; body:
           )}
         </Card>
       </Box>
+      {confirmDialog}
     </Box>
   );
 }
@@ -335,6 +335,7 @@ function Compose({ initial, onDone, onToast }: { initial: { title: string; body:
 // ---------------------------------------------------------------------------
 
 function Sent({ onToast }: { onToast: (m: string) => void }) {
+  const [confirm, confirmDialog] = useConfirm();
   const [list, setList] = useState<Announcement[] | null>(null);
   const load = useCallback(() => {
     outreachAPI.announcements().then(setList).catch(() => setList([]));
@@ -374,7 +375,7 @@ function Sent({ onToast }: { onToast: (m: string) => void }) {
             {a.error && <Typography sx={{ fontSize: 'var(--fs-xs)', color: 'var(--danger-text)' }}>Last attempt failed: {a.error}</Typography>}
             <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
               {['draft', 'scheduled'].includes(a.status) && (
-                <Button size="small" variant="outlined" onClick={() => window.confirm(`Send “${a.title}” now?`) && act(() => outreachAPI.send(a.id), 'Sent')}>
+                <Button size="small" variant="outlined" onClick={async () => (await confirm({ title: `Send “${a.title}” now?`, action: 'Send' })) && act(() => outreachAPI.send(a.id), 'Sent')}>
                   Send now
                 </Button>
               )}
@@ -384,7 +385,7 @@ function Sent({ onToast }: { onToast: (m: string) => void }) {
                 </Button>
               )}
               {a.status === 'sent' && (
-                <Button size="small" color="error" onClick={() => window.confirm('Remove this message from everyone’s Inbox?') && act(() => outreachAPI.withdraw(a.id), 'Withdrawn')}>
+                <Button size="small" color="error" onClick={async () => (await confirm({ title: 'Withdraw this message?', body: 'It’s removed from everyone’s Inbox.', action: 'Withdraw', danger: true })) && act(() => outreachAPI.withdraw(a.id), 'Withdrawn')}>
                   Withdraw
                 </Button>
               )}
@@ -397,6 +398,7 @@ function Sent({ onToast }: { onToast: (m: string) => void }) {
           </Card>
         );
       })}
+      {confirmDialog}
     </Box>
   );
 }

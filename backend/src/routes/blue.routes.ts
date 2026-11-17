@@ -1,4 +1,5 @@
 import express, { Request, Response } from 'express';
+import { BLUE_USAGE_LABEL, aiUsage, assertAllowance } from '../services/aiAllowance';
 import mongoose from 'mongoose';
 import { isAuthenticated } from '../middleware/auth';
 import { isSystemAdmin } from '../middleware/rbac';
@@ -37,7 +38,7 @@ import type { BlueEvent, NeutralMessage, ToolCall, Usage } from '../blue/types';
  */
 const router = express.Router();
 
-const USAGE_LABEL = 'Blue assistant';
+const USAGE_LABEL = BLUE_USAGE_LABEL; // counted by the monthly allowance too (services/aiAllowance.ts)
 const running = new Set<string>(); // one run per conversation at a time
 
 // ---------------------------------------------------------------------------
@@ -276,14 +277,17 @@ router.get('/status', isAuthenticated, async (req: Request, res: Response) => {
   try {
     const setup = await loadBlueSetup();
     const reason = unavailableReason(req.user!, setup);
-    const used = await messagesUsedToday(req.user!._id as mongoose.Types.ObjectId);
+    const [used, usage] = await Promise.all([messagesUsedToday(req.user!._id as mongoose.Types.ObjectId), aiUsage(req.user!)]);
     res.json({
       success: true,
       available: !reason,
       reason: reason?.message,
       code: reason?.code,
       dailyMessageLimit: setup.dailyMessageLimit,
-      remainingToday: remaining(setup, used)
+      remainingToday: remaining(setup, used),
+      // Monthly allowance (null = no limit).
+      remainingThisMonth: usage.blueMessages.remaining,
+      monthlyResetsAt: usage.resetsAt
     });
   } catch (error) {
     console.error('[blue] status failed:', error);
@@ -363,6 +367,11 @@ router.post('/conversations/:id/messages', isAuthenticated, async (req: Request,
         code: 'BLUE_DAILY_LIMIT',
         message: `You've used all ${setup.dailyMessageLimit} Blue messages for today. They reset at midnight.`
       });
+    }
+    try {
+      await assertAllowance(req.user!, 'blueMessages');
+    } catch (limit: any) {
+      return res.status(429).json({ success: false, code: 'BLUE_MONTHLY_LIMIT', message: limit?.message || 'You’ve used this month’s Blue messages.' });
     }
 
     const conversation = await loadOwnConversation(req, res);

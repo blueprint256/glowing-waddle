@@ -1,6 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import passport from 'passport';
 import { isAuthenticated } from '../middleware/auth';
+import { User } from '../models/User';
 
 const router = express.Router();
 
@@ -22,7 +23,6 @@ router.post('/signup', async (req: Request, res: Response) => {
     }
 
     // Check if user already exists
-    const { User } = await import('../models/User');
     const existingUser = await User.findOne({ email: email.toLowerCase() });
 
     if (existingUser) {
@@ -151,13 +151,16 @@ router.post('/logout', isAuthenticated, (req: Request, res: Response) => {
  * @desc    Get current user
  * @access  Private
  */
-router.get('/me', isAuthenticated, (req: Request, res: Response) => {
+router.get('/me', isAuthenticated, async (req: Request, res: Response) => {
   if (!req.user) {
     return res.status(401).json({
       success: false,
       message: 'Not authenticated'
     });
   }
+
+  // The session's user is loaded without the password; look up only whether one is set.
+  const secret = await User.findById(req.user._id).select('password authProvider').lean().catch(() => null);
 
   res.json({
     success: true,
@@ -172,7 +175,10 @@ router.get('/me', isAuthenticated, (req: Request, res: Response) => {
       assistantEnabled: req.user.assistantEnabled !== false,
       libraryEnabled: req.user.libraryEnabled !== false,
       publishingEnabled: req.user.publishingEnabled !== false,
-      isActive: req.user.isActive
+      isActive: req.user.isActive,
+      // For Settings → Profile: whether there's a password to change (Google sign-ins may have none).
+      hasPassword: Boolean(secret?.password),
+      authProvider: secret?.authProvider || 'local'
     }
   });
 });

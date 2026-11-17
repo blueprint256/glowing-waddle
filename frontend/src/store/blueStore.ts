@@ -116,7 +116,14 @@ export const useBlueStore = create<BlueState>((set, get) => {
         case 'done':
           return {
             items,
-            status: s.status ? { ...s.status, remainingToday: event.remainingToday } : s.status
+            status: s.status
+              ? {
+                  ...s.status,
+                  remainingToday: event.remainingToday,
+                  // One more of this month's messages used (the server counts it the same way).
+                  remainingThisMonth: typeof s.status.remainingThisMonth === 'number' ? Math.max(0, s.status.remainingThisMonth - 1) : s.status.remainingThisMonth
+                }
+              : s.status
           };
       }
       return { items };
@@ -190,7 +197,9 @@ export const useBlueStore = create<BlueState>((set, get) => {
             reason: res.data.reason,
             code: res.data.code,
             dailyMessageLimit: res.data.dailyMessageLimit,
-            remainingToday: res.data.remainingToday
+            remainingToday: res.data.remainingToday,
+            remainingThisMonth: res.data.remainingThisMonth ?? null,
+            monthlyResetsAt: res.data.monthlyResetsAt
           }
         });
       } catch {

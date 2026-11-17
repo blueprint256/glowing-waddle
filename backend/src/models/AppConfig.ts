@@ -41,6 +41,9 @@ export interface IAppConfig extends Document {
   libraryProvider?: 'anthropic' | 'openai' | 'grok';
   libraryModel?: string;
   libraryMonthlyAiLimit: number; // AI-read items per user per month; 0 = unlimited
+  // Monthly AI allowance per account (admins have none); 0 = unlimited. Accounts can have their own.
+  aiImagesPerMonth: number;
+  blueMessagesPerMonth: number;
   librarySemanticSearch: boolean; // embeddings (needs an OpenAI key)
 
   // Publishing (social posting). Per-provider app credentials; secrets encrypted (publishing/secrets.ts).
@@ -174,6 +177,16 @@ const appConfigSchema = new Schema<IAppConfig>(
     libraryMonthlyAiLimit: {
       type: Number,
       default: 500,
+      min: 0
+    },
+    aiImagesPerMonth: {
+      type: Number,
+      default: 20,
+      min: 0
+    },
+    blueMessagesPerMonth: {
+      type: Number,
+      default: 300,
       min: 0
     },
     publishingEnabled: {

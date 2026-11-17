@@ -4,6 +4,12 @@ export enum UserRole {
   HYBRID = 'hybrid'
 }
 
+/** How each kind of account is called in the app. */
+export const ROLE_LABELS: Record<UserRole, string> = {
+  [UserRole.SYSTEM_ADMIN]: 'Admin',
+  [UserRole.HYBRID]: 'Client'
+};
+
 /**
  * Which part of the platform a user is on (set by a System Admin).
  * Same app and data for both; Part two simply has AI generation switched off.
@@ -56,6 +62,8 @@ export interface User {
   tags?: string[];
   isActive: boolean;
   authProvider?: 'local' | 'google';
+  /** From /auth/me: whether the account has a password (Google sign-ins may not). */
+  hasPassword?: boolean;
   companyInfo?: CompanyInfo;
   campaignCount?: number;
   loginMethod?: string;

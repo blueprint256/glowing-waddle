@@ -45,8 +45,30 @@ export const authAPI = {
 };
 
 // User API
+/** Monthly AI allowance (backend: services/aiAllowance.ts). limit 0 / remaining null = no limit. */
+export interface AllowanceLine {
+  used: number;
+  limit: number;
+  remaining: number | null;
+}
+export interface AIUsage {
+  images: AllowanceLine;
+  blueMessages: AllowanceLine;
+  resetsAt: string;
+  unlimited: boolean;
+}
+
 export const userAPI = {
   getAll: (params?: any) => api.get('/users', { params }),
+  /** Change your own name. */
+  updateMe: (data: { firstName?: string; lastName?: string }) => api.patch('/users/me', data),
+  changePassword: (currentPassword: string, newPassword: string) => api.post('/users/me/password', { currentPassword, newPassword }),
+  myAIUsage: () => api.get<{ usage: AIUsage }>('/users/me/ai-usage').then((r) => r.data.usage),
+  aiUsage: (id: string) =>
+    api.get<{ usage: AIUsage; aiAllowance: { images: number | null; blueMessages: number | null } }>(`/users/${id}/ai-usage`).then((r) => r.data),
+  allowanceDefaults: () => api.get<{ aiImagesPerMonth: number; blueMessagesPerMonth: number }>('/users/settings/ai-allowance').then((r) => r.data),
+  saveAllowanceDefaults: (data: { aiImagesPerMonth?: number; blueMessagesPerMonth?: number }) =>
+    api.patch<{ aiImagesPerMonth: number; blueMessagesPerMonth: number }>('/users/settings/ai-allowance', data).then((r) => r.data),
   getById: (id: string) => api.get(`/users/${id}`),
   create: (data: any) => api.post('/users', data),
   update: (id: string, data: any) => api.put(`/users/${id}`, data),

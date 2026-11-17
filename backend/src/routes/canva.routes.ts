@@ -60,24 +60,24 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
   const front = getFrontendUrl();
   try {
     const s = await loadCanvaSettings();
-    if (!s.ready) return res.redirect(`${front}/settings?integration=canva&status=error&message=not_configured`);
+    if (!s.ready) return res.redirect(`${front}/settings/integrations?integration=canva&status=error&message=not_configured`);
     const { verifier, challenge } = pkcePair();
     const state = crypto.randomBytes(24).toString('base64url');
     await PublishingConnect.create({ state, userId: req.user!._id, ownerId: req.user!._id, provider: 'canva', codeVerifier: verifier, returnTo: safeReturnTo(req.query.returnTo) });
     res.redirect(canvaAuthorizeUrl(s, callbackUrl(req), state, challenge));
   } catch (error) {
     console.error('[canva] connect failed:', error);
-    res.redirect(`${front}/settings?integration=canva&status=error&message=server_error`);
+    res.redirect(`${front}/settings/integrations?integration=canva&status=error&message=server_error`);
   }
 });
 
 router.get('/callback', async (req: Request, res: Response) => {
   const front = getFrontendUrl();
   const q = req.query as Record<string, string | undefined>;
-  if (q.error) return res.redirect(`${front}/settings?integration=canva&status=error&message=${encodeURIComponent(q.error)}`);
+  if (q.error) return res.redirect(`${front}/settings/integrations?integration=canva&status=error&message=${encodeURIComponent(q.error)}`);
   try {
     const pending = q.state ? await PublishingConnect.findOneAndDelete({ state: q.state, provider: 'canva' }) : null;
-    if (!pending || !q.code) return res.redirect(`${front}/settings?integration=canva&status=error&message=expired`);
+    if (!pending || !q.code) return res.redirect(`${front}/settings/integrations?integration=canva&status=error&message=expired`);
     const s = await loadCanvaSettings();
     const tokens = await canvaExchangeCode(s, q.code, pending.codeVerifier, callbackUrl(req));
     await saveCanvaTokens(pending.userId, tokens);
@@ -85,10 +85,10 @@ router.get('/callback', async (req: Request, res: Response) => {
       const sep = pending.returnTo.includes('?') ? '&' : '?';
       return res.redirect(`${front}${pending.returnTo}${sep}canva=connected`);
     }
-    res.redirect(`${front}/settings?integration=canva&status=success`);
+    res.redirect(`${front}/settings/integrations?integration=canva&status=success`);
   } catch (error) {
     console.error('[canva] callback failed:', error);
-    res.redirect(`${front}/settings?integration=canva&status=error&message=server_error`);
+    res.redirect(`${front}/settings/integrations?integration=canva&status=error&message=server_error`);
   }
 });
 

@@ -99,7 +99,7 @@ export default function SignupPage() {
       >
         <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
           <Typography variant="h4" component="h1" gutterBottom align="center">
-            Campaign Management
+            Blueprint
           </Typography>
           <Typography variant="subtitle1" gutterBottom align="center" color="text.secondary">
             Create your account
@@ -138,6 +138,7 @@ export default function SignupPage() {
               label="Email"
               name="email"
               type="email"
+              autoComplete="email"
               value={formData.email}
               onChange={handleChange}
               margin="normal"
@@ -148,6 +149,7 @@ export default function SignupPage() {
               label="Password"
               name="password"
               type="password"
+              autoComplete="new-password"
               value={formData.password}
               onChange={handleChange}
               margin="normal"
@@ -159,6 +161,7 @@ export default function SignupPage() {
               label="Confirm Password"
               name="confirmPassword"
               type="password"
+              autoComplete="new-password"
               value={formData.confirmPassword}
               onChange={handleChange}
               margin="normal"

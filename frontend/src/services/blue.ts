@@ -36,6 +36,9 @@ export interface BlueStatus {
   code?: string;
   dailyMessageLimit: number;
   remainingToday: number | null;
+  /** Monthly allowance left (null = no limit). */
+  remainingThisMonth?: number | null;
+  monthlyResetsAt?: string;
 }
 
 export interface BlueConversationSummary {

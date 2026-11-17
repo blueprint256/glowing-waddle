@@ -12,6 +12,7 @@ import {
 } from '../lib/postStatus';
 import { links, absolute } from '../lib/links';
 import { applyPlaceholderAliases, checkPlaceholders, knownPlaceholderRegex, isKnownPlaceholder } from '../lib/placeholders';
+import { effectiveLimit, limitMessage, monthWindow, remainingOf } from '../lib/aiAllowance';
 import { normalizePlan, parsePlanReply, planDay, planWindow, validatePlan, PLAN_LIMITS } from '../lib/campaignPlan';
 
 const failures: string[] = [];
@@ -162,6 +163,23 @@ async function main() {
     assert.equal(back[1].existingId, null);
     assert.throws(() => validatePlan([{ name: 'Empty', posts: [] }]));
     assert.throws(() => validatePlan('nope'));
+  });
+
+  await test('AI allowance: month window, limits and messages', () => {
+    const w = monthWindow(new Date('2026-11-17T10:00:00Z'));
+    assert.equal(w.start.toISOString(), '2026-11-01T00:00:00.000Z');
+    assert.equal(w.resetsAt.toISOString(), '2026-12-01T00:00:00.000Z');
+    assert.equal(monthWindow(new Date('2026-12-31T23:59:00Z')).resetsAt.toISOString(), '2027-01-01T00:00:00.000Z');
+    assert.equal(effectiveLimit(null, 20, 99), 20); // account uses the workspace allowance
+    assert.equal(effectiveLimit(5, 20, 99), 5); // its own
+    assert.equal(effectiveLimit(0, 20, 99), 0); // 0 = no limit
+    assert.equal(effectiveLimit(undefined, undefined, 99), 99);
+    assert.equal(effectiveLimit(-3, 2.5, 99), 99); // nonsense falls back
+    assert.equal(remainingOf(20, 7), 13);
+    assert.equal(remainingOf(20, 25), 0);
+    assert.equal(remainingOf(0, 25), null);
+    assert.match(limitMessage('images', 20, w.resetsAt), /all 20 AI images .* 1 December/);
+    assert.match(limitMessage('blueMessages', 1, w.resetsAt), /all 1 Blue message for/);
   });
 
   if (failures.length) {
