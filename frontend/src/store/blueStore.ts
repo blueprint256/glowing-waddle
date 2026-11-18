@@ -48,7 +48,7 @@ function writeLast(id: string | null) {
 
 /** Something from the chat opened in the right-hand panel of the full-screen Blue page. */
 export interface BlueDetailRef {
-  type: 'task' | 'library' | 'campaign' | 'project';
+  type: 'task' | 'library' | 'campaign';
   id: string;
   /** What the chat card already knows, shown instantly while the full record loads. */
   preview?: any;

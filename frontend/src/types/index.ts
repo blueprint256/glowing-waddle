@@ -143,26 +143,72 @@ export enum TaskStatus {
   NEEDS_ATTENTION = 'Needs attention'
 }
 
+/** An earlier picture of a post (the current one is designedImage). */
+export interface PostImageHistory {
+  url: string;
+  source: string;
+  note?: string;
+  at: string;
+}
+
+/** An AI picture not chosen yet (deleted after 7 days). */
+export interface PostAIDraft {
+  id: string;
+  url: string;
+  kind: 'create' | 'change';
+  /** Create: what the post was about; change: the instruction. */
+  prompt?: string;
+  /** Change: the picture that was changed. */
+  from?: string;
+  size?: string;
+  at: string;
+}
+
+export type ReferenceRole = 'include' | 'style';
+
+/** A picture Create image should include, or whose style it should follow. */
+export interface PostReference {
+  id: string;
+  url: string;
+  role: ReferenceRole;
+  name?: string;
+  at: string;
+}
+
+export type PictureFormat = 'square' | 'portrait' | 'landscape';
+export type LogoCorner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+
 export interface Task {
   _id: string;
-  /** Post title (internal; not published). */
+  /** Post title (a label only you see). */
   name: string;
-  /** The brief: what the post should achieve and show. */
+  /** True while the title is automatic (it follows the caption). */
+  autoName?: boolean;
+  /** What the post is about (the brief the AI works from). */
   description?: string;
-  /** Theme (API: project). */
-  projectId: any;
+  /** The account the post belongs to. */
+  ownerId: string;
+  /** The campaign, or null for a post without one. */
   campaignId: any;
+  /** The theme the post was in before themes were retired. */
+  legacyTheme?: string;
   status: TaskStatus | string;
   /** The day it goes out (stored as midnight UTC). */
-  taskDate?: string;
+  taskDate?: string | null;
   /** The caption: the text that gets published. */
   content?: string;
-  /** The post's image. */
+  /** The post's picture. */
   designedImage?: string;
-  /** An AI image waiting to be used or discarded. */
+  /** Up to 3 earlier pictures, newest first. */
+  imageHistory?: PostImageHistory[];
+  /** AI pictures not chosen yet, newest first. */
+  aiDrafts?: PostAIDraft[];
+  /** Pictures for Create image (up to 6). */
+  references?: PostReference[];
+  /** The choices last used for Create image. */
+  pictureOptions?: { format?: PictureFormat; logo?: LogoCorner | null };
+  /** The newest AI draft (older clients). */
   pendingGeneratedImage?: string;
-  /** Reference images (for the AI or a designer). */
-  attachedImages?: string[];
   createdBy: any;
   lastModifiedBy?: any;
   createdAt: string;

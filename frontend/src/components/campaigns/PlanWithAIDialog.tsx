@@ -18,14 +18,15 @@ import {
   useMediaQuery
 } from '@mui/material';
 import { AutoAwesome as AiIcon, ExpandMore as MoreIcon, ExpandLess as LessIcon, WarningAmber as WarnIcon } from '@mui/icons-material';
-import { campaignAPI, type PlanDraft, type PlanTheme } from '../../services/api';
+import { campaignAPI, type PlanDraft, type PlanPost } from '../../services/api';
 import { addDays, dayKey, formatDay, formatDayRange, todayKey } from '../../lib/dates';
+import { titleFrom } from '../../lib/postTitle';
 import { paths } from '../../lib/paths';
 import { errorMessage, notify } from '../../store/toastStore';
 
 /**
- * Plan with AI (decision 17): describe what you want → the AI drafts themes and posts → you review,
- * edit, untick what you don't want → only then are they created.
+ * Plan with AI (decision 17): describe what you want → the AI drafts posts → you review, edit,
+ * untick what you don't want → only then are they created.
  */
 
 type Step = 'setup' | 'working' | 'review';
@@ -53,8 +54,8 @@ export default function PlanWithAIDialog({ open, campaign, onClose, onCreated }:
   const [perWeek, setPerWeek] = useState(0);
   const [notes, setNotes] = useState('');
   const [draft, setDraft] = useState<PlanDraft | null>(null);
-  const [themes, setThemes] = useState<PlanTheme[]>([]);
-  const [rows, setRows] = useState<Row[][]>([]);
+  const [posts, setPosts] = useState<PlanPost[]>([]);
+  const [rows, setRows] = useState<Row[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [creating, setCreating] = useState(false);
@@ -74,7 +75,7 @@ export default function PlanWithAIDialog({ open, campaign, onClose, onCreated }:
     setPerWeek(0);
     setNotes('');
     setDraft(null);
-    setThemes([]);
+    setPosts([]);
     setRows([]);
     setError(null);
     setStep('setup');
@@ -99,8 +100,8 @@ export default function PlanWithAIDialog({ open, campaign, onClose, onCreated }:
       const res = await campaignAPI.plan(campaign._id, { from, to, notes: notes.trim() || undefined, perWeek: perWeek || undefined });
       if (mine !== run.current) return; // cancelled
       setDraft(res);
-      setThemes(res.themes);
-      setRows(res.themes.map((t) => t.posts.map(() => ({ include: true, open: false }))));
+      setPosts(res.posts);
+      setRows(res.posts.map(() => ({ include: true, open: false })));
       setStep('review');
     } catch (e) {
       if (mine !== run.current) return;
@@ -114,30 +115,24 @@ export default function PlanWithAIDialog({ open, campaign, onClose, onCreated }:
     setStep('setup');
   };
 
-  const editPost = (ti: number, pi: number, change: Partial<PlanTheme['posts'][number]>) =>
-    setThemes((all) => all.map((t, i) => (i !== ti ? t : { ...t, posts: t.posts.map((p, j) => (j !== pi ? p : { ...p, ...change })) })));
-  const editTheme = (ti: number, change: Partial<PlanTheme>) => setThemes((all) => all.map((t, i) => (i !== ti ? t : { ...t, ...change })));
-  const setRow = (ti: number, pi: number, change: Partial<Row>) => setRows((all) => all.map((r, i) => (i !== ti ? r : r.map((x, j) => (j !== pi ? x : { ...x, ...change })))));
-  const setThemeIncluded = (ti: number, include: boolean) => setRows((all) => all.map((r, i) => (i !== ti ? r : r.map((x) => ({ ...x, include })))));
+  const editPost = (i: number, change: Partial<PlanPost>) => setPosts((all) => all.map((p, j) => (j !== i ? p : { ...p, ...change })));
+  const setRow = (i: number, change: Partial<Row>) => setRows((all) => all.map((r, j) => (j !== i ? r : { ...r, ...change })));
+  const setAll = (include: boolean) => setRows((all) => all.map((r) => ({ ...r, include })));
 
-  const chosen = themes
-    .map((t, ti) => ({ ...t, posts: t.posts.filter((_, pi) => rows[ti]?.[pi]?.include) }))
-    .filter((t) => t.posts.length > 0 && t.name.trim());
-  const chosenPosts = chosen.reduce((n, t) => n + t.posts.length, 0);
-  const totalPosts = themes.reduce((n, t) => n + t.posts.length, 0);
-  const namesMissing = themes.some((t, ti) => !t.name.trim() && rows[ti]?.some((r) => r.include));
-  const titlesMissing = chosen.some((t) => t.posts.some((p) => !p.name.trim()));
+  const chosen = posts.filter((_, i) => rows[i]?.include);
+  const chosenPosts = chosen.length;
+  const totalPosts = posts.length;
 
   const create = async () => {
-    if (!chosenPosts || creating || namesMissing || titlesMissing) return;
+    if (!chosenPosts || creating) return;
     setCreating(true);
     setError(null);
     try {
       const res = await campaignAPI.applyPlan(
         campaign._id,
-        chosen.map((t) => ({ ...t, name: t.name.trim(), posts: t.posts.map((p) => ({ ...p, name: p.name.trim() })) }))
+        chosen.map((p) => ({ ...p, name: p.name.trim() }))
       );
-      const firstDay = chosen.flatMap((t) => t.posts.map((p) => p.day)).filter((d): d is string => Boolean(d)).sort()[0];
+      const firstDay = chosen.map((p) => p.day).filter((d): d is string => Boolean(d)).sort()[0];
       notify(res.message, {
         duration: 8000,
         action: { label: 'Open in Planner', run: () => navigate(paths.planner({ view: 'month', campaign: campaign._id, date: firstDay })) }
@@ -179,7 +174,7 @@ export default function PlanWithAIDialog({ open, campaign, onClose, onCreated }:
             sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}
           >
             <Typography sx={{ fontSize: 13.5, color: 'var(--text-muted)' }}>
-              The AI drafts themes and posts (titles, briefs and captions) using your brand and this campaign. You check and change the draft before anything is added.
+              The AI drafts posts (what each is about, and a caption) using your brand and this campaign. You check and change the draft before anything is added.
             </Typography>
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: '1fr 1fr 1fr' }, gap: 1.5 }}>
               <TextField label="From" type="date" value={from} onChange={(e) => setFrom(e.target.value)} InputLabelProps={{ shrink: true }} required />
@@ -231,118 +226,81 @@ export default function PlanWithAIDialog({ open, campaign, onClose, onCreated }:
         )}
 
         {step === 'review' && draft && (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Typography sx={{ fontSize: 13.5, color: 'var(--text-muted)' }}>
-              {totalPosts} post{totalPosts === 1 ? '' : 's'} in {themes.length} theme{themes.length === 1 ? '' : 's'}, {formatDayRange(draft.from, draft.to)}. Untick what you don’t want, change anything, then create. Open a post to see its brief and caption.
-            </Typography>
-            {themes.map((t, ti) => {
-              const all = rows[ti] || [];
-              const included = all.filter((r) => r.include).length;
-              return (
-                <Box key={ti} component="section" sx={{ border: '1px solid var(--border)', borderRadius: 'var(--r-panel)', overflow: 'hidden' }}>
-                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, p: 1.25, bgcolor: 'var(--bg-subtle)' }}>
-                    <Checkbox
-                      size="small"
-                      checked={included === all.length && all.length > 0}
-                      indeterminate={included > 0 && included < all.length}
-                      onChange={(e) => setThemeIncluded(ti, e.target.checked)}
-                      inputProps={{ 'aria-label': `Include all posts in ${t.name || 'this theme'}` }}
-                      sx={{ mt: 0.25 }}
-                    />
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+              <Checkbox
+                size="small"
+                checked={chosenPosts === totalPosts && totalPosts > 0}
+                indeterminate={chosenPosts > 0 && chosenPosts < totalPosts}
+                onChange={(e) => setAll(e.target.checked)}
+                inputProps={{ 'aria-label': 'Include all posts' }}
+              />
+              <Typography sx={{ flex: 1, fontSize: 13.5, color: 'var(--text-muted)' }}>
+                {totalPosts} post{totalPosts === 1 ? '' : 's'}, {formatDayRange(draft.from, draft.to)}. Untick what you don’t want and change anything, then create. Open a post to see what it’s about and its caption.
+              </Typography>
+            </Box>
+            <Box sx={{ border: '1px solid var(--border)', borderRadius: 'var(--r-panel)', overflow: 'hidden' }}>
+              {posts.map((p, i) => {
+                const row = rows[i] || { include: false, open: false };
+                const outside = p.day && (p.day < draft.from || p.day > draft.to);
+                return (
+                  <Box key={i} sx={{ borderTop: i ? '1px solid var(--border)' : 'none', opacity: row.include ? 1 : 0.55 }}>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'auto minmax(0, 1fr) auto', sm: 'auto 150px minmax(0, 1fr) 110px auto' }, alignItems: 'center', gap: 1, px: 1.25, py: 0.75 }}>
+                      <Checkbox size="small" checked={row.include} onChange={(e) => setRow(i, { include: e.target.checked })} inputProps={{ 'aria-label': `Include ${p.name || titleFrom(p.caption, p.brief)}` }} />
+                      <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', gap: 0.5 }}>
+                        <TextField size="small" type="date" value={p.day || ''} onChange={(e) => editPost(i, { day: e.target.value || null })} inputProps={{ 'aria-label': 'Day' }} sx={{ '& input': { fontSize: 13, py: 0.75 } }} />
+                        {outside && (
+                          <Tooltip title="Outside the period you asked for">
+                            <WarnIcon sx={{ fontSize: 16, color: 'var(--st-attention-dot)' }} />
+                          </Tooltip>
+                        )}
+                      </Box>
+                      <Box sx={{ minWidth: 0 }}>
+                        <TextField
+                          size="small"
+                          variant="standard"
+                          value={p.name}
+                          placeholder={titleFrom(p.caption, p.brief)}
+                          onChange={(e) => editPost(i, { name: e.target.value })}
+                          fullWidth
+                          inputProps={{ 'aria-label': 'Post title', style: { fontSize: 14 } }}
+                        />
+                        <Typography sx={{ display: { xs: 'block', sm: 'none' }, fontSize: 12, color: 'var(--text-muted)' }}>{p.day ? formatDay(`${p.day}T00:00:00Z`) : 'No day'}</Typography>
+                      </Box>
                       <TextField
+                        select
                         size="small"
-                        variant="standard"
-                        value={t.name}
-                        onChange={(e) => editTheme(ti, { name: e.target.value })}
-                        fullWidth
-                        error={!t.name.trim() && included > 0}
-                        inputProps={{ 'aria-label': 'Theme name', style: { fontWeight: 700, fontSize: 15 } }}
-                      />
-                      <Typography sx={{ fontSize: 12.5, color: 'var(--text-muted)', mt: 0.5 }}>
-                        {t.existingId ? 'Adds to the theme you already have. ' : 'New theme. '}
-                        {t.description}
-                      </Typography>
+                        value={p.status}
+                        onChange={(e) => editPost(i, { status: e.target.value as PlanPost['status'] })}
+                        inputProps={{ 'aria-label': 'Status' }}
+                        sx={{ display: { xs: 'none', sm: 'flex' }, '& .MuiSelect-select': { fontSize: 13, py: 0.75 } }}
+                      >
+                        <MenuItem value="Idea">Idea</MenuItem>
+                        <MenuItem value="Draft">Draft</MenuItem>
+                        <MenuItem value="Ready">Ready</MenuItem>
+                      </TextField>
+                      <IconButton size="small" onClick={() => setRow(i, { open: !row.open })} aria-label={row.open ? 'Hide details' : 'Show what it’s about and the caption'} aria-expanded={row.open}>
+                        {row.open ? <LessIcon fontSize="small" /> : <MoreIcon fontSize="small" />}
+                      </IconButton>
                     </Box>
-                    <Typography sx={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap', mt: 0.75 }}>
-                      {included}/{all.length}
-                    </Typography>
-                  </Box>
-                  {t.posts.map((p, pi) => {
-                    const row = all[pi] || { include: false, open: false };
-                    const outside = p.day && (p.day < draft.from || p.day > draft.to);
-                    return (
-                      <Box key={pi} sx={{ borderTop: '1px solid var(--border)', opacity: row.include ? 1 : 0.55 }}>
-                        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'auto minmax(0, 1fr) auto', sm: 'auto 150px minmax(0, 1fr) 110px auto' }, alignItems: 'center', gap: 1, px: 1.25, py: 0.75 }}>
-                          <Checkbox size="small" checked={row.include} onChange={(e) => setRow(ti, pi, { include: e.target.checked })} inputProps={{ 'aria-label': `Include ${p.name}` }} />
-                          <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', gap: 0.5 }}>
-                            <TextField
-                              size="small"
-                              type="date"
-                              value={p.day || ''}
-                              onChange={(e) => editPost(ti, pi, { day: e.target.value || null })}
-                              inputProps={{ 'aria-label': 'Day' }}
-                              sx={{ '& input': { fontSize: 13, py: 0.75 } }}
-                            />
-                            {outside && (
-                              <Tooltip title="Outside the period you asked for">
-                                <WarnIcon sx={{ fontSize: 16, color: 'var(--st-attention-dot)' }} />
-                              </Tooltip>
-                            )}
-                          </Box>
-                          <Box sx={{ minWidth: 0 }}>
-                            <TextField
-                              size="small"
-                              variant="standard"
-                              value={p.name}
-                              onChange={(e) => editPost(ti, pi, { name: e.target.value })}
-                              fullWidth
-                              error={row.include && !p.name.trim()}
-                              inputProps={{ 'aria-label': 'Post title', style: { fontSize: 14 } }}
-                            />
-                            <Typography sx={{ display: { xs: 'block', sm: 'none' }, fontSize: 12, color: 'var(--text-muted)' }}>{p.day ? formatDay(`${p.day}T00:00:00Z`) : 'No day'}</Typography>
-                          </Box>
-                          <TextField
-                            select
-                            size="small"
-                            value={p.status}
-                            onChange={(e) => editPost(ti, pi, { status: e.target.value as 'Idea' | 'Draft' | 'Ready' })}
-                            inputProps={{ 'aria-label': 'Status' }}
-                            sx={{ display: { xs: 'none', sm: 'flex' }, '& .MuiSelect-select': { fontSize: 13, py: 0.75 } }}
-                          >
+                    <Collapse in={row.open} unmountOnExit>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25, px: 1.5, pb: 1.5, pt: 0.5 }}>
+                        <Box sx={{ display: { xs: 'grid', sm: 'none' }, gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+                          <TextField size="small" label="Day" type="date" value={p.day || ''} onChange={(e) => editPost(i, { day: e.target.value || null })} InputLabelProps={{ shrink: true }} />
+                          <TextField select size="small" label="Status" value={p.status} onChange={(e) => editPost(i, { status: e.target.value as PlanPost['status'] })}>
                             <MenuItem value="Idea">Idea</MenuItem>
                             <MenuItem value="Draft">Draft</MenuItem>
                             <MenuItem value="Ready">Ready</MenuItem>
                           </TextField>
-                          <IconButton size="small" onClick={() => setRow(ti, pi, { open: !row.open })} aria-label={row.open ? 'Hide brief and caption' : 'Show brief and caption'} aria-expanded={row.open}>
-                            {row.open ? <LessIcon fontSize="small" /> : <MoreIcon fontSize="small" />}
-                          </IconButton>
                         </Box>
-                        <Collapse in={row.open} unmountOnExit>
-                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25, px: 1.5, pb: 1.5, pt: 0.5 }}>
-                            <Box sx={{ display: { xs: 'grid', sm: 'none' }, gridTemplateColumns: '1fr 1fr', gap: 1 }}>
-                              <TextField size="small" label="Day" type="date" value={p.day || ''} onChange={(e) => editPost(ti, pi, { day: e.target.value || null })} InputLabelProps={{ shrink: true }} />
-                              <TextField select size="small" label="Status" value={p.status} onChange={(e) => editPost(ti, pi, { status: e.target.value as 'Idea' | 'Draft' | 'Ready' })}>
-                                <MenuItem value="Idea">Idea</MenuItem>
-                                <MenuItem value="Draft">Draft</MenuItem>
-                                <MenuItem value="Ready">Ready</MenuItem>
-                              </TextField>
-                            </Box>
-                            <TextField size="small" label="Brief" value={p.brief} onChange={(e) => editPost(ti, pi, { brief: e.target.value })} multiline minRows={2} fullWidth />
-                            <TextField size="small" label="Caption" value={p.caption} onChange={(e) => editPost(ti, pi, { caption: e.target.value })} multiline minRows={3} fullWidth />
-                          </Box>
-                        </Collapse>
+                        <TextField size="small" label="What it’s about" value={p.brief} onChange={(e) => editPost(i, { brief: e.target.value })} multiline minRows={2} fullWidth />
+                        <TextField size="small" label="Caption" value={p.caption} onChange={(e) => editPost(i, { caption: e.target.value })} multiline minRows={3} fullWidth />
                       </Box>
-                    );
-                  })}
-                </Box>
-              );
-            })}
-            {(namesMissing || titlesMissing) && (
-              <Typography role="alert" sx={{ fontSize: 13, color: 'var(--st-attention-fg)' }}>
-                {namesMissing ? 'Every theme needs a name.' : 'Every post needs a title.'}
-              </Typography>
-            )}
+                    </Collapse>
+                  </Box>
+                );
+              })}
+            </Box>
             {error && (
               <Typography role="alert" sx={{ fontSize: 13, color: 'var(--st-attention-fg)' }}>
                 {error}
@@ -378,7 +336,7 @@ export default function PlanWithAIDialog({ open, campaign, onClose, onCreated }:
             <Button onClick={requestClose} disabled={creating}>
               Cancel
             </Button>
-            <Button variant="contained" onClick={create} disabled={!chosenPosts || creating || namesMissing || titlesMissing}>
+            <Button variant="contained" onClick={create} disabled={!chosenPosts || creating}>
               {creating ? 'Creating…' : `Create ${chosenPosts} post${chosenPosts === 1 ? '' : 's'}`}
             </Button>
           </>

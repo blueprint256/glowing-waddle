@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -9,7 +9,7 @@ import {
   DialogContent,
   DialogTitle,
   IconButton,
-  LinearProgress,
+  ListSubheader,
   MenuItem,
   Select,
   TextField,
@@ -17,40 +17,34 @@ import {
   Typography,
   useMediaQuery
 } from '@mui/material';
-import {
-  AutoAwesome as AIIcon,
-  CloudUploadOutlined as UploadIcon,
-  PhotoLibraryOutlined as LibraryIcon,
-  Visibility as PreviewIcon,
-  DeleteOutline as DeleteIcon,
-  Close as CloseIcon,
-  ChevronRight as ChevronIcon,
-  ImageOutlined as ImageIcon
-} from '@mui/icons-material';
-import { taskAPI, commentAPI } from '../../services/api';
+import { Visibility as PreviewIcon, DeleteOutline as DeleteIcon, Close as CloseIcon, OpenInNew as OpenIcon } from '@mui/icons-material';
+import { campaignAPI, taskAPI, userAPI } from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
-import { canUseAI, type Comment } from '../../types';
+import { canUseAI, type Task } from '../../types';
 import { SETTABLE_POST_STATUSES, isPublishingStatus, postStatusMeta, toPostStatus, type PostStatus } from '../../lib/status';
-import { dayKey, dayToISO, formatAgo, formatDay } from '../../lib/dates';
+import { dayKey, dayToISO, formatDay } from '../../lib/dates';
 import { paths, refId } from '../../lib/paths';
+import { campaignColor } from '../../lib/colors';
+import { titleFrom } from '../../lib/postTitle';
 import { errorMessage, notify } from '../../store/toastStore';
-import { announcePostChanged, useAIJobsStore } from '../../store/aiJobsStore';
+import { announcePostChanged } from '../../store/aiJobsStore';
 import { PostStatusChip, StatusDot } from '../ui/StatusChip';
-import ImageViewer from '../ui/ImageViewer';
 import PostPreview, { type PreviewPlatform } from './PostPreview';
-import { ImproveBriefButton, ImproveCaptionButton } from './AISuggestion';
-import LibraryImagePicker from './LibraryImagePicker';
-import MovePostDialog from './MovePostDialog';
+import { ImproveCaptionButton } from './AISuggestion';
+import PicturePanel from './PicturePanel';
 import TaskPublishing from '../Publishing/TaskPublishing';
-import EditInCanvaButton from '../Canva/EditInCanvaButton';
 
 /**
- * One post, everything about it in one place: title, status, day, image (upload, Library, AI,
- * Canva), caption with live preview editing and AI help, brief, publishing and notes.
+ * One post, everything about it on one screen (Post v2):
+ *   title (automatic from the caption, click to rename) · campaign (or none) · day · status
+ *   What's this post about? (what the AI works from) · picture · caption · Publishing
  *
- * Used in the side panel (?post=<id> on any page), in Blue's full screen, and on /posts/<id>.
- * Status and day save at once (with Undo); title, caption and brief save together with
- * "Save" or Ctrl+S, and nothing is lost by accident (the bar says when there are unsaved changes).
+ * The same screen makes a new post (taskId null): nothing is saved until "Create post" (or until
+ * a picture is added, which needs the post to exist), then it simply carries on as the post.
+ *
+ * Used in the side panel (?post=<id> or ?post=new on any page), in Blue's full screen, and on
+ * /posts/<id>. Campaign, day and status save at once (with Undo); title, "about" and caption save
+ * together with "Save" or Ctrl+S, and nothing is lost by accident.
  */
 
 interface Draft {
@@ -59,25 +53,15 @@ interface Draft {
   content: string;
 }
 
-const fromTask = (t: any): Draft => ({ name: t?.name || '', description: t?.description || '', content: t?.content || '' });
+/** An automatic title is shown as a hint, so the field holds only a title someone typed. */
+const fromTask = (t: any): Draft => ({ name: t?.autoName ? '' : t?.name || '', description: t?.description || '', content: t?.content || '' });
 
-/**
- * Takes the post's own fields from an update response, keeping the campaign/theme details loaded
- * with the post (update responses only include their names).
- */
-const OWN_FIELDS = ['name', 'description', 'content', 'status', 'taskDate', 'designedImage', 'pendingGeneratedImage', 'attachedImages', 'updatedAt', 'lastModifiedBy'];
-const mergeOwn = (prev: any, next: any) => {
-  if (!next) return prev;
-  const out = { ...prev };
-  // Update responses hold the whole post: a field that's missing is empty (e.g. a removed date).
-  for (const k of OWN_FIELDS) out[k] = next[k];
-  return out;
-};
+const NO_CAMPAIGN = 'none';
 
-function Label({ children, right }: { children: string; right?: ReactNode }) {
+function Label({ children, right, htmlFor }: { children: ReactNode; right?: ReactNode; htmlFor?: string }) {
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75, minHeight: 30, flexWrap: 'wrap' }}>
-      <Typography component="h3" sx={{ flex: 1, fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.03em' }}>
+      <Typography component={htmlFor ? 'label' : 'h3'} htmlFor={htmlFor} sx={{ flex: 1, fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.03em' }}>
         {children}
       </Typography>
       {right}
@@ -85,53 +69,73 @@ function Label({ children, right }: { children: string; right?: ReactNode }) {
   );
 }
 
+export interface NewPostDefaults {
+  /** "2026-11-20" */
+  day?: string;
+  /** A campaign id, or "none". */
+  campaignId?: string;
+  status?: PostStatus;
+  caption?: string;
+}
+
 export interface PostEditorProps {
-  taskId: string;
+  /** The post, or null for a new one. */
+  taskId: string | null;
+  /** For a new post: what to start with. */
+  defaults?: NewPostDefaults;
   /** panel: side panel / Blue; page: /posts/<id> with the preview beside the editor. */
   variant?: 'panel' | 'page';
   /** Tells the host whether there are unsaved changes (to ask before closing). */
   onDirtyChange?: (dirty: boolean) => void;
   /** Gives the host a way to save before closing. */
   registerSave?: (save: () => Promise<boolean>) => void;
+  /** A new post was created (the host updates its address). */
+  onCreated?: (taskId: string) => void;
+  /** Cancel on a new post. */
+  onCancel?: () => void;
   /** Called after the post was deleted. */
   onDeleted?: () => void;
-  /** Called with the title once loaded (for the host's header). */
+  /** Called with the post once loaded (for the host's header). */
   onLoaded?: (task: any) => void;
 }
 
-export default function PostEditor({ taskId, variant = 'panel', onDirtyChange, registerSave, onDeleted, onLoaded }: PostEditorProps) {
+export default function PostEditor({ taskId: initialId, defaults, variant = 'panel', onDirtyChange, registerSave, onCreated, onCancel, onDeleted, onLoaded }: PostEditorProps) {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const aiEnabled = canUseAI(user);
   const wide = useMediaQuery('(min-width: 75em)');
   const sideBySide = variant === 'page' && wide;
 
-  const [task, setTask] = useState<any>(null);
+  const [taskId, setTaskId] = useState<string | null>(initialId);
+  const isNew = !taskId;
+  const [task, setTask] = useState<Task | null>(null);
   const [brand, setBrand] = useState<{ name: string; logoUrl: string | null }>({ name: '', logoUrl: null });
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [draft, setDraft] = useState<Draft>({ name: '', description: '', content: '' });
+  const empty: Draft = { name: '', description: '', content: defaults?.caption || '' };
+  const [draft, setDraft] = useState<Draft>(empty);
   const [baseline, setBaseline] = useState<Draft>({ name: '', description: '', content: '' });
+  // A new post's campaign, day and status (an existing post saves these at once).
+  const [newCampaign, setNewCampaign] = useState<string>(defaults?.campaignId || NO_CAMPAIGN);
+  const [newDay, setNewDay] = useState<string>(defaults?.day || '');
+  const [newStatus, setNewStatus] = useState<PostStatus>(defaults?.status || 'Draft');
+  const [campaigns, setCampaigns] = useState<any[] | null>(null);
   const [saving, setSaving] = useState(false);
-  const [statusBusy, setStatusBusy] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [posterBusy, setPosterBusy] = useState<'adopt' | 'discard' | null>(null);
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const [quickBusy, setQuickBusy] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [platform, setPlatform] = useState<PreviewPlatform>('instagram');
-  const [viewer, setViewer] = useState<{ src: string; title: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [moveOpen, setMoveOpen] = useState(false);
-  const [comments, setComments] = useState<Comment[]>([]);
-  const [note, setNote] = useState('');
-  const fileRef = useRef<HTMLInputElement>(null);
-  const job = useAIJobsStore((s) => s.images[taskId]);
-  const createImage = useAIJobsStore((s) => s.createImage);
-  const [now, setNow] = useState(Date.now());
+  const briefRef = useRef<HTMLTextAreaElement>(null);
+  const creating = useRef<Promise<string | null> | null>(null);
 
-  const dirty = draft.name !== baseline.name || draft.description !== baseline.description || draft.content !== baseline.content;
+  const dirty = isNew
+    ? Boolean(draft.name.trim() || draft.description.trim() || draft.content.trim())
+    : draft.name !== baseline.name || draft.description !== baseline.description || draft.content !== baseline.content;
+
+  // ---- Loading -----------------------------------------------------------------------------------
 
   const load = useCallback(
     async (opts: { keepDraft?: boolean } = {}) => {
+      if (!taskId) return;
       try {
         const res = await taskAPI.getById(taskId);
         const t = res.data.task;
@@ -150,38 +154,62 @@ export default function PostEditor({ taskId, variant = 'panel', onDirtyChange, r
     [taskId]
   );
 
-  const loadComments = useCallback(async () => {
-    try {
-      const res = await commentAPI.getAll({ taskId });
-      setComments(res.data.comments || []);
-    } catch {
-      setComments([]);
-    }
-  }, [taskId]);
-
   useEffect(() => {
-    setTask(null);
-    load();
-    loadComments();
-  }, [load, loadComments]);
+    if (initialId) load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Another view changed this post (publishing, an AI image, Blue): refresh, keeping unsaved typing.
+  // A new post shows your brand (previews, the AI logo option) until it's created.
+  useEffect(() => {
+    if (initialId) return;
+    let alive = true;
+    const fallbackName = [user?.firstName, user?.lastName].filter(Boolean).join(' ');
+    userAPI
+      .getCompanyInfo()
+      .then((r) => {
+        const ci = r.data?.companyInfo || {};
+        if (alive) setBrand({ name: ci.companyName || fallbackName, logoUrl: ci.primaryLogoUrl || null });
+      })
+      .catch(() => alive && setBrand({ name: fallbackName, logoUrl: null }));
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Campaigns to choose from: the post's account's, not archived (plus its current one).
+  const ownerId = task?.ownerId ? String(task.ownerId) : user?._id || user?.id;
+  useEffect(() => {
+    let alive = true;
+    campaignAPI
+      .getAll({ limit: 500 })
+      .then((r) => alive && setCampaigns(r.data.campaigns || []))
+      .catch(() => alive && setCampaigns([]));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const currentCampaign = task?.campaignId && typeof task.campaignId === 'object' ? task.campaignId : null;
+  const campaignOptions = useMemo(() => {
+    const list = (campaigns || []).filter((c) => (!ownerId || refId(c.createdBy) === String(ownerId)) && (!c.archived || c._id === refId(currentCampaign)));
+    return list.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  }, [campaigns, ownerId, currentCampaign]);
+
+  // A new post's campaign must be one it can go in (e.g. not an archived one from a filter).
+  useEffect(() => {
+    if (isNew && campaigns !== null && newCampaign !== NO_CAMPAIGN && !campaignOptions.some((c) => c._id === newCampaign)) setNewCampaign(NO_CAMPAIGN);
+  }, [isNew, campaigns, campaignOptions, newCampaign]);
+
+  // Another view changed this post (publishing, an AI picture, Blue): refresh, keeping typing.
   useEffect(() => {
     const onChanged = (e: Event) => {
-      if ((e as CustomEvent).detail === taskId) load({ keepDraft: true });
+      if (taskId && (e as CustomEvent).detail === taskId) load({ keepDraft: true });
     };
     window.addEventListener('post:changed', onChanged);
     return () => window.removeEventListener('post:changed', onChanged);
   }, [taskId, load]);
 
   useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
-
-  // Ticks while the AI image is being made, for the elapsed time.
-  useEffect(() => {
-    if (job?.state !== 'running') return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [job?.state]);
 
   // Closing the tab with unsaved changes asks first.
   useEffect(() => {
@@ -194,26 +222,67 @@ export default function PostEditor({ taskId, variant = 'panel', onDirtyChange, r
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirty]);
 
+  // ---- Creating and saving -----------------------------------------------------------------------
+
+  /** Creates the new post from what's on screen (once, even if several things ask at the same time). */
+  const create = useCallback(async (): Promise<string | null> => {
+    if (taskId) return taskId;
+    if (creating.current) return creating.current;
+    const run = (async () => {
+      setSaving(true);
+      try {
+        const res = await taskAPI.create({
+          name: draft.name.trim(),
+          description: draft.description,
+          content: draft.content,
+          campaignId: newCampaign === NO_CAMPAIGN ? null : newCampaign,
+          taskDate: newDay ? dayToISO(newDay) : null,
+          status: newStatus
+        });
+        const t = res.data.task;
+        setTask(t);
+        setTaskId(t._id);
+        const saved = fromTask(t);
+        setBaseline(saved);
+        setDraft((d) => ({ ...d, name: saved.name }));
+        onLoaded?.(t);
+        onCreated?.(t._id);
+        announcePostChanged(t._id);
+        return t._id as string;
+      } catch (e) {
+        notify(errorMessage(e, 'Couldn’t create the post. Try again.'), { tone: 'error' });
+        return null;
+      } finally {
+        setSaving(false);
+        creating.current = null;
+      }
+    })();
+    creating.current = run;
+    return run;
+  }, [taskId, draft, newCampaign, newDay, newStatus, onCreated, onLoaded]);
+
   const save = useCallback(async (): Promise<boolean> => {
-    if (!dirty) return true;
-    if (!draft.name.trim()) {
-      notify('Give the post a title first.', { tone: 'error' });
-      return false;
+    if (isNew) {
+      if (!dirty) return true;
+      const id = await create();
+      if (id) notify('Post created');
+      return Boolean(id);
     }
+    if (!dirty) return true;
     setSaving(true);
     try {
       const body: Record<string, string> = {};
       if (draft.name !== baseline.name) body.name = draft.name.trim();
       if (draft.description !== baseline.description) body.description = draft.description;
       if (draft.content !== baseline.content) body.content = draft.content;
-      const res = await taskAPI.update(taskId, body);
+      const res = await taskAPI.update(taskId!, body);
       const t = res.data.task;
-      setTask((prev: any) => mergeOwn(prev, t));
+      setTask(t);
       const next = fromTask(t);
       setBaseline(next);
       setDraft(next);
       notify('Saved');
-      announcePostChanged(taskId);
+      announcePostChanged(taskId!);
       return true;
     } catch (e) {
       notify(errorMessage(e, 'Couldn’t save. Try again.'), { tone: 'error' });
@@ -221,11 +290,11 @@ export default function PostEditor({ taskId, variant = 'panel', onDirtyChange, r
     } finally {
       setSaving(false);
     }
-  }, [dirty, draft, baseline, taskId]);
+  }, [isNew, dirty, create, draft, baseline, taskId]);
 
   useEffect(() => registerSave?.(save), [registerSave, save]);
 
-  // Ctrl/⌘+S saves.
+  // Ctrl/⌘+S saves (creates a new post).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
@@ -237,18 +306,19 @@ export default function PostEditor({ taskId, variant = 'panel', onDirtyChange, r
     return () => window.removeEventListener('keydown', onKey);
   }, [save]);
 
-  /** Status and day save straight away, with Undo. */
+  /** Campaign, status and day save straight away on a saved post, with Undo. */
   const quickUpdate = async (body: Record<string, unknown>, message: string, undoBody: Record<string, unknown>) => {
-    setStatusBusy(true);
+    if (!taskId) return;
+    setQuickBusy(true);
     try {
       const res = await taskAPI.update(taskId, body);
-      setTask((prev: any) => mergeOwn(prev, res.data.task));
+      setTask(res.data.task);
       announcePostChanged(taskId);
       notify(message, {
         undo: async () => {
           try {
             const back = await taskAPI.update(taskId, undoBody);
-            setTask((prev: any) => mergeOwn(prev, back.data.task));
+            setTask(back.data.task);
             announcePostChanged(taskId);
           } catch (e) {
             notify(errorMessage(e, 'Couldn’t undo.'), { tone: 'error' });
@@ -258,89 +328,55 @@ export default function PostEditor({ taskId, variant = 'panel', onDirtyChange, r
     } catch (e) {
       notify(errorMessage(e, 'Couldn’t update the post.'), { tone: 'error' });
     } finally {
-      setStatusBusy(false);
+      setQuickBusy(false);
     }
   };
 
+  const status = isNew ? newStatus : toPostStatus(task?.status);
+  const fromPublishing = !isNew && isPublishingStatus(status);
+  const dayValue = isNew ? newDay : dayKey(task?.taskDate) || '';
+  const campaignValue = isNew ? newCampaign : refId(currentCampaign) || NO_CAMPAIGN;
+
   const changeStatus = (next: PostStatus) => {
-    const current = toPostStatus(task?.status);
-    if (next === current) return;
-    quickUpdate({ status: next }, `Marked as ${postStatusMeta(next).label}`, { status: current });
+    if (isNew) return setNewStatus(next);
+    if (next === status) return;
+    quickUpdate({ status: next }, `Marked as ${postStatusMeta(next).label}`, { status });
   };
 
   const changeDay = (key: string) => {
+    if (isNew) return setNewDay(key);
     const before = task?.taskDate ?? null;
     const value = key ? dayToISO(key) : null;
-    quickUpdate({ taskDate: value }, key ? `Moved to ${formatDay(value, { relative: true })}` : 'Date removed', { taskDate: before });
+    quickUpdate({ taskDate: value }, key ? `Moved to ${formatDay(value, { relative: true })}` : 'Day removed', { taskDate: before });
   };
 
-  const upload = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    if (!file.type.startsWith('image/')) return notify('Choose a picture (PNG, JPG, WebP or GIF).', { tone: 'error' });
-    if (file.size > 10 * 1024 * 1024) return notify('That picture is over 10 MB. Choose a smaller one.', { tone: 'error' });
-    setUploading(true);
-    try {
-      const form = new FormData();
-      form.append('image', file);
-      const res = await taskAPI.uploadImage(taskId, form);
-      setTask((prev: any) => ({ ...prev, designedImage: res.data.task?.designedImage }));
-      notify('Image updated');
-      announcePostChanged(taskId);
-    } catch (err) {
-      notify(errorMessage(err, 'Couldn’t upload the picture.'), { tone: 'error' });
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const poster = async (action: 'adopt' | 'discard') => {
-    setPosterBusy(action);
-    try {
-      if (action === 'adopt') await taskAPI.adoptPoster(taskId);
-      else await taskAPI.discardPoster(taskId);
-      useAIJobsStore.getState().clear(taskId);
-      await load({ keepDraft: true });
-      announcePostChanged(taskId);
-      notify(action === 'adopt' ? 'AI image is now the post’s image (also saved in the Library)' : 'AI image discarded');
-    } catch (e) {
-      notify(errorMessage(e, 'Something went wrong. Try again.'), { tone: 'error' });
-    } finally {
-      setPosterBusy(null);
-    }
+  const changeCampaign = (value: string) => {
+    if (isNew) return setNewCampaign(value);
+    if (value === campaignValue) return;
+    const name = campaignOptions.find((c) => c._id === value)?.name;
+    quickUpdate(
+      { campaignId: value === NO_CAMPAIGN ? null : value },
+      value === NO_CAMPAIGN ? 'Taken out of its campaign' : `Moved to ${name || 'the campaign'}`,
+      { campaignId: campaignValue === NO_CAMPAIGN ? null : campaignValue }
+    );
   };
 
   const remove = async () => {
+    if (!taskId) return;
     try {
       const res = await taskAPI.delete(taskId);
       setConfirmDelete(false);
-      notify(res.data?.cancelledPosts ? res.data.message : 'Post deleted');
+      notify(res.data?.message || 'Post deleted');
       onDeleted?.();
     } catch (e) {
       notify(errorMessage(e, 'Couldn’t delete the post.'), { tone: 'error' });
     }
   };
 
-  const addNote = async () => {
-    if (!note.trim()) return;
-    try {
-      await commentAPI.create({ content: note.trim(), taskId });
-      setNote('');
-      loadComments();
-    } catch (e) {
-      notify(errorMessage(e, 'Couldn’t add the note.'), { tone: 'error' });
-    }
-  };
+  // ---- Render ------------------------------------------------------------------------------------
 
-  const status = toPostStatus(task?.status);
-  const fromPublishing = isPublishingStatus(status);
-  const campaign = task?.campaignId && typeof task.campaignId === 'object' ? task.campaignId : null;
-  const theme = task?.projectId && typeof task.projectId === 'object' ? task.projectId : null;
-  const ownerId = refId(campaign?.createdBy);
-  const dayValue = dayKey(task?.taskDate) || '';
-  const jobSeconds = job?.state === 'running' ? Math.max(0, Math.round((now - job.startedAt) / 1000)) : 0;
-  const statusOptions = useMemo(() => SETTABLE_POST_STATUSES, []);
+  const autoTitle = titleFrom(draft.content, draft.description);
+  const shownTitle = draft.name.trim() || autoTitle;
 
   if (loadError && !task) {
     return (
@@ -350,7 +386,7 @@ export default function PostEditor({ taskId, variant = 'panel', onDirtyChange, r
       </Box>
     );
   }
-  if (!task) {
+  if (!isNew && !task) {
     return (
       <Box sx={{ display: 'grid', placeItems: 'center', py: 8 }}>
         <CircularProgress size={24} sx={{ color: 'var(--text-muted)' }} />
@@ -362,56 +398,109 @@ export default function PostEditor({ taskId, variant = 'panel', onDirtyChange, r
     <PostPreview
       caption={draft.content}
       onCaptionChange={(v) => setDraft((d) => ({ ...d, content: v }))}
-      image={task.designedImage}
+      image={task?.designedImage}
       brandName={brand.name}
       brandLogo={brand.logoUrl}
-      dateLabel={task.taskDate ? formatDay(task.taskDate, { weekday: false }) : undefined}
+      dateLabel={dayValue ? formatDay(dayToISO(dayValue), { weekday: false }) : undefined}
       platform={platform}
       onPlatformChange={setPlatform}
     />
   );
 
+  const captionButton = (size?: 'small' | 'medium') =>
+    aiEnabled ? (
+      <ImproveCaptionButton
+        taskId={taskId}
+        campaignId={campaignValue === NO_CAMPAIGN ? null : campaignValue}
+        caption={draft.content}
+        brief={draft.description}
+        size={size}
+        onUse={(text) => setDraft((d) => ({ ...d, content: text }))}
+      />
+    ) : null;
+
   const editor = (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, minWidth: 0 }}>
-      {/* Where it belongs */}
-      {(campaign || theme) && (
-        <Box component="nav" aria-label="Part of" sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.25, fontSize: 13, color: 'var(--text-muted)' }}>
-          {campaign && (
-            <Box component={RouterLink} to={paths.campaign(campaign)} sx={{ color: 'inherit', textDecoration: 'none', '&:hover': { textDecoration: 'underline', color: 'var(--text-strong)' } }}>
-              {campaign.name}
-            </Box>
+      {/* Title: automatic until someone types one */}
+      <Box sx={{ mt: -1 }}>
+        <TextField
+          value={draft.name}
+          onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+          placeholder={isNew && !draft.content.trim() && !draft.description.trim() ? 'New post' : autoTitle}
+          variant="standard"
+          fullWidth
+          multiline
+          inputProps={{ 'aria-label': 'Post title', maxLength: 200 }}
+          InputProps={{ disableUnderline: true, sx: { fontSize: 22, fontWeight: 650, color: 'var(--text-strong)', lineHeight: 1.3, '& textarea::placeholder': { color: 'var(--text-strong)', opacity: 0.55 } } }}
+        />
+        <Typography sx={{ fontSize: 12, color: 'var(--text-faint)', mt: 0.25 }}>
+          {draft.name.trim() ? (
+            <>
+              Your title.{' '}
+              <Box component="button" type="button" onClick={() => setDraft((d) => ({ ...d, name: '' }))} sx={{ all: 'unset', cursor: 'pointer', textDecoration: 'underline' }}>
+                Use the start of the caption instead
+              </Box>
+            </>
+          ) : (
+            'Title: the start of the caption. Click it to rename. Only you see it.'
           )}
-          {campaign && theme && <ChevronIcon aria-hidden sx={{ fontSize: 16, color: 'var(--text-faint)' }} />}
-          {theme && campaign && (
-            <Box component={RouterLink} to={paths.campaign(campaign, { theme })} sx={{ color: 'inherit', textDecoration: 'none', '&:hover': { textDecoration: 'underline', color: 'var(--text-strong)' } }}>
-              {theme.name}
-            </Box>
-          )}
-          {campaign && theme && (
-            <Button size="small" onClick={() => setMoveOpen(true)} sx={{ ml: 0.5, minWidth: 0, px: 0.75, py: 0, fontSize: 12.5, color: 'var(--text-muted)' }}>
-              Move
-            </Button>
-          )}
-        </Box>
-      )}
+        </Typography>
+      </Box>
 
-      {/* Title */}
-      <TextField
-        value={draft.name}
-        onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
-        placeholder="Post title"
-        variant="standard"
-        fullWidth
-        multiline
-        inputProps={{ 'aria-label': 'Post title', maxLength: 200 }}
-        InputProps={{ disableUnderline: true, sx: { fontSize: 22, fontWeight: 650, color: 'var(--text-strong)', lineHeight: 1.3 } }}
-        helperText={draft.name.trim() ? undefined : 'A title is needed (only you see it).'}
-        error={!draft.name.trim()}
-        sx={{ mt: -1 }}
-      />
-
-      {/* Status and day */}
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, alignItems: 'center' }}>
+      {/* Campaign, day, status */}
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.25, alignItems: 'center' }}>
+        <Select
+          size="small"
+          value={campaigns === null && campaignValue !== NO_CAMPAIGN && !currentCampaign ? NO_CAMPAIGN : campaignValue}
+          onChange={(e) => changeCampaign(String(e.target.value))}
+          disabled={quickBusy || campaigns === null}
+          inputProps={{ 'aria-label': 'Campaign' }}
+          renderValue={(v) => {
+            const c = v === NO_CAMPAIGN ? null : campaignOptions.find((x) => x._id === v) || currentCampaign;
+            return (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
+                <Box component="span" aria-hidden sx={{ width: 9, height: 9, borderRadius: '3px', flexShrink: 0, bgcolor: c ? campaignColor(c._id) : 'transparent', border: c ? 'none' : '1.5px dashed var(--text-faint)' }} />
+                <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: c ? 'var(--text)' : 'var(--text-muted)' }}>
+                  {c ? c.name : 'No campaign'}
+                </Box>
+              </Box>
+            );
+          }}
+          sx={{ minWidth: 160, maxWidth: 260, height: 34, '& .MuiSelect-select': { display: 'flex', alignItems: 'center', py: 0.5 } }}
+          MenuProps={{ PaperProps: { sx: { maxHeight: 360 } } }}
+        >
+          <MenuItem value={NO_CAMPAIGN}>
+            <Box>
+              <Typography sx={{ fontSize: 14 }}>No campaign</Typography>
+              <Typography sx={{ fontSize: 12, color: 'var(--text-muted)' }}>Everyday content</Typography>
+            </Box>
+          </MenuItem>
+          {campaignOptions.length > 0 && <ListSubheader sx={{ lineHeight: '30px', fontSize: 12 }}>Campaigns</ListSubheader>}
+          {campaignOptions.map((c) => (
+            <MenuItem key={c._id} value={c._id} sx={{ gap: 1 }}>
+              <Box component="span" aria-hidden sx={{ width: 9, height: 9, borderRadius: '3px', bgcolor: campaignColor(c._id), flexShrink: 0 }} />
+              <Typography sx={{ fontSize: 14 }}>
+                {c.name}
+                {c.archived ? ' (archived)' : ''}
+              </Typography>
+            </MenuItem>
+          ))}
+          {/* A campaign that isn't in the list yet (still loading, or another account's for admins). */}
+          {currentCampaign && !campaignOptions.some((c) => c._id === refId(currentCampaign)) && (
+            <MenuItem value={refId(currentCampaign)} sx={{ display: 'none' }}>
+              {currentCampaign.name}
+            </MenuItem>
+          )}
+        </Select>
+        <TextField
+          type="date"
+          size="small"
+          value={dayValue}
+          onChange={(e) => changeDay(e.target.value)}
+          disabled={quickBusy}
+          inputProps={{ 'aria-label': 'Day it goes out' }}
+          sx={{ width: 160, '& input': { py: '6.5px' } }}
+        />
         {fromPublishing ? (
           <Tooltip title="Set by Publishing. Change or cancel it in the Publishing section below.">
             <Box sx={{ display: 'inline-flex' }}>
@@ -423,12 +512,12 @@ export default function PostEditor({ taskId, variant = 'panel', onDirtyChange, r
             size="small"
             value={status}
             onChange={(e) => changeStatus(e.target.value as PostStatus)}
-            disabled={statusBusy}
+            disabled={quickBusy}
             inputProps={{ 'aria-label': 'Status' }}
             renderValue={(v) => <PostStatusChip status={v} size="xs" />}
-            sx={{ minWidth: 150, height: 34, '& .MuiSelect-select': { display: 'flex', alignItems: 'center', py: 0.5 } }}
+            sx={{ minWidth: 130, height: 34, '& .MuiSelect-select': { display: 'flex', alignItems: 'center', py: 0.5 } }}
           >
-            {statusOptions.map((s) => (
+            {SETTABLE_POST_STATUSES.map((s) => (
               <MenuItem key={s} value={s} sx={{ gap: 1 }}>
                 <StatusDot status={s} />
                 <Box>
@@ -439,109 +528,63 @@ export default function PostEditor({ taskId, variant = 'panel', onDirtyChange, r
             ))}
           </Select>
         )}
-        <TextField
-          type="date"
-          size="small"
-          value={dayValue}
-          onChange={(e) => changeDay(e.target.value)}
-          disabled={statusBusy}
-          inputProps={{ 'aria-label': 'Day it goes out' }}
-          sx={{ width: 170, '& input': { py: '6.5px' } }}
-        />
         {!dayValue && <Typography sx={{ fontSize: 13, color: 'var(--text-muted)' }}>No day yet</Typography>}
+        {currentCampaign && (
+          <Tooltip title="Open the campaign">
+            <IconButton size="small" component={RouterLink} to={paths.campaign(currentCampaign)} aria-label={`Open the campaign ${currentCampaign.name}`}>
+              <OpenIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+          </Tooltip>
+        )}
+      </Box>
+      {task?.legacyTheme && (
+        <Typography sx={{ fontSize: 12.5, color: 'var(--text-faint)', mt: -1.5 }}>Was in the “{task.legacyTheme}” theme (themes were retired).</Typography>
+      )}
+
+      {/* What it's about */}
+      <Box component="section">
+        <Label htmlFor="post-about">What’s this post about?</Label>
+        <TextField
+          id="post-about"
+          inputRef={briefRef}
+          value={draft.description}
+          onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
+          placeholder="e.g. Hot chocolate is back from Friday. Cosy winter feel, our mugs on a wooden table."
+          multiline
+          minRows={2}
+          maxRows={8}
+          fullWidth
+          helperText={aiEnabled ? 'Optional. The AI uses it to write the caption and create the picture. Only you see it.' : 'Optional. A note for you (or a designer). Only you see it.'}
+          FormHelperTextProps={{ sx: { mx: 0 } }}
+        />
       </Box>
 
-      {/* Image */}
-      <Box component="section" aria-label="Image">
-        <Label>Image</Label>
-        {task.designedImage ? (
-          <Box
-            component="button"
-            type="button"
-            onClick={() => setViewer({ src: task.designedImage, title: draft.name })}
-            aria-label="See the image full size"
-            sx={{ all: 'unset', display: 'block', width: '100%', cursor: 'zoom-in', borderRadius: 'var(--r-card)', overflow: 'hidden', border: '1px solid var(--border)', bgcolor: 'var(--bg-subtle)' }}
-          >
-            <Box component="img" src={task.designedImage} alt={draft.name} sx={{ width: '100%', maxHeight: 380, objectFit: 'contain', display: 'block' }} />
-          </Box>
-        ) : (
-          <Box sx={{ border: '1px dashed var(--border-strong)', borderRadius: 'var(--r-card)', py: 4, textAlign: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
-            <ImageIcon sx={{ fontSize: 32, display: 'block', mx: 'auto', mb: 0.5, color: 'var(--text-faint)' }} />
-            No image yet
-          </Box>
-        )}
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
-          <Button size="small" startIcon={uploading ? <CircularProgress size={14} /> : <UploadIcon />} disabled={uploading} onClick={() => fileRef.current?.click()}>
-            {task.designedImage ? 'Replace' : 'Upload'}
-          </Button>
-          <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={upload} />
-          <Button size="small" startIcon={<LibraryIcon />} onClick={() => setPickerOpen(true)}>
-            From the Library
-          </Button>
-          {aiEnabled && (
-            <Button size="small" startIcon={<AIIcon />} disabled={job?.state === 'running'} onClick={() => createImage(taskId, draft.name || 'this post')}>
-              Create image with AI
-            </Button>
-          )}
-          {task.designedImage && (
-            <EditInCanvaButton
-              target={{ target: 'task', taskId }}
-              onImported={(message) => {
-                notify(message);
-                load({ keepDraft: true });
-                announcePostChanged(taskId);
-              }}
-            />
-          )}
-        </Box>
-        {job?.state === 'running' && (
-          <Box sx={{ mt: 1.25, p: 1.25, borderRadius: 'var(--r-ctl)', bgcolor: 'var(--bg-subtle)', border: '1px solid var(--border)' }}>
-            <Typography sx={{ fontSize: 13, color: 'var(--text)', mb: 0.75 }}>
-              Creating the image… {jobSeconds}s. This usually takes 20–60 seconds. You can keep working or close this; you’ll get a message when it’s ready.
-            </Typography>
-            <LinearProgress variant={jobSeconds < 60 ? 'determinate' : 'indeterminate'} value={Math.min(95, (jobSeconds / 60) * 100)} />
-          </Box>
-        )}
-        {task.pendingGeneratedImage && (
-          <Box sx={{ mt: 1.5, p: 1.25, borderRadius: 'var(--r-card)', border: '1px solid var(--st-scheduled-dot)', bgcolor: 'var(--bg-subtle)' }}>
-            <Typography sx={{ fontSize: 13, fontWeight: 600, color: 'var(--text-strong)', mb: 1 }}>New AI image — use it or discard it</Typography>
-            <Box
-              component="button"
-              type="button"
-              onClick={() => setViewer({ src: task.pendingGeneratedImage, title: `${draft.name} — AI image` })}
-              aria-label="See the AI image full size"
-              sx={{ all: 'unset', display: 'block', cursor: 'zoom-in', borderRadius: 'var(--r-ctl)', overflow: 'hidden' }}
-            >
-              <Box component="img" src={task.pendingGeneratedImage} alt="AI image" sx={{ width: '100%', maxHeight: 300, objectFit: 'contain', display: 'block', bgcolor: '#000' }} />
-            </Box>
-            <Box sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap' }}>
-              <Button size="small" variant="contained" disabled={Boolean(posterBusy)} onClick={() => poster('adopt')}>
-                {posterBusy === 'adopt' ? 'Saving…' : 'Use this image'}
-              </Button>
-              {aiEnabled && (
-                <Button size="small" disabled={Boolean(posterBusy) || job?.state === 'running'} onClick={() => createImage(taskId, draft.name || 'this post')}>
-                  Try again
-                </Button>
-              )}
-              <Button size="small" disabled={Boolean(posterBusy)} onClick={() => poster('discard')} sx={{ color: 'var(--text-muted)' }}>
-                Discard
-              </Button>
-            </Box>
-          </Box>
-        )}
-      </Box>
+      {/* Picture */}
+      <PicturePanel
+        task={task}
+        brief={draft.description}
+        title={shownTitle}
+        aiEnabled={aiEnabled}
+        brandLogo={brand.logoUrl}
+        ensureSaved={create}
+        onTask={(t) => setTask(t)}
+        reload={() => load({ keepDraft: true })}
+        focusBrief={() => {
+          briefRef.current?.focus();
+          briefRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        }}
+      />
 
       {/* Caption */}
-      <Box component="section" aria-label="Caption">
+      <Box component="section">
         <Label
+          htmlFor="post-caption"
           right={
             <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-              {aiEnabled && (
-                <ImproveCaptionButton taskId={taskId} caption={draft.content} brief={draft.description} onUse={(text) => setDraft((d) => ({ ...d, content: text }))} />
-              )}
+              {captionButton()}
               {!sideBySide && (
                 <Button size="small" startIcon={<PreviewIcon />} onClick={() => setPreviewOpen(true)}>
-                  Preview and edit
+                  Preview
                 </Button>
               )}
             </Box>
@@ -550,101 +593,59 @@ export default function PostEditor({ taskId, variant = 'panel', onDirtyChange, r
           Caption
         </Label>
         <TextField
+          id="post-caption"
           value={draft.content}
           onChange={(e) => setDraft((d) => ({ ...d, content: e.target.value }))}
           placeholder="The text that gets published, with hashtags and a call to action."
           multiline
           minRows={4}
           fullWidth
-          inputProps={{ 'aria-label': 'Caption' }}
           helperText={`${[...draft.content].length.toLocaleString()} characters`}
+          FormHelperTextProps={{ sx: { mx: 0 } }}
         />
       </Box>
 
-      {/* Brief */}
-      <Box component="section" aria-label="Brief">
-        <Label right={aiEnabled ? <ImproveBriefButton taskId={taskId} brief={draft.description} caption={draft.content} onUse={(text) => setDraft((d) => ({ ...d, description: text }))} /> : undefined}>
-          Brief
-        </Label>
-        <TextField
-          value={draft.description}
-          onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
-          placeholder="What the post should achieve and show (for you, a designer or the AI)."
-          multiline
-          minRows={2}
-          fullWidth
-          inputProps={{ 'aria-label': 'Brief' }}
-        />
-      </Box>
-
-      {/* Reference images */}
-      {Array.isArray(task.attachedImages) && task.attachedImages.length > 0 && (
-        <Box component="section" aria-label="Reference images">
-          <Label>Reference images</Label>
-          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-            {task.attachedImages.map((src: string, i: number) => (
-              <Box
-                key={src}
-                component="button"
-                type="button"
-                onClick={() => setViewer({ src, title: `Reference image ${i + 1}` })}
-                sx={{ all: 'unset', cursor: 'zoom-in', width: 72, height: 72, borderRadius: 'var(--r-ctl)', overflow: 'hidden', border: '1px solid var(--border)' }}
-              >
-                <img src={src} alt={`Reference ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              </Box>
-            ))}
-          </Box>
+      {taskId ? (
+        <TaskPublishing taskId={taskId} />
+      ) : (
+        <Box component="section">
+          <Label>Publishing</Label>
+          <Typography sx={{ fontSize: 13.5, color: 'var(--text-muted)' }}>Create the post first, then schedule it here.</Typography>
         </Box>
       )}
 
-      <TaskPublishing taskId={taskId} />
-
-      {/* Notes */}
-      <Box component="section" aria-label="Notes">
-        <Label>Notes</Label>
-        <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
-          <TextField
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                addNote();
-              }
-            }}
-            placeholder="Add a note (ideas, links, reminders)…"
-            size="small"
-            multiline
-            maxRows={6}
-            fullWidth
-            inputProps={{ 'aria-label': 'New note' }}
-          />
-          <Button onClick={addNote} disabled={!note.trim()} sx={{ flexShrink: 0 }}>
-            Add
+      {taskId && (
+        <Box sx={{ pt: 1, borderTop: '1px solid var(--border)' }}>
+          <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => setConfirmDelete(true)}>
+            Delete post
           </Button>
         </Box>
-        {comments.length > 0 && (
-          <Box sx={{ mt: 1.25, display: 'flex', flexDirection: 'column', gap: 1 }}>
-            {comments.map((c) => (
-              <Box key={c._id} sx={{ p: 1.25, borderRadius: 'var(--r-ctl)', bgcolor: 'var(--bg-subtle)' }}>
-                <Typography sx={{ fontSize: 14, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', color: 'var(--text)' }}>{c.content}</Typography>
-                <Typography sx={{ fontSize: 12, color: 'var(--text-muted)', mt: 0.5 }}>
-                  {c.authorId?.firstName ? `${c.authorId.firstName} ${c.authorId.lastName || ''} · ` : ''}
-                  {formatAgo(c.createdAt)}
-                </Typography>
-              </Box>
-            ))}
-          </Box>
-        )}
-      </Box>
-
-      <Box sx={{ pt: 1, borderTop: '1px solid var(--border)' }}>
-        <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => setConfirmDelete(true)}>
-          Delete post
-        </Button>
-      </Box>
+      )}
     </Box>
   );
+
+  const bar = isNew ? (
+    <Box sx={barSx(variant)}>
+      <Typography sx={{ flex: 1, fontSize: 14, color: 'var(--text-muted)' }}>New post · not saved yet</Typography>
+      <Button size="small" onClick={() => onCancel?.()} disabled={saving}>
+        Cancel
+      </Button>
+      <Button size="small" variant="contained" onClick={() => save()} disabled={saving || !dirty}>
+        {saving ? 'Creating…' : 'Create post'}
+      </Button>
+    </Box>
+  ) : dirty ? (
+    <Box role="status" sx={barSx(variant)}>
+      <Box component="span" aria-hidden sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: 'var(--warning)' }} />
+      <Typography sx={{ flex: 1, fontSize: 14, color: 'var(--text-strong)' }}>Unsaved changes</Typography>
+      <Button size="small" onClick={() => setDraft(baseline)} disabled={saving}>
+        Discard
+      </Button>
+      <Button size="small" variant="contained" onClick={() => save()} disabled={saving}>
+        {saving ? 'Saving…' : 'Save'}
+      </Button>
+    </Box>
+  ) : null;
 
   return (
     <Box sx={{ position: 'relative' }}>
@@ -660,25 +661,7 @@ export default function PostEditor({ taskId, variant = 'panel', onDirtyChange, r
         editor
       )}
 
-      {/* Unsaved changes */}
-      {dirty && (
-        <Box
-          role="status"
-          sx={{
-            position: 'sticky', bottom: 0, mt: 2, mx: variant === 'panel' ? -2 : 0, px: 2, py: 1.25, display: 'flex', alignItems: 'center', gap: 1,
-            bgcolor: 'var(--bg-float)', borderTop: '1px solid var(--border-strong)', boxShadow: '0 -6px 16px rgba(0,0,0,.08)', zIndex: 2
-          }}
-        >
-          <Box component="span" aria-hidden sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: 'var(--warning)' }} />
-          <Typography sx={{ flex: 1, fontSize: 14, color: 'var(--text-strong)' }}>Unsaved changes</Typography>
-          <Button size="small" onClick={() => setDraft(baseline)} disabled={saving}>
-            Discard
-          </Button>
-          <Button size="small" variant="contained" onClick={() => save()} disabled={saving}>
-            {saving ? 'Saving…' : 'Save'}
-          </Button>
-        </Box>
-      )}
+      {bar}
 
       {/* Preview with editing, when it isn't beside the editor */}
       <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { bgcolor: 'var(--bg-panel)', backgroundImage: 'none' } }}>
@@ -690,52 +673,28 @@ export default function PostEditor({ taskId, variant = 'panel', onDirtyChange, r
         </DialogTitle>
         <DialogContent>{preview}</DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          {aiEnabled && <ImproveCaptionButton taskId={taskId} caption={draft.content} brief={draft.description} onUse={(text) => setDraft((d) => ({ ...d, content: text }))} />}
+          {captionButton()}
           <Box sx={{ flex: 1 }} />
           <Button onClick={() => setPreviewOpen(false)}>Done</Button>
-          <Button
-            variant="contained"
-            disabled={!dirty || saving}
-            onClick={async () => {
-              if (await save()) setPreviewOpen(false);
-            }}
-          >
-            Save
-          </Button>
+          {!isNew && (
+            <Button
+              variant="contained"
+              disabled={!dirty || saving}
+              onClick={async () => {
+                if (await save()) setPreviewOpen(false);
+              }}
+            >
+              Save
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
-
-      <LibraryImagePicker
-        open={pickerOpen}
-        taskId={taskId}
-        campaignId={refId(campaign)}
-        ownerId={ownerId}
-        onClose={() => setPickerOpen(false)}
-        onUsed={(url) => {
-          setTask((prev: any) => ({ ...prev, designedImage: url }));
-          announcePostChanged(taskId);
-        }}
-      />
-
-      <ImageViewer src={viewer?.src || null} title={viewer?.title} onClose={() => setViewer(null)} />
-
-      {campaign && theme && (
-        <MovePostDialog
-          open={moveOpen}
-          taskId={taskId}
-          campaignId={refId(campaign) || ''}
-          themeId={refId(theme) || ''}
-          ownerId={ownerId || undefined}
-          onClose={() => setMoveOpen(false)}
-          onMoved={() => load({ keepDraft: true })}
-        />
-      )}
 
       <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Delete this post?</DialogTitle>
         <DialogContent>
           <Typography sx={{ fontSize: 14 }}>
-            “{task.name}” will be deleted. If it’s scheduled, it won’t go out. Its pictures stay in the Library. This can’t be undone.
+            “{shownTitle}” will be deleted with its pictures and AI drafts. If it’s scheduled, it won’t go out. Copies in the Library stay. This can’t be undone.
           </Typography>
         </DialogContent>
         <DialogActions>
@@ -757,3 +716,19 @@ export default function PostEditor({ taskId, variant = 'panel', onDirtyChange, r
     </Box>
   );
 }
+
+const barSx = (variant: 'panel' | 'page') => ({
+  position: 'sticky',
+  bottom: 0,
+  mt: 2,
+  mx: variant === 'panel' ? -2 : 0,
+  px: 2,
+  py: 1.25,
+  display: 'flex',
+  alignItems: 'center',
+  gap: 1,
+  bgcolor: 'var(--bg-float)',
+  borderTop: '1px solid var(--border-strong)',
+  boxShadow: '0 -6px 16px rgba(0,0,0,.08)',
+  zIndex: 2
+});

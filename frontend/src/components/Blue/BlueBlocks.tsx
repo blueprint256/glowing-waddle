@@ -17,13 +17,13 @@ import { taskAPI } from '../../services/api';
 import { useBlueStore } from '../../store/blueStore';
 import { ImageLightbox, useBlueOpen, useBlueSurface } from './BlueSurface';
 import { MetaChip } from '../ui/StatusChip';
-import { campaignStatusMeta, postStatusMeta, publishStatusMeta, themeStatusMeta, toPostStatus, type StatusMeta } from '../../lib/status';
+import { campaignStatusMeta, postStatusMeta, publishStatusMeta, toPostStatus, type StatusMeta } from '../../lib/status';
 import { announcePostChanged } from '../../store/aiJobsStore';
 import { paths } from '../../lib/paths';
 
 /**
  * Turns Blue's tool results into the chat's standard layouts:
- * - lists (posts, scheduled copies, campaigns, themes, users) → compact tables, one row per item
+ * - lists (posts, scheduled copies, campaigns, users) → compact tables, one row per item
  * - one item (a post, a Library item, a new AI image) → a card with the image large
  * - images → a gallery; clicking shows the full image (side panel) or opens it on the right (full screen)
  * - numbers (AI usage, Inbox, setup) → small tiles
@@ -62,7 +62,7 @@ function libDate(value?: string): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 }
 
-type ChipKind = 'post' | 'campaign' | 'theme' | 'publish';
+type ChipKind = 'post' | 'campaign' | 'publish';
 
 const PLAIN: Record<string, StatusMeta> = {
   inactive: { label: 'Inactive', hint: '', bg: 'var(--bg-subtle)', fg: 'var(--text-muted)', dot: 'var(--text-faint)' },
@@ -78,11 +78,9 @@ function StatusChip({ status, kind }: { status?: string; kind?: ChipKind }) {
       ? postStatusMeta(status)
       : kind === 'campaign'
         ? campaignStatusMeta(status)
-        : kind === 'theme'
-          ? themeStatusMeta(status)
-          : kind === 'publish'
-            ? publishStatusMeta(status)
-            : PLAIN[status] || { label: status.replace(/_/g, ' '), hint: '', bg: 'var(--bg-subtle)', fg: 'var(--text-muted)', dot: 'var(--text-faint)' };
+        : kind === 'publish'
+          ? publishStatusMeta(status)
+          : PLAIN[status] || { label: status.replace(/_/g, ' '), hint: '', bg: 'var(--bg-subtle)', fg: 'var(--text-muted)', dot: 'var(--text-faint)' };
   return (
     <Box sx={{ flexShrink: 0 }}>
       <MetaChip meta={meta} size="xs" />
@@ -287,7 +285,7 @@ function TaskTable({ tasks, total, head }: { tasks: any[]; total?: number; head?
         return (
           <Row key={t.id} onOpen={open(t.url, t)}>
             <Thumb src={t.designed_image_url} size={36} />
-            <RowText primary={t.name} secondary={[day(t.task_date), t.project?.name].filter(Boolean).join(' · ') || undefined} />
+            <RowText primary={t.name} secondary={[day(t.task_date) || 'No day yet', t.campaign?.name].filter(Boolean).join(' · ') || undefined} />
             <StatusChip status={status} kind="post" />
             {(status === 'Idea' || status === 'Draft') && (
               <Tooltip title={state === 'error' ? 'Couldn’t update. Try again' : 'Mark as ready'}>
@@ -327,25 +325,6 @@ function CampaignTable({ campaigns, total }: { campaigns: any[]; total?: number 
         <Row key={c.id} onOpen={open(c.url, c)}>
           <RowText primary={c.name} secondary={range(c.start_date, c.end_date) || undefined} />
           <StatusChip status={c.archived ? 'archived' : c.status} kind="campaign" />
-        </Row>
-      ))}
-    </Table>
-  );
-}
-
-function ProjectTable({ projects, total, extra }: { projects: any[]; total?: number; extra?: (p: any) => string | undefined }) {
-  const open = useBlueOpen();
-  const { shown, hidden, showAll } = useMore(projects);
-  if (!projects.length) return <Step ok text="No themes found" />;
-  return (
-    <Table
-      head={`${total ?? projects.length} theme${(total ?? projects.length) === 1 ? '' : 's'}`}
-      footer={<MoreFooter hidden={hidden} onShowAll={showAll} total={total} loaded={projects.length} pageLabel="Campaigns" pagePath={paths.campaigns()} />}
-    >
-      {shown.map((p) => (
-        <Row key={p.id} onOpen={open(p.url, p)}>
-          <RowText primary={p.name} secondary={[p.campaign?.name, range(p.start_date, p.due_date), extra?.(p)].filter(Boolean).join(' · ') || undefined} />
-          <StatusChip status={p.status} kind="theme" />
         </Row>
       ))}
     </Table>
@@ -429,7 +408,7 @@ function money(n?: number) {
 function TaskCard({ task, compact }: { task: any; compact?: boolean }) {
   const open = useBlueOpen();
   const when = day(task.task_date);
-  const where = [task.project?.name, task.campaign?.name].filter(Boolean).join(' · ');
+  const where = task.campaign?.name || 'No campaign';
   return (
     <Card onOpen={open(task.url, task)}>
       <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
@@ -477,20 +456,6 @@ function CampaignCard({ campaign, extra }: { campaign: any; extra?: string }) {
         <StatusChip status={campaign.archived ? 'archived' : campaign.status} kind="campaign" />
       </Box>
       <Meta>{['Campaign', when, extra].filter(Boolean).join(' · ')}</Meta>
-    </Card>
-  );
-}
-
-function ProjectCard({ project, extra }: { project: any; extra?: string }) {
-  const open = useBlueOpen();
-  const when = range(project.start_date, project.due_date);
-  return (
-    <Card onOpen={open(project.url, project)} accent="var(--accent-blue-fg)">
-      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
-        <Title>{project.name}</Title>
-        <StatusChip status={project.status} kind="theme" />
-      </Box>
-      <Meta>{['Theme', project.campaign?.name, when, extra].filter(Boolean).join(' · ')}</Meta>
     </Card>
   );
 }
@@ -689,7 +654,6 @@ const STEP_LABELS: Record<string, string> = {
   delete_library_item: 'Moved to the trash',
   cancel_post: 'Scheduled post cancelled',
   delete_comment: 'Comment deleted',
-  remove_user_from_project: 'Removed from the theme',
   deactivate_user: 'Account deactivated'
 };
 
@@ -746,31 +710,16 @@ export function BlueToolItem({ item }: { item: ToolItem }) {
     case 'get_campaign':
       return d.campaign ? (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-          <CampaignCard campaign={d.campaign} extra={`${(d.projects || []).length} themes · ${d.total_tasks ?? 0} posts`} />
-          {(d.projects || []).length > 0 && (
-            <ProjectTable projects={d.projects} extra={(p) => (p.task_counts ? `${p.task_counts.total} posts` : undefined)} />
-          )}
+          <CampaignCard
+            campaign={d.campaign}
+            extra={[`${d.post_counts?.total ?? 0} post${d.post_counts?.total === 1 ? '' : 's'}`, d.next_post_day ? `next on ${day(d.next_post_day)}` : null].filter(Boolean).join(' · ')}
+          />
         </Box>
       ) : (
         <Step ok text="Done" />
       );
     case 'list_campaigns':
       return <CampaignTable campaigns={d.campaigns || []} total={d.pagination?.total} />;
-    case 'create_project':
-    case 'update_project':
-    case 'assign_user_to_project':
-      return d.project ? <ProjectCard project={d.project} /> : <Step ok text="Done" />;
-    case 'get_project':
-      return d.project ? (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-          <ProjectCard project={d.project} />
-          <TaskTable tasks={d.tasks || []} />
-        </Box>
-      ) : (
-        <Step ok text="Done" />
-      );
-    case 'list_projects':
-      return <ProjectTable projects={d.projects || []} total={d.pagination?.total} />;
     case 'add_comment':
     case 'update_comment':
       return d.comment ? <CommentCard comment={d.comment} /> : <Step ok text="Done" />;
@@ -795,7 +744,7 @@ export function BlueToolItem({ item }: { item: ToolItem }) {
       return (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
           <Step ok text={d.message || 'Planned'} />
-          <ProjectTable projects={d.themes || d.projects || []} extra={(p) => `${p.posts_created ?? p.tasks_created ?? 0} posts`} />
+          <TaskTable tasks={(d.posts || []).map((p: any) => ({ id: p.id, name: p.name, task_date: p.day, status: p.status, url: p.url }))} head={`${(d.posts || []).length} new post${(d.posts || []).length === 1 ? '' : 's'}`} />
         </Box>
       );
     case 'schedule_post':
@@ -830,9 +779,11 @@ export function BlueToolItem({ item }: { item: ToolItem }) {
         </Card>
       );
     case 'generate_task_poster':
-      return <PosterCard src={d.pending_image_url} title="New AI image" note="Open the post to use it or discard it." taskUrl={d.task_url} />;
+      return <PosterCard src={d.draft_image?.url || d.pending_image_url} title="New AI picture" note="Open the post to use it, change it or discard it. Unused AI pictures are deleted after 7 days." taskUrl={d.task_url} />;
+    case 'change_task_picture':
+      return <PosterCard src={d.draft_image?.url} title="Changed picture" note="Open the post to compare it with the current one and choose." taskUrl={d.task_url} />;
     case 'adopt_task_poster':
-      return d.image_url ? <PosterCard src={d.image_url} title="This is now the post’s image" note={d.message || 'Saved'} /> : <Step ok text={d.message || 'Done'} />;
+      return d.image_url ? <PosterCard src={d.image_url} title="This is now the post’s picture" note={d.message || 'Saved'} /> : <Step ok text={d.message || 'Done'} />;
     case 'ai_usage':
       return (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>

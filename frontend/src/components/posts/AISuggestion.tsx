@@ -110,16 +110,19 @@ const CAPTION_OPTIONS: { style: CaptionStyle; label: string; icon: JSX.Element; 
 
 /**
  * "Improve caption" (or "Write caption" when it's empty) with a menu of options. Works on the
- * caption as currently typed (saved or not).
+ * caption and "What's this post about?" as currently typed (saved or not), even on a new post.
  */
 export function ImproveCaptionButton({
   taskId,
+  campaignId,
   caption,
   brief,
   onUse,
   size = 'small'
 }: {
-  taskId: string;
+  /** The post, or null for a new post not created yet (the brand and campaign are used then). */
+  taskId: string | null;
+  campaignId?: string | null;
   caption: string;
   brief: string;
   onUse: (text: string) => void;
@@ -133,7 +136,7 @@ export function ImproveCaptionButton({
     const go = async () => {
       setState({ title: empty ? 'Write caption' : `Improve caption · ${label}`, original: caption, loading: true, suggestion: '', error: null, retry: go });
       try {
-        const res = await taskAPI.improveCaption(taskId, { style, caption, brief });
+        const res = taskId ? await taskAPI.improveCaption(taskId, { style, caption, brief }) : await taskAPI.suggestCaption({ style, caption, brief, campaignId });
         setState((s) => (s ? { ...s, loading: false, suggestion: res.data.suggestion } : s));
       } catch (error) {
         setState((s) => (s ? { ...s, loading: false, error: errorMessage(error, 'Couldn’t improve the caption. Try again.') } : s));
@@ -174,31 +177,6 @@ export function ImproveCaptionButton({
           </MenuItem>
         ])}
       </Menu>
-      <AISuggestDialog state={state} onUse={onUse} onClose={() => setState(null)} />
-    </>
-  );
-}
-
-/** "Improve brief" (secondary): rewrites the brief so the visual and the caption are clear. */
-export function ImproveBriefButton({ taskId, brief, caption, onUse }: { taskId: string; brief: string; caption: string; onUse: (text: string) => void }) {
-  const [state, setState] = useState<SuggestState | null>(null);
-  const run = () => {
-    const go = async () => {
-      setState({ title: 'Improve brief', original: brief, loading: true, suggestion: '', error: null, retry: go });
-      try {
-        const res = await taskAPI.refineDescription(taskId, { brief, caption });
-        setState((s) => (s ? { ...s, loading: false, suggestion: res.data.refinedDescription } : s));
-      } catch (error) {
-        setState((s) => (s ? { ...s, loading: false, error: errorMessage(error, 'Couldn’t improve the brief. Try again.') } : s));
-      }
-    };
-    go();
-  };
-  return (
-    <>
-      <Button size="small" startIcon={<AIIcon />} onClick={run} sx={{ color: 'var(--text-muted)' }}>
-        Improve brief
-      </Button>
       <AISuggestDialog state={state} onUse={onUse} onClose={() => setState(null)} />
     </>
   );

@@ -1,6 +1,6 @@
 /**
  * Every address in the app comes from here (mirrors backend/src/lib/links.ts), so a page can move
- * without breaking links. People see "post" and "theme"; the API keeps "task" and "project".
+ * without breaking links. People see "post"; the API keeps "task". Themes were retired (Post v2).
  *
  * Any page can open a post in the side panel by adding ?post=<id> (see components/posts/PostPanelHost).
  */
@@ -26,12 +26,12 @@ export type SettingsSection = 'profile' | 'brand' | 'integrations' | 'ai' | 'pro
 export interface PlannerParams {
   view?: PlannerView;
   date?: string;
+  /** A campaign, or "none" for posts without a campaign. */
   campaign?: unknown;
-  theme?: unknown;
   /** One status or several ("Idea", or ["Idea", "Draft"]). */
   status?: string | string[];
   /** List view grouping (day is the default). */
-  group?: 'day' | 'campaign' | 'theme';
+  group?: 'day' | 'campaign';
 }
 
 export const paths = {
@@ -40,16 +40,14 @@ export const paths = {
     `/planner${query({
       view: p.view,
       date: p.date,
-      campaign: p.campaign ? id(p.campaign) : undefined,
-      theme: p.theme ? id(p.theme) : undefined,
+      campaign: p.campaign ? (p.campaign === 'none' ? 'none' : id(p.campaign)) : undefined,
       status: Array.isArray(p.status) ? p.status.join(',') : p.status,
       group: p.group
     })}`,
   /** A post on its own page. To open it beside the current page, use useOpenPost(). */
   post: (taskId: unknown) => `/posts/${id(taskId)}`,
   campaigns: () => '/campaigns',
-  campaign: (campaignId: unknown, opts: { theme?: unknown } = {}) =>
-    `/campaigns/${id(campaignId)}${query({ theme: opts.theme ? id(opts.theme) : undefined })}`,
+  campaign: (campaignId: unknown) => `/campaigns/${id(campaignId)}`,
   library: (opts: { view?: 'review' | 'trash' } = {}) => `/library${query({ view: opts.view })}`,
   libraryItem: (assetId: unknown) => `/library/${id(assetId)}`,
   inbox: (opts: { box?: string; item?: unknown } = {}) => `/inbox${query({ box: opts.box, item: opts.item ? id(opts.item) : undefined })}`,
@@ -71,7 +69,7 @@ export const refId = (v: unknown): string | undefined => {
 
 /**
  * Turns an app link from the API or the connector ("http://host/tasks/1", "/tasks/1") into the
- * current address, so old links keep working: /tasks/:id → /posts/:id, /projects/:id → theme.
+ * current address, so old links keep working: /tasks/:id → /posts/:id (/projects/:id is redirected by the router).
  */
 export function appPath(url: string | null | undefined): string | null {
   if (!url) return null;

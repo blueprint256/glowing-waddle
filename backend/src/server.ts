@@ -162,6 +162,7 @@ app.post('/api/campaigns/:id/generate-tasks', requireAI);
 app.post('/api/tasks/:id/generate-poster', requireAI);
 app.post('/api/tasks/:id/refine-description', requireAI);
 app.post('/api/tasks/:id/improve-caption', requireAI);
+app.post('/api/tasks/improve-caption', requireAI);
 app.patch('/api/tasks/:id/adopt-poster', requireAI);
 app.post('/api/tasks/:id/image/create', requireAI);
 app.post('/api/tasks/:id/image/change', requireAI);

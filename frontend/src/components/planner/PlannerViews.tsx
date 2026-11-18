@@ -7,7 +7,7 @@ import { campaignColor } from '../../lib/colors';
 
 /**
  * The Planner's views. Month: a grid of days with small post cards. Week: a column per day with
- * bigger cards. List: every post grouped by day, campaign or theme. Days accept dropped cards
+ * bigger cards. List: every post grouped by day or campaign. Days accept dropped cards
  * (to move a post) and have a "+" to add one there.
  */
 
@@ -315,7 +315,7 @@ function Group({ title, color, count, children }: { title: ReactNode; color?: st
   );
 }
 
-export type ListGroup = 'day' | 'campaign' | 'theme';
+export type ListGroup = 'day' | 'campaign';
 
 export function ListView({ posts, onOpen, group }: { posts: PlannerPost[]; onOpen: (id: string) => void; group: ListGroup }) {
   const sorted = useMemo(
@@ -336,17 +336,12 @@ export function ListView({ posts, onOpen, group }: { posts: PlannerPost[]; onOpe
       let color: string | undefined;
       let order: number;
       const c = p.campaignId && typeof p.campaignId === 'object' ? p.campaignId : null;
-      const t = p.projectId && typeof p.projectId === 'object' ? p.projectId : null;
       if (group === 'campaign') {
         key = c?._id || 'none';
         title = c?.name || 'No campaign';
-        color = campaignColor(c?._id);
-        order = 0;
-      } else if (group === 'theme') {
-        key = `${c?._id}:${t?._id}`;
-        title = [c?.name, t?.name].filter(Boolean).join(' › ') || 'No theme';
-        color = campaignColor(c?._id);
-        order = 0;
+        color = c ? campaignColor(c._id) : undefined;
+        // Posts without a campaign come last.
+        order = c ? 0 : 1;
       } else {
         const k = dayKey(p.taskDate);
         key = k || 'none';
@@ -358,7 +353,7 @@ export function ListView({ posts, onOpen, group }: { posts: PlannerPost[]; onOpe
       map.set(key, g);
     }
     const list = [...map.values()];
-    return group === 'day' ? list.sort((a, b) => a.order - b.order) : list.sort((a, b) => a.title.localeCompare(b.title));
+    return group === 'day' ? list.sort((a, b) => a.order - b.order) : list.sort((a, b) => a.order - b.order || a.title.localeCompare(b.title));
   }, [sorted, group]);
 
   // By day, the list starts at today; earlier days stay folded until asked for.

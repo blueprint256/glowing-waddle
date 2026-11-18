@@ -379,12 +379,6 @@ export default function LibraryItemPage() {
                 Post
               </Link>
             )}
-            {item.links.projectId && (
-              <LinkRow
-                label="Theme"
-                to={item.links.campaignId ? paths.campaign(item.links.campaignId, { theme: item.links.projectId }) : `/projects/${item.links.projectId}`}
-              />
-            )}
             {item.links.campaignId && <LinkRow label={linkedCampaign ? `Campaign · ${linkedCampaign.name}` : 'Campaign'} to={paths.campaign(item.links.campaignId)} />}
             {!inTrash && (
               <Autocomplete

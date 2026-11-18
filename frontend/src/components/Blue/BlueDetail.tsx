@@ -2,20 +2,20 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Box, Button, Chip, CircularProgress, IconButton, Tooltip, Typography } from '@mui/material';
 import { Close as CloseIcon, ArrowBack as BackIcon, OpenInNew as OpenIcon, Download as DownloadIcon } from '@mui/icons-material';
-import { campaignAPI, projectAPI, taskAPI } from '../../services/api';
+import { campaignAPI, taskAPI } from '../../services/api';
 import { libraryAPI, librarySrc, type LibraryItem } from '../../services/library';
 import { useBlueStore, type BlueDetailRef } from '../../store/blueStore';
 import PostEditor from '../posts/PostEditor';
 import { useUnsavedGuard } from '../posts/UnsavedGuard';
 import { MetaChip, PostStatusChip } from '../ui/StatusChip';
-import { campaignStatusMeta, themeStatusMeta } from '../../lib/status';
+import { campaignStatusMeta } from '../../lib/status';
 import { formatDay, formatDayRange } from '../../lib/dates';
-import { paths, refId } from '../../lib/paths';
+import { paths } from '../../lib/paths';
 import { ImageLightbox } from './BlueSurface';
 
 /**
  * The right-hand panel of the full-screen Blue page: whatever you clicked in the chat (a post, a
- * Library item, a campaign or a theme), so you can check or change it without leaving the
+ * Library item or a campaign), so you can check or change it without leaving the
  * conversation. A post opens in the full post editor. Links inside open in the same panel (Back
  * returns); "Open page" goes to the item's own page.
  */
@@ -24,7 +24,6 @@ function day(value?: string | null): string | null {
   return value ? formatDay(value) || null : null;
 }
 
-const idOf = (v: any): string | undefined => refId(v) || undefined;
 
 function Section({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -184,12 +183,12 @@ function LibraryView({ id, preview }: { id: string; preview?: any }) {
 }
 
 // ---------------------------------------------------------------------------
-// Campaign and project
+// Campaign
 // ---------------------------------------------------------------------------
 
 function CampaignView({ id, preview, go }: { id: string; preview?: any; go: (ref: BlueDetailRef) => void }) {
   const c = useRecord<any>(() => campaignAPI.getById(id).then((r: any) => r.data.campaign), [id]);
-  const p = useRecord<any[]>(() => projectAPI.getAll({ campaignId: id, limit: 200 }).then((r: any) => r.data.projects || []), [id]);
+  const p = useRecord<any[]>(() => taskAPI.getAll({ campaignId: id, limit: 500 }).then((r: any) => r.data.tasks || []), [id]);
   const camp: any = c.data || { name: preview?.name, status: preview?.status, startDate: preview?.start_date, endDate: preview?.end_date };
   if (!camp.name && c.loading) return <Loading />;
   if (c.error && !camp.name) return <Failed text={c.error} />;
@@ -210,56 +209,13 @@ function CampaignView({ id, preview, go }: { id: string; preview?: any; go: (ref
           <Body>{camp.coreMessages}</Body>
         </Section>
       )}
-      <Section label={`Themes${p.data ? ` (${p.data.length})` : ''}`}>
+      <Section label={`Posts${p.data ? ` (${p.data.length})` : ''}`}>
         {p.loading && !p.data ? (
           <Loading small />
         ) : (p.data || []).length === 0 ? (
-          <Typography sx={{ fontSize: 13, color: 'var(--text-muted)' }}>No themes yet.</Typography>
-        ) : (
-          (p.data as any[]).map((proj) => (
-            <LinkRow
-              key={proj._id}
-              label={proj.name}
-              right={<MetaChip meta={themeStatusMeta(proj.status)} />}
-              onClick={() => go({ type: 'project', id: proj._id, preview: { name: proj.name, status: proj.status } })}
-            />
-          ))
-        )}
-      </Section>
-    </>
-  );
-}
-
-function ProjectView({ id, preview, go, onCampaign }: { id: string; preview?: any; go: (ref: BlueDetailRef) => void; onCampaign: (id: string | null) => void }) {
-  const pr = useRecord<any>(() => projectAPI.getById(id).then((r: any) => r.data.project), [id]);
-  useEffect(() => onCampaign(idOf(pr.data?.campaignId) || null), [pr.data, onCampaign]);
-  const ts = useRecord<any[]>(() => taskAPI.getAll({ projectId: id, limit: 500 }).then((r: any) => r.data.tasks || []), [id]);
-  const proj: any = pr.data || { name: preview?.name, status: preview?.status };
-  if (!proj.name && pr.loading) return <Loading />;
-  if (pr.error && !proj.name) return <Failed text={pr.error} />;
-  const campaign = proj.campaignId && typeof proj.campaignId === 'object' ? proj.campaignId : null;
-  return (
-    <>
-      <Typography sx={{ fontSize: 17, fontWeight: 600, color: 'var(--text-strong)' }}>{proj.name}</Typography>
-      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
-        <MetaChip meta={themeStatusMeta(proj.status)} />
-        <Typography sx={{ fontSize: 13, color: 'var(--text-muted)' }}>{formatDayRange(proj.startDate, proj.dueDate)}</Typography>
-      </Box>
-      {campaign && (
-        <LinkRow label={<>Campaign · {campaign.name}</>} onClick={() => go({ type: 'campaign', id: idOf(campaign)!, preview: campaign })} />
-      )}
-      {proj.description && (
-        <Section label="About">
-          <Body>{proj.description}</Body>
-        </Section>
-      )}
-      <Section label={`Posts${ts.data ? ` (${ts.data.length})` : ''}`}>
-        {ts.loading && !ts.data ? (
-          <Loading small />
-        ) : (ts.data || []).length === 0 ? (
           <Typography sx={{ fontSize: 13, color: 'var(--text-muted)' }}>No posts yet.</Typography>
         ) : (
-          (ts.data as any[]).map((t) => (
+          (p.data as any[]).slice(0, 60).map((t) => (
             <LinkRow
               key={t._id}
               label={
@@ -295,13 +251,12 @@ function Failed({ text }: { text: string }) {
   return <Typography sx={{ fontSize: 13, color: 'var(--danger-text)', py: 2 }}>{text}</Typography>;
 }
 
-const LABEL: Record<BlueDetailRef['type'], string> = { task: 'Post', library: 'Library item', campaign: 'Campaign', project: 'Theme' };
+const LABEL: Record<BlueDetailRef['type'], string> = { task: 'Post', library: 'Library item', campaign: 'Campaign' };
 
 export default function BlueDetail() {
   const navigate = useNavigate();
   const { detail, showDetail, closeDetail } = useBlueStore();
   const [stack, setStack] = useState<BlueDetailRef[]>([]);
-  const [themeCampaign, setThemeCampaign] = useState<string | null>(null);
   const inner = useRef(false);
   const unsaved = useUnsavedGuard();
   const bump = () => useBlueStore.setState((s) => ({ refreshKey: s.refreshKey + 1 }));
@@ -334,9 +289,7 @@ export default function BlueDetail() {
   const pageOf = (ref: BlueDetailRef): string => {
     if (ref.type === 'task') return paths.post(ref.id);
     if (ref.type === 'library') return paths.libraryItem(ref.id);
-    if (ref.type === 'campaign') return paths.campaign(ref.id);
-    const campaign = themeCampaign || idOf(ref.preview?.campaign) || idOf(ref.preview?.campaignId);
-    return campaign ? paths.campaign(campaign, { theme: ref.id }) : paths.campaigns();
+    return paths.campaign(ref.id);
   };
 
   return (
@@ -376,7 +329,6 @@ export default function BlueDetail() {
         )}
         {detail.type === 'library' && <LibraryView id={detail.id} preview={detail.preview} />}
         {detail.type === 'campaign' && <CampaignView id={detail.id} preview={detail.preview} go={go} />}
-        {detail.type === 'project' && <ProjectView id={detail.id} preview={detail.preview} go={go} onCampaign={setThemeCampaign} />}
       </Box>
       {unsaved.dialog}
     </Box>

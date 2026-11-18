@@ -8,7 +8,7 @@ import { useOpenPost } from '../posts/PostPanelHost';
 
 /**
  * Where the chat is showing: the side panel next to another page, or the full-screen Blue page.
- * On the full-screen page, clicking a post, campaign, theme or Library item opens it in the
+ * On the full-screen page, clicking a post, campaign or Library item opens it in the
  * right-hand panel instead of leaving the chat. In the side panel, a post opens in the post panel
  * over the current page; other links go to their page.
  */
@@ -18,8 +18,8 @@ export const BlueSurfaceContext = createContext<BlueSurface>('panel');
 
 export const useBlueSurface = () => useContext(BlueSurfaceContext);
 
-const DETAIL_PATH = /^\/(posts|tasks|library|campaigns|projects)\/([a-f0-9]{24})\/?$/i;
-const TYPES: Record<string, BlueDetailRef['type']> = { posts: 'task', tasks: 'task', library: 'library', campaigns: 'campaign', projects: 'project' };
+const DETAIL_PATH = /^\/(posts|tasks|library|campaigns)\/([a-f0-9]{24})\/?$/i;
+const TYPES: Record<string, BlueDetailRef['type']> = { posts: 'task', tasks: 'task', library: 'library', campaigns: 'campaign' };
 
 /** The in-app address of a link from a chat card (old /tasks/ links become /posts/). */
 export function pathFrom(url?: string | null): string | null {

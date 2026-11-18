@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link as RouterLink, useSearchParams } from 'react-router-dom';
-import { Box, Button, CircularProgress, Drawer, IconButton, ToggleButton, ToggleButtonGroup, Tooltip, Typography, useMediaQuery } from '@mui/material';
+import { useSearchParams } from 'react-router-dom';
+import { Box, Button, CircularProgress, Drawer, IconButton, InputBase, ToggleButton, ToggleButtonGroup, Tooltip, Typography, useMediaQuery } from '@mui/material';
 import {
   Add as AddIcon,
   ChevronLeft as PrevIcon,
@@ -16,8 +16,7 @@ import PageHeader from '../../components/ui/PageHeader';
 import FilterBar, { type Facet } from '../../components/ui/FilterBar';
 import EmptyState from '../../components/ui/EmptyState';
 import PostCard, { canMovePost, type PlannerPost } from '../../components/posts/PostCard';
-import NewPostDialog, { type NewPostDefaults } from '../../components/posts/NewPostDialog';
-import { useOpenPost, usePostEvents } from '../../components/posts/PostPanelHost';
+import { useNewPost, useOpenPost, usePostEvents } from '../../components/posts/PostPanelHost';
 import { ListView, MonthView, WeekView, monthGridStart, useDropTarget, weekStart, type ListGroup } from '../../components/planner/PlannerViews';
 import { campaignAPI, taskAPI, userAPI } from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
@@ -25,7 +24,6 @@ import { UserRole } from '../../types';
 import { addDays, dayToISO, formatDay, formatDayRange, formatMonth, todayKey } from '../../lib/dates';
 import { POST_STATUSES, postStatusMeta, toPostStatus } from '../../lib/status';
 import { campaignColor } from '../../lib/colors';
-import { paths } from '../../lib/paths';
 import { errorMessage, notify } from '../../store/toastStore';
 import { announcePostChanged } from '../../store/aiJobsStore';
 
@@ -60,10 +58,9 @@ export default function PlannerPage() {
   const anchor = /^\d{4}-\d{2}-\d{2}$/.test(params.get('date') || '') ? params.get('date')! : todayKey();
   const q = params.get('q') || '';
   const campaigns = list(params.get('campaign'));
-  const themes = list(params.get('theme'));
   const statuses = list(params.get('status'));
   const accounts = list(params.get('account'));
-  const group = (['day', 'campaign', 'theme'].includes(params.get('group') || '') ? params.get('group') : 'day') as ListGroup;
+  const group = (params.get('group') === 'campaign' ? 'campaign' : 'day') as ListGroup;
 
   const [posts, setPosts] = useState<PlannerPost[] | null>(null);
   const [unscheduled, setUnscheduled] = useState<PlannerPost[]>([]);
@@ -71,7 +68,9 @@ export default function PlannerPage() {
   const [allCampaigns, setAllCampaigns] = useState<{ _id: string; name: string }[] | null>(null);
   const [users, setUsers] = useState<{ _id: string; name: string }[]>([]);
   const [search, setSearch] = useState(q);
-  const [newPost, setNewPost] = useState<NewPostDefaults | null>(null);
+  const newPost = useNewPost();
+  const [idea, setIdea] = useState('');
+  const [ideaBusy, setIdeaBusy] = useState(false);
   const [trayOpen, setTrayOpen] = useState(false);
   const loadSeq = useRef(0);
 
@@ -89,14 +88,11 @@ export default function PlannerPage() {
     [params, setParams]
   );
 
-  // ?new=1 (from search's "New post") opens the new-post form once.
+  // ?new=1 (from search's "New post", older links) opens a new post.
   useEffect(() => {
     if (params.get('new') !== '1') return;
-    setNewPost({});
-    const next = new URLSearchParams(params);
-    next.delete('new');
-    setParams(next, { replace: true });
-  }, [params, setParams]);
+    newPost({});
+  }, [params, newPost]);
 
   // Search is typed freely and applied after a short pause.
   useEffect(() => setSearch(q), [q]);
@@ -121,7 +117,6 @@ export default function PlannerPage() {
   const filters = useMemo(
     () => ({
       ...(campaigns.length ? { campaignId: campaigns.join(',') } : {}),
-      ...(themes.length ? { projectId: themes.join(',') } : {}),
       ...(statuses.length ? { status: statuses.join(',') } : {}),
       ...(accounts.length && isAdmin ? { createdBy: accounts.join(',') } : {}),
       ...(q ? { search: q } : {}),
@@ -129,7 +124,7 @@ export default function PlannerPage() {
       include: 'publishing'
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [params.get('campaign'), params.get('theme'), params.get('status'), params.get('account'), q, isAdmin]
+    [params.get('campaign'), params.get('status'), params.get('account'), q, isAdmin]
   );
 
   const load = useCallback(async () => {
@@ -241,28 +236,39 @@ export default function PlannerPage() {
     }
   };
 
-  const addPost = (day?: string) => setNewPost({ day, campaignId: campaigns.length === 1 ? campaigns[0] : undefined, projectId: themes.length === 1 ? themes[0] : undefined });
+  /** The one campaign being looked at, if any: new posts and quick ideas go there. */
+  const singleCampaign = campaigns.length === 1 && campaigns[0] !== 'none' ? campaigns[0] : undefined;
+  const addPost = (day?: string) => newPost({ day, campaignId: singleCampaign });
+
+  /** Quick idea: one line, saved at once as an Idea without a day (open it later to work on it). */
+  const addIdea = async () => {
+    const text = idea.trim();
+    if (!text || ideaBusy) return;
+    setIdeaBusy(true);
+    try {
+      const res = await taskAPI.create({ description: text, status: 'Idea', campaignId: singleCampaign || null });
+      setIdea('');
+      announcePostChanged(res.data.task._id);
+      notify('Idea saved', { action: { label: 'Open', run: () => openPost(res.data.task._id) } });
+    } catch (e) {
+      notify(errorMessage(e, 'Couldn’t save the idea.'), { tone: 'error' });
+    } finally {
+      setIdeaBusy(false);
+    }
+  };
 
   // Filter menu (counts are for what's loaded in this view).
   const loaded = useMemo(() => [...(posts || []), ...unscheduled], [posts, unscheduled]);
   const facets: Facet[] = useMemo(() => {
     const count = (fn: (p: PlannerPost) => boolean) => loaded.filter(fn).length;
-    const themeOptions = new Map<string, { label: string; campaign: string }>();
-    for (const p of loaded) {
-      const t = p.projectId && typeof p.projectId === 'object' ? p.projectId : null;
-      const c = p.campaignId && typeof p.campaignId === 'object' ? p.campaignId : null;
-      if (t) themeOptions.set(t._id, { label: campaigns.length === 1 ? t.name : `${c?.name || ''} › ${t.name}`, campaign: c?._id || '' });
-    }
     const out: Facet[] = [
       {
         key: 'campaign',
         label: 'Campaign',
-        options: (allCampaigns || []).map((c) => ({ value: c._id, label: c.name, color: campaignColor(c._id), count: count((p) => (p.campaignId as any)?._id === c._id) }))
-      },
-      {
-        key: 'theme',
-        label: 'Theme',
-        options: [...themeOptions.entries()].map(([value, o]) => ({ value, label: o.label, count: count((p) => (p.projectId as any)?._id === value) }))
+        options: [
+          ...(allCampaigns || []).map((c) => ({ value: c._id, label: c.name, color: campaignColor(c._id), count: count((p) => (p.campaignId as any)?._id === c._id) })),
+          { value: 'none', label: 'No campaign', count: count((p) => !p.campaignId) }
+        ]
       },
       {
         key: 'status',
@@ -272,14 +278,13 @@ export default function PlannerPage() {
     ];
     if (isAdmin && users.length) out.push({ key: 'account', label: 'Account', options: users.map((u) => ({ value: u._id, label: u.name })) });
     return out;
-  }, [loaded, allCampaigns, users, isAdmin, campaigns.length]);
+  }, [loaded, allCampaigns, users, isAdmin]);
 
-  const values = { campaign: campaigns, theme: themes, status: statuses, account: accounts };
+  const values = { campaign: campaigns, status: statuses, account: accounts };
 
   const rangeLabel = view === 'month' ? formatMonth(anchor) : view === 'week' ? formatDayRange(weekStart(anchor), addDays(weekStart(anchor), 6)) : 'All posts';
   const showsToday = view === 'month' ? anchor.slice(0, 7) === todayKey().slice(0, 7) : view === 'week' ? weekStart(anchor) === weekStart(todayKey()) : true;
-  const noCampaigns = allCampaigns !== null && allCampaigns.length === 0;
-  const filtered = Boolean(q || campaigns.length || themes.length || statuses.length || accounts.length);
+  const filtered = Boolean(q || campaigns.length || statuses.length || accounts.length);
 
   const viewSwitch = (
     <ToggleButtonGroup
@@ -319,6 +324,24 @@ export default function PlannerPage() {
         <PostCard key={p._id} post={p} onOpen={openPost} variant="compact" draggable={!phone} />
       ))}
       {unscheduled.length === 0 && <Typography sx={{ fontSize: 12.5, color: 'var(--text-faint)' }}>Every post has a day.</Typography>}
+      <Box
+        component="form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          addIdea();
+        }}
+        sx={{ mt: 'auto', pt: 0.75 }}
+      >
+        <InputBase
+          value={idea}
+          onChange={(e) => setIdea(e.target.value)}
+          placeholder="+ Quick idea… (Enter)"
+          disabled={ideaBusy}
+          inputProps={{ 'aria-label': 'Quick idea', maxLength: 2000 }}
+          fullWidth
+          sx={{ fontSize: 13, px: 1, py: 0.5, borderRadius: 'var(--r-ctl)', bgcolor: 'var(--bg-panel)', border: '1px solid var(--border)', '&.Mui-focused': { borderColor: 'var(--border-strong)' } }}
+        />
+      </Box>
     </Box>
   );
 
@@ -328,7 +351,7 @@ export default function PlannerPage() {
         title="Planner"
         subtitle="Every post by day. Hover a post to preview it, click to open it, drag it to another day."
         actions={
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => addPost()} disabled={noCampaigns}>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => addPost()}>
             New post
           </Button>
         }
@@ -350,7 +373,7 @@ export default function PlannerPage() {
           onChange={(key, v) => update({ [key]: v })}
           onClear={() => {
             setSearch('');
-            update({ q: null, campaign: null, theme: null, status: null, account: null });
+            update({ q: null, campaign: null, status: null, account: null });
           }}
           right={viewSwitch}
         />
@@ -395,7 +418,6 @@ export default function PlannerPage() {
             >
               <ToggleButton value="day">By day</ToggleButton>
               <ToggleButton value="campaign">By campaign</ToggleButton>
-              <ToggleButton value="theme">By theme</ToggleButton>
             </ToggleButtonGroup>
           </>
         )}
@@ -410,8 +432,6 @@ export default function PlannerPage() {
 
       {error ? (
         <EmptyState title="The Planner couldn’t load" text={error} action={<Button onClick={load}>Try again</Button>} />
-      ) : noCampaigns ? (
-        <EmptyState icon={<EmptyIcon />} title="Plan your first posts" text="Posts live in campaigns. Create a campaign, then add posts here or let AI plan them." action={<Button variant="contained" component={RouterLink} to={paths.campaigns()}>Go to Campaigns</Button>} />
       ) : (
         <Box sx={{ display: 'grid', gridTemplateColumns: view !== 'list' && wide ? 'minmax(0, 1fr) 240px' : 'minmax(0, 1fr)', gap: 1.5, alignItems: 'start' }}>
           <Box sx={{ minWidth: 0, opacity: posts === null ? 0.6 : 1, transition: 'opacity var(--t-fast)' }}>
@@ -423,7 +443,7 @@ export default function PlannerPage() {
                   icon={<EmptyIcon />}
                   title={filtered ? 'No posts match' : 'No posts yet'}
                   text={filtered ? 'Try fewer filters.' : 'Add a post, or open a campaign and plan posts with AI.'}
-                  action={filtered ? <Button onClick={() => update({ q: null, campaign: null, theme: null, status: null, account: null })}>Clear filters</Button> : <Button variant="contained" onClick={() => addPost()}>New post</Button>}
+                  action={filtered ? <Button onClick={() => update({ q: null, campaign: null, status: null, account: null })}>Clear filters</Button> : <Button variant="contained" onClick={() => addPost()}>New post</Button>}
                 />
               ) : (
                 <ListView posts={posts || []} onOpen={openPost} group={group} />
@@ -442,7 +462,6 @@ export default function PlannerPage() {
         {tray}
       </Drawer>
 
-      <NewPostDialog open={Boolean(newPost)} defaults={newPost || undefined} onClose={() => setNewPost(null)} onCreated={() => load()} />
     </Box>
   );
 }

@@ -22,8 +22,9 @@ export interface PlannerPost {
   taskDate?: string | null;
   designedImage?: string;
   pendingGeneratedImage?: string;
-  projectId?: { _id: string; name: string } | string;
-  campaignId?: { _id: string; name: string } | string;
+  /** AI pictures not chosen yet (the list leaves out what they were made from). */
+  aiDrafts?: { id: string }[];
+  campaignId?: { _id: string; name: string } | string | null;
   publishing?: { platforms: PlatformId[]; nextAt: string | null; publishedAt: string | null; failed: boolean } | null;
 }
 
@@ -54,6 +55,7 @@ export function PlatformBadges({ platforms, size = 16 }: { platforms?: PlatformI
 export const canMovePost = (post: PlannerPost) => !isPublishingStatus(post.status) && toPostStatus(post.status) !== 'Published';
 
 const ref = (v: PlannerPost['campaignId']) => (v && typeof v === 'object' ? v : null);
+const waitingDrafts = (post: PlannerPost) => post.aiDrafts?.length ?? (post.pendingGeneratedImage ? 1 : 0);
 
 function Thumb({ src, size }: { src?: string; size: number | string }) {
   const [broken, setBroken] = useState(false);
@@ -67,7 +69,6 @@ function Thumb({ src, size }: { src?: string; size: number | string }) {
 /** The preview that appears on hover. */
 export function PostHoverPreview({ post }: { post: PlannerPost }) {
   const campaign = ref(post.campaignId);
-  const theme = ref(post.projectId);
   const meta = postStatusMeta(post.status);
   const when = post.publishing?.nextAt ? formatDateTime(post.publishing.nextAt) : post.taskDate ? formatDay(post.taskDate) : 'No day yet';
   return (
@@ -91,13 +92,17 @@ export function PostHoverPreview({ post }: { post: PlannerPost }) {
         ) : (
           <Typography sx={{ fontSize: 13, color: 'var(--text-faint)', fontStyle: 'italic' }}>No caption yet</Typography>
         )}
-        {(campaign || theme) && (
+        {campaign && (
           <Typography sx={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 0.75 }}>
-            <Box component="span" sx={{ width: 8, height: 8, borderRadius: '2px', bgcolor: campaignColor(campaign?._id), flexShrink: 0 }} />
-            {[campaign?.name, theme?.name].filter(Boolean).join(' › ')}
+            <Box component="span" sx={{ width: 8, height: 8, borderRadius: '2px', bgcolor: campaignColor(campaign._id), flexShrink: 0 }} />
+            {campaign.name}
           </Typography>
         )}
-        {post.pendingGeneratedImage && <Typography sx={{ fontSize: 12, color: 'var(--st-scheduled-fg)' }}>A new AI image is waiting</Typography>}
+        {waitingDrafts(post) > 0 && (
+          <Typography sx={{ fontSize: 12, color: 'var(--st-scheduled-fg)' }}>
+            {waitingDrafts(post) === 1 ? 'An AI picture is waiting to be chosen' : `${waitingDrafts(post)} AI pictures are waiting to be chosen`}
+          </Typography>
+        )}
         {meta.label === 'Needs attention' && <Typography sx={{ fontSize: 12, color: 'var(--danger-text)' }}>Open it to see what needs fixing</Typography>}
       </Box>
     </Box>
@@ -147,7 +152,6 @@ export default function PostCard({
   draggable?: boolean;
 }) {
   const campaign = ref(post.campaignId);
-  const theme = ref(post.projectId);
   const color = campaignColor(campaign?._id);
   const time = post.publishing?.nextAt ? formatTime(post.publishing.nextAt) : null;
   const movable = draggable && canMovePost(post);
@@ -223,7 +227,7 @@ export default function PostCard({
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography noWrap sx={{ fontSize: 14, fontWeight: 600, color: 'var(--text-strong)' }}>{post.name}</Typography>
           <Typography noWrap sx={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
-            {[showDate ? (post.taskDate ? formatDay(post.taskDate, { relative: true }) : 'No day yet') : null, time, campaign?.name, theme?.name].filter(Boolean).join(' · ')}
+            {[showDate ? (post.taskDate ? formatDay(post.taskDate, { relative: true }) : 'No day yet') : null, time, campaign?.name].filter(Boolean).join(' · ')}
           </Typography>
         </Box>
         <PlatformBadges platforms={post.publishing?.platforms} />

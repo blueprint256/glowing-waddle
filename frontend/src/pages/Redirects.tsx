@@ -16,7 +16,7 @@ export function OldTaskRedirect() {
   return <Navigate to={`${paths.post(id)}${search}`} replace />;
 }
 
-/** /projects/:id → the theme inside its campaign. */
+/** /projects/:id (a theme, retired) → its campaign. */
 export function OldProjectRedirect() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -27,7 +27,7 @@ export function OldProjectRedirect() {
       .then((r) => {
         if (!alive) return;
         const campaign = refId(r.data.project?.campaignId);
-        navigate(campaign ? paths.campaign(campaign, { theme: id }) : paths.campaigns(), { replace: true });
+        navigate(campaign ? paths.campaign(campaign) : paths.campaigns(), { replace: true });
       })
       .catch(() => alive && navigate(paths.campaigns(), { replace: true }));
     return () => {

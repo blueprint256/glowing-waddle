@@ -147,8 +147,8 @@ export default function OAuthConsent() {
                     <Typography variant="subtitle2" gutterBottom>{appName} will be able to:</Typography>
                     <Stack spacing={1.25} sx={{ mt: 1 }}>
                       {[
-                        'View your campaigns, themes, posts, Planner and comments',
-                        'Create and change campaigns, themes, posts and comments for you',
+                        'View your campaigns, posts, Planner and comments',
+                        'Create and change campaigns, posts and comments for you',
                         `Act with your permissions as ${roleLabel === 'admin' ? 'an admin' : 'a client'} (no more than you can do in the app)`
                       ].map((item) => (
                         <Box key={item} sx={{ display: 'flex', gap: 1.25, alignItems: 'flex-start' }}>

@@ -14,8 +14,7 @@ import {
 } from '@mui/icons-material';
 import PageHeader from '../../components/ui/PageHeader';
 import PostCard, { type PlannerPost } from '../../components/posts/PostCard';
-import NewPostDialog from '../../components/posts/NewPostDialog';
-import { useOpenPost, usePostEvents } from '../../components/posts/PostPanelHost';
+import { useNewPost, useOpenPost, usePostEvents } from '../../components/posts/PostPanelHost';
 import { BlueMark } from '../../components/Blue/BluePanel';
 import { useBlueStore } from '../../store/blueStore';
 import { useAuthStore } from '../../store/authStore';
@@ -71,7 +70,7 @@ export default function TodayPage() {
   const [accounts, setAccounts] = useState<number | null>(null);
   const [brandDone, setBrandDone] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [newPost, setNewPost] = useState<string | null | undefined>(undefined); // undefined = closed; null = no day
+  const newPost = useNewPost();
   const dismissKey = `bp.setup.hidden.${user?._id || user?.id || ''}`;
   const [setupHidden, setSetupHidden] = useState(() => {
     try {
@@ -133,8 +132,7 @@ export default function TodayPage() {
   const live = (campaigns || []).filter((c) => !c.archived && (c.status === 'active' || c.status === 'planning'));
   const steps: { label: string; hint: string; done: boolean; to?: string; onClick?: () => void }[] = [
     { label: 'Tell Blueprint about your brand', hint: 'Name, what you do, your tone. AI uses it in every caption and image.', done: Boolean(brandDone), to: paths.settings('brand') },
-    { label: 'Create a campaign', hint: 'A campaign holds your posts for a season, launch or event.', done: (campaigns || []).length > 0, to: paths.campaigns() },
-    { label: 'Add your first post', hint: 'Give it a day, a caption and an image.', done: Boolean(anyPost), onClick: () => setNewPost(null) }
+    { label: 'Add your first post', hint: 'Say what it’s about, give it a day, then let AI write the caption and make the picture (or add your own).', done: Boolean(anyPost), onClick: () => newPost({}) }
   ];
   if (publishingOn) {
     steps.push({ label: 'Connect a social account', hint: 'So Blueprint can publish for you, or remind you to post.', done: (accounts || 0) > 0, to: paths.publishing('accounts') });
@@ -158,7 +156,6 @@ export default function TodayPage() {
   };
 
   const first = (user?.firstName || '').trim();
-  const noCampaigns = campaigns !== null && campaigns.length === 0;
   const weekCount = (week || []).length;
   const upcoming = status?.counts?.upcoming ?? null;
 
@@ -174,7 +171,7 @@ export default function TodayPage() {
                 Ask Blue
               </Button>
             )}
-            <Button variant="contained" startIcon={<AddIcon />} onClick={() => setNewPost(null)} disabled={noCampaigns}>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={() => newPost({})}>
               New post
             </Button>
           </Box>
@@ -225,7 +222,7 @@ export default function TodayPage() {
                         Start
                       </Button>
                     ) : (
-                      <Button size="small" onClick={s.onClick} endIcon={<GoIcon />} disabled={noCampaigns}>
+                      <Button size="small" onClick={s.onClick} endIcon={<GoIcon />}>
                         Start
                       </Button>
                     ))}
@@ -271,10 +268,6 @@ export default function TodayPage() {
             <Box sx={{ display: 'grid', placeItems: 'center', py: 4 }}>
               <CircularProgress size={20} sx={{ color: 'var(--text-muted)' }} />
             </Box>
-          ) : noCampaigns ? (
-            <Typography sx={{ fontSize: 13.5, color: 'var(--text-muted)', py: 1 }}>
-              Nothing planned yet. <RouterLink to={paths.campaigns()}>Create a campaign</RouterLink> to start adding posts.
-            </Typography>
           ) : (
             <Box sx={{ display: 'flex', flexDirection: 'column' }}>
               {days.map((d, i) => (
@@ -288,7 +281,7 @@ export default function TodayPage() {
                       <PostCard key={p._id} post={p} onOpen={openPost} variant="row" draggable={false} />
                     ))}
                     {d.posts.length === 0 && (
-                      <Button size="small" startIcon={<AddIcon />} onClick={() => setNewPost(d.key)} sx={{ alignSelf: 'flex-start', color: 'var(--text-muted)' }}>
+                      <Button size="small" startIcon={<AddIcon />} onClick={() => newPost({ day: d.key })} sx={{ alignSelf: 'flex-start', color: 'var(--text-muted)' }}>
                         Add a post
                       </Button>
                     )}
@@ -334,7 +327,6 @@ export default function TodayPage() {
         </Panel>
       </Box>
 
-      <NewPostDialog open={newPost !== undefined} defaults={newPost ? { day: newPost } : undefined} onClose={() => setNewPost(undefined)} onCreated={() => load()} />
     </Box>
   );
 }

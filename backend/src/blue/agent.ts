@@ -38,7 +38,8 @@ const MAX_RESULT_CHARS = 24_000;
 const SHOWN_AS_CARDS = new Set([
   'list_tasks', 'get_task', 'get_calendar', 'create_tasks', 'list_campaigns', 'get_campaign',
   'list_posts', 'schedule_post', 'list_users', 'list_inbox', 'list_comments', 'search_library', 'get_library_item',
-  'generate_campaign_content', 'ai_usage', 'ai_setup_status', 'list_publishing_channels', 'improve_caption', 'refine_task_description'
+  'generate_campaign_content', 'ai_usage', 'ai_setup_status', 'list_publishing_channels', 'improve_caption', 'refine_task_description',
+  'generate_task_poster', 'change_task_picture'
 ]);
 const SHOWN_NOTE =
   '\n[The user already sees this as a table/card with links right under your reply. Do NOT list these items, their fields or links again. Reply with one or two sentences: how many, and what stands out or needs a decision.]';

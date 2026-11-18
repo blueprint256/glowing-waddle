@@ -7,24 +7,31 @@ import { formatDay } from '../../lib/dates';
 import EmptyState from '../ui/EmptyState';
 
 /**
- * Pick a picture from the Library to use as the post's image. Pictures linked to this post's
- * campaign are shown first; type to search everything (titles, text in images, tags, events).
+ * Pick a picture from the Library: to use as the post's picture (default), or for something else
+ * (onPick, e.g. a reference picture). Pictures linked to this post's campaign are shown first;
+ * type to search everything (titles, text in images, tags, events).
  */
 export default function LibraryImagePicker({
   open,
   taskId,
   campaignId,
   ownerId,
+  title = 'Choose from the Library',
   onClose,
-  onUsed
+  onUsed,
+  onPick
 }: {
   open: boolean;
   taskId: string;
   campaignId?: string;
   /** The post's account (an admin editing a client's post sees the client's Library). */
   ownerId?: string;
+  title?: string;
   onClose: () => void;
-  onUsed: (imageUrl: string) => void;
+  /** Default action: the picture became the post's picture. */
+  onUsed?: (imageUrl: string) => void;
+  /** Instead of using it on the post: do this with the chosen item (the dialog closes when it resolves). */
+  onPick?: (item: LibraryItem) => Promise<void>;
 }) {
   const [q, setQ] = useState('');
   const [items, setItems] = useState<LibraryItem[] | null>(null);
@@ -56,12 +63,16 @@ export default function LibraryImagePicker({
   const use = async (item: LibraryItem) => {
     setUsing(item.id);
     try {
-      const res = await libraryAPI.useOnPost(item.id, taskId);
-      notify('Image updated');
-      onUsed(res.imageUrl);
+      if (onPick) {
+        await onPick(item);
+      } else {
+        const res = await libraryAPI.useOnPost(item.id, taskId);
+        notify('Picture updated');
+        onUsed?.(res.imageUrl);
+      }
       onClose();
     } catch (e) {
-      notify(errorMessage(e, 'Couldn’t use this picture.'), { tone: 'error' });
+      notify(errorMessage(e, onPick ? 'Couldn’t add this picture.' : 'Couldn’t use this picture.'), { tone: 'error' });
     } finally {
       setUsing(null);
     }
@@ -70,7 +81,7 @@ export default function LibraryImagePicker({
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { bgcolor: 'var(--bg-panel)', backgroundImage: 'none' } }}>
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, pr: 1 }}>
-        <Box sx={{ flex: 1 }}>Choose from the Library</Box>
+        <Box sx={{ flex: 1 }}>{title}</Box>
         <IconButton size="small" aria-label="Close" onClick={onClose}>
           <CloseIcon fontSize="small" />
         </IconButton>

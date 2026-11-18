@@ -56,11 +56,10 @@ export function isPublishingStatus(value: unknown): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Campaigns, themes (API: projects) and publishing records
+// Campaigns and publishing records
 // ---------------------------------------------------------------------------
 
 export const CAMPAIGN_STATUSES = ['draft', 'planning', 'active', 'paused', 'completed'] as const;
-export const THEME_STATUSES = ['planning', 'in_progress', 'review', 'completed', 'on_hold'] as const;
 
 const CAMPAIGN_META: Record<string, StatusMeta> = {
   draft: { label: 'Draft', hint: 'Not started', ...tone('idea') },
@@ -71,13 +70,6 @@ const CAMPAIGN_META: Record<string, StatusMeta> = {
   archived: { label: 'Archived', hint: 'Hidden from lists; can be restored', ...tone('idea') }
 };
 
-const THEME_META: Record<string, StatusMeta> = {
-  planning: { label: 'Planning', hint: '', ...tone('idea') },
-  in_progress: { label: 'In progress', hint: '', ...tone('draft') },
-  review: { label: 'Checking', hint: '', ...tone('ready') },
-  completed: { label: 'Done', hint: '', ...tone('published') },
-  on_hold: { label: 'On hold', hint: '', ...tone('idea') }
-};
 
 const PUBLISH_META: Record<string, StatusMeta> = {
   draft: { label: 'Draft', hint: 'Saved, not scheduled', ...tone('idea') },
@@ -96,5 +88,4 @@ const fallback = (value: unknown): StatusMeta => {
 };
 
 export const campaignStatusMeta = (value: unknown): StatusMeta => CAMPAIGN_META[String(value)] || fallback(value);
-export const themeStatusMeta = (value: unknown): StatusMeta => THEME_META[String(value)] || fallback(value);
 export const publishStatusMeta = (value: unknown): StatusMeta => PUBLISH_META[String(value)] || fallback(value);

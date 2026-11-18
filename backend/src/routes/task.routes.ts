@@ -614,6 +614,41 @@ router.delete('/:id/references/:refId', isAuthenticated, canManageTasks, validat
 // ---------------------------------------------------------------------------
 
 /**
+ * @route POST /api/tasks/improve-caption
+ * Write / improve a caption for a post that isn't created yet. Body: { style?, caption?, brief?,
+ * campaignId? }. Uses your brand (and the campaign, if it's yours). Suggestion only.
+ */
+router.post('/improve-caption', isAuthenticated, canManageTasks, async (req: Request, res: Response) => {
+  try {
+    const caption = typeof req.body?.caption === 'string' ? req.body.caption : '';
+    const brief = typeof req.body?.brief === 'string' ? req.body.brief : '';
+    let styleKey = typeof req.body?.style === 'string' && CAPTION_STYLES[req.body.style] ? req.body.style : 'improve';
+    if (!caption.trim()) styleKey = 'write';
+    if (styleKey === 'write' && !brief.trim()) throw new PostError(400, 'Say what the post is about first (“What’s this post about?”), so the AI knows what to write.');
+    const { campaignId, ownerId } = await resolvePlacement(req.user!, { campaignId: req.body?.campaignId });
+    const style = CAPTION_STYLES[styleKey];
+    const [campaign, owner] = await Promise.all([campaignId ? Campaign.findById(campaignId) : Promise.resolve(null), User.findById(ownerId).select('companyInfo')]);
+    const { text } = await runPostCommand(
+      'improve-caption',
+      { name: 'Improve caption', template: BUILTIN_IMPROVE_CAPTION },
+      {
+        taskName: '',
+        taskDescription: brief,
+        taskContent: caption,
+        instruction: style.instruction,
+        platform: style.platform || '',
+        ...(campaign ? { campaignDetails: campaign } : {}),
+        ...(owner?.companyInfo ? { companyInfo: owner.companyInfo } : {})
+      },
+      req.user!._id as Id
+    );
+    res.json({ success: true, style: styleKey, label: style.label, original: caption, suggestion: text });
+  } catch (error) {
+    fail(res, error, 'Couldn’t improve the caption. Try again.');
+  }
+});
+
+/**
  * @route POST /api/tasks/:id/improve-caption
  * Body: { style?, caption?, brief? } (unsaved text to work from). Returns a suggestion; nothing is saved.
  */

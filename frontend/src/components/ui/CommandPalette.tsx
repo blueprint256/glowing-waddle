@@ -5,24 +5,23 @@ import {
   Search as SearchIcon,
   Article as PostIcon,
   Campaign as CampaignIcon,
-  Layers as ThemeIcon,
   PhotoLibrary as LibraryIcon,
   ArrowForward as GoIcon,
   Add as AddIcon
 } from '@mui/icons-material';
-import { campaignAPI, projectAPI, taskAPI } from '../../services/api';
+import { campaignAPI, taskAPI } from '../../services/api';
 import { libraryAPI, librarySrc } from '../../services/library';
 import { useAuthStore } from '../../store/authStore';
 import { useBlueStore } from '../../store/blueStore';
 import { UserRole } from '../../types';
-import { paths, refId } from '../../lib/paths';
+import { paths } from '../../lib/paths';
 import { formatDay } from '../../lib/dates';
 import { postStatusMeta } from '../../lib/status';
-import { useOpenPost } from '../posts/PostPanelHost';
+import { useNewPost, useOpenPost } from '../posts/PostPanelHost';
 import { BlueMark } from '../Blue/BlueChat';
 
 /**
- * Ctrl/⌘ + K: find anything (posts, campaigns, themes, Library items) or go to a page, from
+ * Ctrl/⌘ + K: find anything (posts, campaigns, Library items) or go to a page, from
  * anywhere. Arrow keys move, Enter opens, Esc closes. Also opened by the search button in the menu
  * ("search:open" event).
  */
@@ -44,6 +43,7 @@ export function openSearch() {
 export default function CommandPalette() {
   const navigate = useNavigate();
   const openPost = useOpenPost();
+  const newPost = useNewPost();
   const { user } = useAuthStore();
   const toggleBlue = useBlueStore((s) => s.toggle);
   const [open, setOpen] = useState(false);
@@ -95,7 +95,7 @@ export default function CommandPalette() {
   // Pages and actions, always available and filtered by what's typed.
   const shortcuts: Result[] = useMemo(() => {
     const list: Result[] = [
-      { key: 'new-post', group: 'Actions', title: 'New post', icon: <AddIcon />, run: go(() => navigate(`${paths.planner({ view: 'list' })}&new=1`)) },
+      { key: 'new-post', group: 'Actions', title: 'New post', icon: <AddIcon />, run: go(() => newPost({})) },
       ...(blueOn ? [{ key: 'blue', group: 'Actions', title: 'Ask Blue', subtitle: 'Ctrl + J', icon: <BlueMark size={18} />, run: go(toggleBlue) }] : []),
       { key: 'p-today', group: 'Go to', title: 'Today', icon: <GoIcon />, run: go(() => navigate(paths.today())) },
       { key: 'p-planner', group: 'Go to', title: 'Planner', icon: <GoIcon />, run: go(() => navigate(paths.planner())) },
@@ -114,7 +114,7 @@ export default function CommandPalette() {
     ];
     const needle = q.trim().toLowerCase();
     return needle ? list.filter((r) => r.title.toLowerCase().includes(needle)) : list;
-  }, [q, go, navigate, toggleBlue, blueOn, libraryOn, isAdmin, user?.publishingEnabled]);
+  }, [q, go, navigate, newPost, toggleBlue, blueOn, libraryOn, isAdmin, user?.publishingEnabled]);
 
   // Things in the app, a moment after typing stops.
   useEffect(() => {
@@ -127,10 +127,9 @@ export default function CommandPalette() {
     const mine = ++seq.current;
     setLoading(true);
     const t = setTimeout(async () => {
-      const [posts, campaigns, themes, items] = await Promise.all([
+      const [posts, campaigns, items] = await Promise.all([
         taskAPI.getAll({ search: needle, limit: 6, sort: 'recent' }).then((r) => r.data.tasks || []).catch(() => []),
         campaignAPI.getAll({ search: needle, limit: 4 }).then((r) => r.data.campaigns || []).catch(() => []),
-        projectAPI.getAll({ search: needle, limit: 4 }).then((r) => r.data.projects || []).catch(() => []),
         libraryOn ? libraryAPI.search({ q: needle, limit: 4 }).then((r) => r.items).catch(() => []) : Promise.resolve([])
       ]);
       if (mine !== seq.current) return;
@@ -145,14 +144,6 @@ export default function CommandPalette() {
           run: go(() => openPost(p._id))
         })),
         ...campaigns.map((c: any) => ({ key: `c-${c._id}`, group: 'Campaigns', title: c.name, icon: <CampaignIcon />, run: go(() => navigate(paths.campaign(c._id))) })),
-        ...themes.map((t: any) => ({
-          key: `t-${t._id}`,
-          group: 'Themes',
-          title: t.name,
-          subtitle: t.campaignId?.name,
-          icon: <ThemeIcon />,
-          run: go(() => navigate(refId(t.campaignId) ? paths.campaign(refId(t.campaignId), { theme: t._id }) : paths.campaigns()))
-        })),
         ...items.map((i: any) => ({
           key: `l-${i.id}`,
           group: 'Library',
@@ -197,7 +188,7 @@ export default function CommandPalette() {
         <InputBase
           autoFocus
           fullWidth
-          placeholder="Search posts, campaigns, themes, Library… or go to a page"
+          placeholder="Search posts, campaigns, the Library… or go to a page"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={onKeyDown}
@@ -208,7 +199,7 @@ export default function CommandPalette() {
       </Box>
       <Box ref={listRef} id="search-results" role="listbox" sx={{ maxHeight: '60vh', overflowY: 'auto', py: 0.5 }}>
         {q.trim().length >= 2 && !loading && found.length === 0 && (
-          <Typography sx={{ px: 2, py: 1.5, fontSize: 13.5, color: 'var(--text-muted)' }}>Nothing in your posts, campaigns, themes or Library matches “{q.trim()}”.</Typography>
+          <Typography sx={{ px: 2, py: 1.5, fontSize: 13.5, color: 'var(--text-muted)' }}>Nothing in your posts, campaigns or Library matches “{q.trim()}”.</Typography>
         )}
         {results.map((r, i) => {
           const header = r.group !== lastGroup;

@@ -28,7 +28,6 @@ interface Campaign extends CampaignLike {
 
 interface Counts {
   posts: number;
-  themes: number;
   byStatus: Record<string, number>;
   nextDay: string | null;
 }
@@ -179,7 +178,7 @@ export default function CampaignsList() {
     <Box>
       <PageHeader
         title="Campaigns"
-        subtitle="Each campaign holds its posts, grouped into themes."
+        subtitle="A campaign groups posts for a launch, a season or an event. Everyday posts don’t need one."
         actions={
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialog({})}>
             New campaign
@@ -275,7 +274,7 @@ export default function CampaignsList() {
                         <Box sx={{ width: `${(attention / n.posts) * 100}%`, bgcolor: 'var(--st-attention-dot)' }} />
                       </Box>
                       <Typography sx={{ fontSize: 12, color: 'var(--text-muted)', mt: 0.75 }}>
-                        {n.posts} post{n.posts === 1 ? '' : 's'} · {ready} ready or later · {n.themes} theme{n.themes === 1 ? '' : 's'}
+                        {n.posts} post{n.posts === 1 ? '' : 's'} · {ready} ready or later
                         {attention ? ` · ${attention} need${attention === 1 ? 's' : ''} attention` : ''}
                         {n.nextDay ? ` · next ${formatDay(n.nextDay, { relative: true })}` : ''}
                       </Typography>

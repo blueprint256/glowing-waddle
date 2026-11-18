@@ -85,7 +85,7 @@ function clientContext() {
   } catch {
     timeZone = undefined;
   }
-  // With the query, so Blue knows about an open post (?post=) or a chosen theme (?theme=).
+  // With the query, so Blue knows about an open post (?post=) or a Planner filter (?campaign=).
   return { timeZone, path: window.location.pathname + window.location.search };
 }
 
