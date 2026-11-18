@@ -14,7 +14,11 @@ import { loadLibrarySetup } from './setup';
 import { buildAnalysisPrompt, parseAnalysis } from './analysis';
 import { runVision, embedTexts } from './vision';
 import { buildSearchText, embeddingText, mergeTags } from './search';
-import { ingest, aiUsedThisMonth, invalidateOwner, purgeExpiredTrash } from './service';
+import { ingest, aiUsedThisMonth, invalidateOwner, purgeExpiredTrash, pruneVersions } from './service';
+import { KEEP_EARLIER_PICTURES } from '../services/posts';
+
+/** A post's Library item keeps as many pictures as the post: the current one and 3 earlier. */
+const POST_PICTURES_KEPT = KEEP_EARLIER_PICTURES + 1;
 
 /**
  * Background worker for the Library (runs inside the API process; MongoDB is the queue).
@@ -176,14 +180,13 @@ async function importAppFiles(job: ILibraryJob) {
   const ownerId = job.ownerId as Id;
   const batchId = String(job.payload?.batchId || `app-${Date.now()}`);
   const owner = await User.findById(ownerId).select('companyInfo');
-  const campaigns = await Campaign.find({ createdBy: ownerId }).select('_id');
-  const tasks = await Task.find({ campaignId: { $in: campaigns.map((c) => c._id) } }).select('name designedImage attachedImages projectId campaignId');
+  const tasks = await Task.find({ ownerId }).select('name designedImage references campaignId');
 
   const items: { url: string; name: string; links?: any; event?: string }[] = [];
   for (const t of tasks) {
-    const links = { campaignId: t.campaignId, projectId: t.projectId, taskId: t._id };
-    if (t.designedImage) items.push({ url: t.designedImage, name: basename(t.designedImage, `${t.name}.png`), links });
-    for (const u of t.attachedImages || []) items.push({ url: u, name: basename(u, `${t.name} attachment.png`), links });
+    const links = { campaignId: t.campaignId || null, projectId: null, taskId: t._id };
+    if (t.designedImage) items.push({ url: t.designedImage, name: basename(t.designedImage, `${t.name}.jpg`), links });
+    for (const r of t.references || []) items.push({ url: r.url, name: r.name || basename(r.url, `${t.name} reference.png`), links });
   }
   const ci: any = owner?.companyInfo || {};
   for (const [field, label] of [['primaryLogoUrl', 'Primary logo'], ['secondaryLogoUrl', 'Secondary logo'], ['tertiaryLogoUrl', 'Tertiary logo']]) {
@@ -221,24 +224,28 @@ async function addTaskImage(job: ILibraryJob) {
   const taskId = String(job.payload?.taskId || '');
   const url = String(job.payload?.url || '');
   if (!mongoose.isValidObjectId(taskId) || !url) return;
-  const task = await Task.findById(taskId).select('name projectId campaignId');
+  const task = await Task.findById(taskId).select('name campaignId ownerId');
   if (!task) return;
   const ownerId = job.ownerId as Id;
+  if (String(task.ownerId) !== String(ownerId)) return; // the post moved to another account
   const buffer = await fetchFile(url);
   const existing = await LibraryAsset.findOne({ ownerId, 'links.taskId': task._id, deletedAt: null, kind: 'image' }).sort({ updatedAt: -1 });
   const userId = mongoose.isValidObjectId(String(job.payload?.userId)) ? new mongoose.Types.ObjectId(String(job.payload!.userId)) : ownerId;
   const [res] = await ingest({
     ownerId,
     userId,
-    // Name the file after the task ("Cold Brew Teaser.png"), not the random storage name.
-    originalName: `${(task.name || 'Task image').replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 120) || 'Task image'}${(basename(url, 'x.png').match(/\.(png|jpe?g|webp|gif)$/i)?.[0] || '.png').toLowerCase()}`,
+    // Name the file after the post ("Cold Brew Teaser.jpg"), not the random storage name.
+    originalName: `${(task.name || 'Post picture').replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 120) || 'Post picture'}${(basename(url, 'x.png').match(/\.(png|jpe?g|webp|gif)$/i)?.[0] || '.png').toLowerCase()}`,
     data: { buffer },
     source: 'task',
     note: String(job.payload?.note || ''),
-    links: { campaignId: task.campaignId, projectId: task.projectId, taskId: task._id as Id },
+    links: { campaignId: (task.campaignId as Id) || null, projectId: null, taskId: task._id as Id },
     ...(existing ? { targetAssetId: existing._id as Id } : {})
   });
   if (res?.status === 'failed' && !/already version/.test(res.error || '')) throw new Error(res.error);
+  // A post's Library item keeps its 4 newest pictures, like the post itself.
+  const item = await LibraryAsset.findOne({ ownerId, 'links.taskId': task._id, deletedAt: null, kind: 'image' }).sort({ updatedAt: -1 });
+  if (item) await pruneVersions(item, POST_PICTURES_KEPT);
 }
 
 async function runJob(job: ILibraryJob) {

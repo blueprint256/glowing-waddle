@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import { User, UserRole } from '../models/User';
 import { Campaign, CampaignStatus } from '../models/Campaign';
-import { Project, ProjectStatus } from '../models/Project';
+import { Project } from '../models/Project';
 import { Task, TaskStatus } from '../models/Task';
 
 dotenv.config();
@@ -102,24 +102,11 @@ async function seed() {
 
     console.log('✅ Created Campaign for Admin:', campaignAdmin.name);
 
-    // Create Project for Campaign A
-    const project = await Project.create({
-      name: 'Social Media Campaign',
-      description: 'Instagram and Facebook content series for product launch',
-      campaignId: campaignA._id,
-      status: ProjectStatus.IN_PROGRESS,
-      startDate: new Date('2025-06-01'),
-      dueDate: new Date('2025-07-31'),
-      createdBy: hybridA._id
-    });
-
-    console.log('✅ Created Project:', project.name);
-
-    // Create Tasks
+    // Create posts: two in Campaign A, one without a campaign
     const task1 = await Task.create({
       name: 'Product Teaser Post',
       description: 'Instagram teaser post announcing the summer collection',
-      projectId: project._id,
+      ownerId: hybridA._id,
       campaignId: campaignA._id,
       status: TaskStatus.DRAFT,
       taskDate: new Date('2025-06-05'),
@@ -130,10 +117,19 @@ async function seed() {
     const task2 = await Task.create({
       name: 'Launch Day Announcement',
       description: 'Official product launch announcement with carousel images',
-      projectId: project._id,
+      ownerId: hybridA._id,
       campaignId: campaignA._id,
       status: TaskStatus.IDEA,
       taskDate: new Date('2025-06-15'),
+      createdBy: hybridA._id
+    });
+
+    await Task.create({
+      name: 'Monday motivation',
+      autoName: true,
+      description: 'An everyday post, not part of a campaign',
+      ownerId: hybridA._id,
+      status: TaskStatus.IDEA,
       createdBy: hybridA._id
     });
 

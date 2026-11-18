@@ -744,6 +744,47 @@ export async function generateWithPrompt(
 }
 
 /**
+ * Makes or edits one picture with gpt-image-1.5 and returns it as a PNG buffer (nothing is stored;
+ * the caller trims it, adds the logo and saves it). With `images`, the edit endpoint is used and the
+ * pictures are sent in the order given. Usage is logged for the AI allowance.
+ */
+export async function renderImage(options: {
+  prompt: string;
+  images?: { buffer: Buffer; name: string; contentType: string }[];
+  size: '1024x1024' | '1024x1536' | '1536x1024';
+  /** "high" keeps the attached pictures as close as possible (Change image, products). */
+  fidelity?: 'high' | 'low';
+  userId?: mongoose.Types.ObjectId;
+  promptName: string;
+}): Promise<Buffer> {
+  const startTime = Date.now();
+  try {
+    const openai = await getOpenAIClient();
+    const files = await Promise.all(
+      (options.images || []).map((img, i) => toFile(img.buffer, `${i + 1}-${img.name.replace(/[^\w.-]+/g, '_') || 'picture'}`, { type: img.contentType }))
+    );
+    const response: any = files.length
+      ? await openai.images.edit({
+          model: 'gpt-image-1.5',
+          image: files,
+          prompt: options.prompt,
+          n: 1,
+          size: options.size,
+          quality: imageQuality(),
+          ...(options.fidelity ? { input_fidelity: options.fidelity } : {})
+        } as any)
+      : await openai.images.generate({ model: 'gpt-image-1.5', prompt: options.prompt, n: 1, size: options.size, quality: imageQuality() });
+    const b64 = response?.data?.[0]?.b64_json;
+    if (!b64) throw new Error('No image came back from the image AI');
+    await logImageUsage(options.userId, options.promptName, response, Date.now() - startTime, true);
+    return Buffer.from(b64, 'base64');
+  } catch (error: any) {
+    await logImageUsage(options.userId, options.promptName, null, Date.now() - startTime, false, error?.message);
+    throw error;
+  }
+}
+
+/**
  * Generate an image using an image generation LLM with a compiled prompt
  */
 export async function generateImageWithPrompt(
@@ -812,7 +853,7 @@ export async function generateImageWithPrompt(
 
     // Map size to supported values for image.edit API
     // Valid sizes: "256x256" | "512x512" | "1024x1024" | "1536x1024" | "1024x1536" | "auto"
-    const requestedSize = options?.size || '1024x1024';
+    const requestedSize = options?.size || (typeof params.__size === 'string' ? params.__size : '') || '1024x1024';
     const validEditSizes = ['256x256', '512x512', '1024x1024', '1536x1024', '1024x1536', 'auto'];
     const size: '256x256' | '512x512' | '1024x1024' | '1536x1024' | '1024x1536' | 'auto' =
       validEditSizes.includes(requestedSize) ? requestedSize as any : '1024x1024';
@@ -837,6 +878,15 @@ export async function generateImageWithPrompt(
       } else {
         console.log(`⚠️  Prompt references {${placeholder}} but no URL provided`);
       }
+    }
+
+    // Post v2: the post's reference pictures are always sent (after any the prompt names), so they
+    // work with an admin's own "generate-poster" prompt too.
+    const extraImages: unknown = params.__extraImages;
+    if (Array.isArray(extraImages)) {
+      extraImages.forEach((url, i) => {
+        if (typeof url === 'string' && url && !imagesToDownload.some((x) => x.url === url)) imagesToDownload.push({ placeholder: `reference${i + 1}`, url });
+      });
     }
 
     console.log(`\n📥 Downloading ${imagesToDownload.length} referenced image(s)...\n`);

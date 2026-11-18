@@ -54,10 +54,10 @@ function startFakeApi(): Promise<http.Server> {
       recorded.push(rec);
       let status = 200;
       let body: any = { success: true };
-      if (rec.method === 'GET' && rec.path === '/api/projects') {
-        body = { success: true, projects: [{ _id: ID(10), name: 'Shoe sale posts', status: 'planning', campaignId: { _id: ID(1), name: 'Shoes' } }], pagination: { total: 1, page: 1, limit: 50, pages: 1 } };
+      if (rec.method === 'GET' && rec.path === '/api/campaigns') {
+        body = { success: true, campaigns: [{ _id: ID(1), name: 'Shoe sale', status: 'active' }], pagination: { total: 1, page: 1, limit: 25, pages: 1 } };
       } else if (rec.method === 'POST' && rec.path === '/api/tasks') {
-        body = { success: true, message: 'Task created successfully', task: { _id: ID(100), name: rec.body.name, status: 'Draft', taskDate: rec.body.taskDate, projectId: { _id: ID(10), name: 'Shoe sale posts' } } };
+        body = { success: true, message: 'Post created', task: { _id: ID(100), name: rec.body.name, status: 'Draft', taskDate: rec.body.taskDate, campaignId: { _id: ID(1), name: 'Shoe sale' } } };
         status = 201;
       } else if (rec.method === 'GET' && rec.path === `/api/tasks/${ID(100)}`) {
         body = { success: true, task: { _id: ID(100), name: 'Friday shoe sale post', status: 'Draft' } };
@@ -114,8 +114,8 @@ async function main() {
   // -------------------------------------------------------------------------
   const history: NeutralMessage[] = [
     { role: 'user', text: 'Create a task for shoe sales on Friday' },
-    { role: 'assistant', text: 'Let me find the project.', toolCalls: [{ id: 'toolu_1', name: 'list_projects', args: { search: 'shoe' } }] },
-    { role: 'tool', results: [{ id: 'toolu_1', name: 'list_projects', content: '{"projects":[]}', isError: false }] },
+    { role: 'assistant', text: 'Let me find the campaign.', toolCalls: [{ id: 'toolu_1', name: 'list_campaigns', args: { search: 'shoe' } }] },
+    { role: 'tool', results: [{ id: 'toolu_1', name: 'list_campaigns', content: '{"campaigns":[]}', isError: false }] },
     { role: 'tool', results: [{ id: 'toolu_2', name: 'delete_task', content: 'The user pressed Cancel.', isError: true }] },
     { role: 'user', text: 'Thanks' },
     { role: 'assistant', text: '' }
@@ -125,7 +125,7 @@ async function main() {
     const out = toAnthropicMessages(history);
     assert.equal(out.length, 3);
     assert.deepEqual(out.map((m) => m.role), ['user', 'assistant', 'user']);
-    assert.deepEqual(out[1].content[1], { type: 'tool_use', id: 'toolu_1', name: 'list_projects', input: { search: 'shoe' } });
+    assert.deepEqual(out[1].content[1], { type: 'tool_use', id: 'toolu_1', name: 'list_campaigns', input: { search: 'shoe' } });
     assert.deepEqual(out[2].content.map((b: any) => b.type), ['tool_result', 'tool_result', 'text']);
     assert.equal(out[2].content[1].is_error, true);
     assert.equal(out[2].content[0].is_error, undefined);
@@ -217,11 +217,11 @@ async function main() {
   const port = (server.address() as AddressInfo).port;
   const ctx = makeCtx(port);
 
-  await test('agent: finds the project, creates the task, replies; tools run as the user', async () => {
+  await test('agent: finds the campaign, creates the post, replies; tools run as the user', async () => {
     const { provider, seen } = scripted([
-      turn('', [{ id: 't1', name: 'list_projects', args: { search: 'shoe' } }]),
-      turn('', [{ id: 't2', name: 'create_task', args: { project_id: ID(10), name: 'Friday shoe sale post', task_date: '2026-11-20', content: 'Step into the weekend!' } }]),
-      turn('Done: I added “Friday shoe sale post” to Shoe sale posts for Friday 20 Nov.')
+      turn('', [{ id: 't1', name: 'list_campaigns', args: { search: 'shoe' } }]),
+      turn('', [{ id: 't2', name: 'create_task', args: { campaign_id: ID(1), name: 'Friday shoe sale post', task_date: '2026-11-20', content: 'Step into the weekend!' } }]),
+      turn('Done: I added “Friday shoe sale post” to the Shoe sale campaign for Friday 20 Nov.')
     ]);
     const events: BlueEvent[] = [];
     const result = await runAgent({ provider, system: 'SYS', messages: [{ role: 'user', text: 'Create a task for shoe sales on Friday' }], tools: TOOLS, ctx, onEvent: (e) => events.push(e) });
@@ -272,7 +272,7 @@ async function main() {
 
   await test('agent: mixed turn runs safe tools now, holds the destructive one', async () => {
     const { provider } = scripted([turn('', [
-      { id: 'a', name: 'list_projects', args: {} },
+      { id: 'a', name: 'list_campaigns', args: {} },
       { id: 'b', name: 'delete_task', args: { task_id: ID(100) } }
     ])]);
     const result = await runAgent({ provider, system: 'SYS', messages: [{ role: 'user', text: 'x' }], tools: TOOLS, ctx, onEvent: () => undefined });
@@ -291,25 +291,25 @@ async function main() {
 
   await test('agent: invalid args and unknown/hidden tools become errors the model sees', async () => {
     const { provider, seen } = scripted([
-      turn('', [{ id: 'x1', name: 'create_task', args: { name: '' } }, { id: 'x2', name: 'list_users', args: {} }]),
-      turn('I need a project first.')
+      turn('', [{ id: 'x1', name: 'create_task', args: { campaign_id: 'nope' } }, { id: 'x2', name: 'list_users', args: {} }]),
+      turn('I need the campaign first.')
     ]);
     const events: BlueEvent[] = [];
     await runAgent({ provider, system: 'SYS', messages: [{ role: 'user', text: 'x' }], tools: TOOLS, ctx, onEvent: (e) => events.push(e) });
     const toolMsg: any = seen[1].messages.find((m) => m.role === 'tool');
-    assert.match(toolMsg.results[0].content, /project_id is required/);
+    assert.match(toolMsg.results[0].content, /campaign_id has an invalid format/);
     assert.match(toolMsg.results[1].content, /not available/);
     assert.ok(toolMsg.results.every((r: any) => r.isError));
   });
 
   await test('agent: stops after maxSteps and on provider errors keeps progress', async () => {
-    const loops = Array.from({ length: 5 }, (_, i) => turn('', [{ id: `l${i}`, name: 'list_projects', args: {} }]));
+    const loops = Array.from({ length: 5 }, (_, i) => turn('', [{ id: `l${i}`, name: 'list_campaigns', args: {} }]));
     const { provider } = scripted(loops);
     const r = await runAgent({ provider, system: 'S', messages: [{ role: 'user', text: 'x' }], tools: TOOLS, ctx, onEvent: () => undefined, maxSteps: 3 });
     assert.equal(r.steps, 3);
     assert.match((r.messages[r.messages.length - 1] as any).text, /stopped after 3 steps/);
 
-    const { provider: p2 } = scripted([turn('', [{ id: 'e1', name: 'list_projects', args: {} }]), new Error('provider down')]);
+    const { provider: p2 } = scripted([turn('', [{ id: 'e1', name: 'list_campaigns', args: {} }]), new Error('provider down')]);
     const r2 = await runAgent({ provider: p2, system: 'S', messages: [{ role: 'user', text: 'x' }], tools: TOOLS, ctx, onEvent: () => undefined });
     assert.ok(r2.error);
     assert.deepEqual(r2.messages.map((m) => m.role), ['user', 'assistant', 'tool']);
@@ -332,9 +332,10 @@ async function main() {
     assert.equal(formatToday('Not/AZone', now).zone, 'UTC');
     assert.match(describePage(`/tasks/${ID(5)}`)!, /post with id/);
     assert.match(describePage(`/posts/${ID(5)}`)!, /post with id .*get_task/);
-    assert.match(describePage(`/projects/${ID(6)}`)!, /theme with id .*get_project/);
+    assert.equal(describePage(`/projects/${ID(6)}`), null, 'themes are retired');
     assert.match(describePage(`/planner?view=month&post=${ID(7)}`)!, new RegExp(`post with id ${ID(7)} open`));
-    assert.match(describePage(`/campaigns/${ID(8)}?theme=${ID(9)}`)!, new RegExp(`theme ${ID(9)} selected`));
+    assert.match(describePage(`/campaigns/${ID(8)}`)!, /campaign with id .*get_campaign/);
+    assert.match(describePage('/planner?campaign=none')!, /without a campaign/);
     assert.match(describePage('/calendar')!, /Planner/);
     assert.match(describePage('/settings/brand')!, /Settings/);
     assert.equal(describePage('/nope'), null);

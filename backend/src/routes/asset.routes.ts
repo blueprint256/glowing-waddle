@@ -93,13 +93,13 @@ router.post('/', isAuthenticated, canManageTasks, upload.single('file'), async (
 
       if (taskId) {
         const task = await Task.findById(taskId);
-        if (!task) {
+        if (!task || String(task.ownerId) !== String(req.user!._id)) {
           return res.status(404).json({
             success: false,
             message: 'Post not found'
           });
         }
-        targetCampaignId = task.campaignId;
+        targetCampaignId = task.campaignId || null;
       } else if (projectId) {
         const project = await Project.findById(projectId);
         if (!project) {
@@ -113,20 +113,22 @@ router.post('/', isAuthenticated, canManageTasks, upload.single('file'), async (
         targetCampaignId = new mongoose.Types.ObjectId(campaignId);
       }
 
-      // Check campaign ownership
-      const campaign = await Campaign.findById(targetCampaignId);
-      if (!campaign) {
-        return res.status(404).json({
-          success: false,
-          message: 'Campaign not found'
-        });
-      }
+      // Check campaign ownership (a post was checked by its owner above)
+      if (!taskId) {
+        const campaign = await Campaign.findById(targetCampaignId);
+        if (!campaign) {
+          return res.status(404).json({
+            success: false,
+            message: 'Campaign not found'
+          });
+        }
 
-      if (campaign.createdBy.toString() !== req.user!._id.toString()) {
-        return res.status(403).json({
-          success: false,
-          message: 'Access denied: You can only upload assets to resources under campaigns you created'
-        });
+        if (campaign.createdBy.toString() !== req.user!._id.toString()) {
+          return res.status(403).json({
+            success: false,
+            message: 'Access denied: You can only upload assets to resources under campaigns you created'
+          });
+        }
       }
     }
 

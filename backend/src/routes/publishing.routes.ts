@@ -169,8 +169,7 @@ router.get('/tasks/:taskId/media', isAuthenticated, requirePublishing, async (re
   try {
     const { task, ownerId } = await loadTaskForPublishing(req.user!, req.params.taskId);
     const items: { source: 'url' | 'library'; url?: string; assetId?: string; label: string; kind: 'image' | 'video'; previewUrl?: string; isMain?: boolean }[] = [];
-    if (task.designedImage) items.push({ source: 'url', url: task.designedImage, label: 'Task image', kind: 'image', previewUrl: task.designedImage, isMain: true });
-    for (const url of task.attachedImages || []) items.push({ source: 'url', url, label: 'Attached image', kind: 'image', previewUrl: url });
+    if (task.designedImage) items.push({ source: 'url', url: task.designedImage, label: 'Post picture', kind: 'image', previewUrl: task.designedImage, isMain: true });
     const assets = await LibraryAsset.find({ ownerId, 'links.taskId': task._id, deletedAt: null, kind: { $in: ['image', 'video'] } })
       .sort({ updatedAt: -1 })
       .limit(20)
@@ -182,7 +181,7 @@ router.get('/tasks/:taskId/media', isAuthenticated, requirePublishing, async (re
     }
     res.json({ success: true, task: { id: String(task._id), name: task.name, content: task.content || '', taskDate: task.taskDate || null }, media: items });
   } catch (error) {
-    fail(res, error, 'Could not load the task files');
+    fail(res, error, 'Could not load the post’s files');
   }
 });
 
@@ -193,7 +192,7 @@ router.get('/tasks/:taskId/media', isAuthenticated, requirePublishing, async (re
 async function ownerForBody(req: Request) {
   if (req.body?.taskId) {
     const { task, ownerId } = await loadTaskForPublishing(req.user!, req.body.taskId);
-    return { ownerId, taskId: task._id as Id, campaignId: task.campaignId as Id };
+    return { ownerId, taskId: task._id as Id, campaignId: (task.campaignId as Id) || undefined };
   }
   return { ownerId: resolveOwner(req.user!, req.body?.ownerId) };
 }

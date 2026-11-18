@@ -6,6 +6,7 @@ import { validateMongoId } from '../middleware/validation';
 import mongoose from 'mongoose';
 import { Task } from '../models/Task';
 import { PLACEHOLDERS, checkPlaceholders } from '../lib/placeholders';
+import { formatNote, isCorner, isFormat, logoNote, referenceNotes } from '../lib/postPicture';
 import { compileSuperPrompt } from '../services/llmService';
 import { CAPTION_STYLES, postContext } from '../services/postAI';
 
@@ -33,7 +34,7 @@ router.post('/preview', isAuthenticated, isSystemAdmin, async (req: Request, res
     const task = await Task.findById(taskId);
     if (!task) return res.status(404).json({ success: false, message: 'Post not found' });
     const { campaign, companyInfo } = await postContext(task, req.user!._id as mongoose.Types.ObjectId);
-    const attached = (task.attachedImages || []) as string[];
+    const refs = task.references || [];
     const data: Record<string, unknown> = {
       taskName: task.name,
       taskDescription: task.description || '',
@@ -41,7 +42,10 @@ router.post('/preview', isAuthenticated, isSystemAdmin, async (req: Request, res
       instruction: CAPTION_STYLES.improve.instruction,
       platform: '',
       ...(task.designedImage ? { baseImage: task.designedImage } : {}),
-      ...Object.fromEntries(attached.map((url, i) => [`attachedImage${i + 1}`, url])),
+      ...Object.fromEntries(refs.map((r, i) => [`attachedImage${i + 1}`, r.url])),
+      references: referenceNotes(refs.map((r) => ({ role: r.role, name: r.name }))) || 'None.',
+      format: formatNote(isFormat(task.pictureOptions?.format) ? task.pictureOptions!.format : 'square'),
+      logoNote: logoNote(isCorner(task.pictureOptions?.logo) ? task.pictureOptions!.logo : null),
       ...(campaign ? { campaignDetails: campaign } : {}),
       ...(companyInfo ? { companyInfo } : {})
     };

@@ -15,6 +15,7 @@ import { LibraryVersion } from '../models/LibraryVersion';
 import { LibraryJob } from '../models/LibraryJob';
 import { signedObjectUrl, getObjectBuffer, uploadBufferToS3 } from '../utils/s3Service';
 import { loadTaskForPublishing, PublishingError } from '../publishing/service';
+import { deleteUnusedPictures, setPicture } from '../services/posts';
 import { getProviderKey } from '../services/llmService';
 import { logAudit } from '../utils/auditLogger';
 import { AuditAction } from '../models/AuditLog';
@@ -438,11 +439,12 @@ router.post('/items/:id/use-on-post', isAuthenticated, requireLibrary, async (re
     if (String(asset.ownerId) !== String(ownerId)) throw new LibraryError(400, 'That picture is in another account’s Library');
     const buffer = await getObjectBuffer(version.s3Key, 25 * 1024 * 1024);
     const url = await uploadBufferToS3(buffer, version.mime.toLowerCase().replace('image/jpg', 'image/jpeg'), 'task-images');
-    task.designedImage = url;
+    const dropped = setPicture(task, url);
     task.lastModifiedBy = req.user!._id as Id;
     await task.save();
+    void deleteUnusedPictures(dropped);
     await logAudit({ action: AuditAction.EVENT_UPDATED, userId: req.user!._id as Id, targetType: 'Task', targetId: task._id as Id, metadata: { action: 'library-image-used', assetId: String(asset._id), versionId: String(version._id) }, req });
-    res.json({ success: true, message: 'Image updated', imageUrl: url, taskId: String(task._id) });
+    res.json({ success: true, message: 'Picture updated', imageUrl: url, taskId: String(task._id) });
   } catch (error) {
     if (error instanceof PublishingError) return res.status(error.status).json({ success: false, message: error.message.replace(/task/gi, 'post') });
     fail(res, error, 'Could not use this picture on the post');

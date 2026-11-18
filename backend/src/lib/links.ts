@@ -3,7 +3,7 @@
  * Blue) comes from here, so pages can move without breaking links. Mirrors
  * frontend/src/lib/paths.ts. Paths are relative; use absolute() for links that leave the app.
  *
- * People see "post" and "theme"; the API keeps "task" and "project".
+ * People see "post"; the API keeps "task". Themes were retired (Post v2).
  */
 
 const id = (v: unknown): string => {
@@ -24,14 +24,13 @@ export type SettingsSection = 'profile' | 'brand' | 'integrations' | 'ai' | 'pro
 
 export const links = {
   today: () => '/',
+  /** campaign: an id, or "none" for posts without a campaign. */
   planner: (opts: { view?: 'month' | 'week' | 'list'; date?: string; campaign?: unknown; status?: string } = {}) =>
-    `/planner${query({ view: opts.view, date: opts.date, campaign: opts.campaign ? id(opts.campaign) : undefined, status: opts.status })}`,
+    `/planner${query({ view: opts.view, date: opts.date, campaign: opts.campaign ? (opts.campaign === 'none' ? 'none' : id(opts.campaign)) : undefined, status: opts.status })}`,
   /** A post on its own page. */
   post: (taskId: unknown) => `/posts/${id(taskId)}`,
   campaigns: () => '/campaigns',
   campaign: (campaignId: unknown) => `/campaigns/${id(campaignId)}`,
-  /** A theme (project) inside its campaign's page. */
-  theme: (campaignId: unknown, projectId: unknown) => `/campaigns/${id(campaignId)}${query({ theme: id(projectId) })}`,
   library: (opts: { view?: 'review' } = {}) => `/library${query({ view: opts.view })}`,
   libraryItem: (assetId: unknown) => `/library/${id(assetId)}`,
   publishing: (tab?: PublishingTab) => `/publishing${query({ tab })}`,

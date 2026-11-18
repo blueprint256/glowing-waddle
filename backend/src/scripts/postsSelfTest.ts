@@ -1,6 +1,7 @@
 /**
  * Posts self-test: status names (new and older), what publishing records mean for a post's status,
- * and the app links. Needs no database or network.   npm run posts:selftest
+ * the app links, automatic titles, the picture rules (sizes, logo, AI words), Plan with AI and the
+ * AI allowance. Needs no database or network.   npm run posts:selftest
  */
 import assert from 'assert/strict';
 import {
@@ -14,6 +15,27 @@ import { links, absolute } from '../lib/links';
 import { applyPlaceholderAliases, checkPlaceholders, knownPlaceholderRegex, isKnownPlaceholder } from '../lib/placeholders';
 import { effectiveLimit, limitMessage, monthWindow, remainingOf } from '../lib/aiAllowance';
 import { normalizePlan, parsePlanReply, planDay, planWindow, validatePlan, PLAN_LIMITS } from '../lib/campaignPlan';
+import { titleFrom } from '../lib/postTitle';
+import sharp from 'sharp';
+import { composePicture } from '../lib/pictureCompose';
+import {
+  BUILTIN_CHANGE_IMAGE,
+  BUILTIN_CREATE_IMAGE,
+  FORMAT_SIZES,
+  apiSizeFor,
+  brandText,
+  campaignText,
+  changeLogoNote,
+  cleanInstruction,
+  fillTemplate,
+  formatOf,
+  isCorner,
+  isFormat,
+  isRole,
+  logoBox,
+  logoNote,
+  referenceNotes
+} from '../lib/postPicture';
 
 const failures: string[] = [];
 let passed = 0;
@@ -81,13 +103,14 @@ async function main() {
     assert.equal(statusFromPublishing(['due']), TaskStatus.NEEDS_ATTENTION);
   });
 
-  await test('app links: posts, themes and pages', () => {
+  await test('app links: posts, campaigns and pages', () => {
     assert.equal(links.post('abc'), '/posts/abc');
     assert.equal(links.post({ _id: 'abc', name: 'x' }), '/posts/abc');
-    assert.equal(links.theme('c1', 'p1'), '/campaigns/c1?theme=p1');
-    assert.equal(links.theme({ _id: 'c1' }, { _id: 'p1' }), '/campaigns/c1?theme=p1');
+    assert.equal(links.campaign({ _id: 'c1' }), '/campaigns/c1');
     assert.equal(links.planner(), '/planner');
     assert.equal(links.planner({ view: 'list', campaign: 'c1' }), '/planner?view=list&campaign=c1');
+    assert.equal(links.planner({ campaign: 'none' }), '/planner?campaign=none');
+    assert.ok(!('theme' in links), 'themes are retired');
     assert.equal(links.publishing('accounts'), '/publishing?tab=accounts');
     assert.equal(links.publishing(), '/publishing');
     assert.equal(links.inbox({ box: 'action', item: 'i1' }), '/inbox?box=action&item=i1');
@@ -139,30 +162,120 @@ async function main() {
     assert.throws(() => parsePlanReply('[{"projectName": "A", "tasks": [{"taskName": "cut off'));
   });
 
-  await test('plan with AI: drafts are cleaned and limited', () => {
-    const themes = normalizePlan([
-      { projectName: ' Launch ', projectDescription: 'Big week', tasks: [
-        { taskName: 'Teaser', taskDescription: 'Brief', content: 'Caption', taskDate: '2026-11-20', status: 'Completed' },
-        { taskName: '', content: 'no title is skipped' },
-        { title: 'Other names work', caption: 'c', date: 'soon', status: 'Idea' }
-      ] },
-      { name: '' },
+  await test('plan with AI: posts are cleaned, sorted by day and limited', () => {
+    const posts = normalizePlan([
+      { title: ' Teaser ', brief: 'Brief', caption: 'Caption', day: '2026-11-22', status: 'Completed' },
+      { title: '', caption: '', brief: '' },
+      { caption: 'Only a caption works (the title comes from it)', day: '2026-11-20' },
+      { name: 'Other names work', content: 'c', date: 'soon', status: 'Idea' },
       'junk'
     ]);
-    assert.equal(themes.length, 1);
-    assert.equal(themes[0].name, 'Launch');
-    assert.deepEqual(themes[0].posts.map((p) => [p.name, p.day, p.status]), [['Teaser', '2026-11-20', 'Ready'], ['Other names work', null, 'Idea']]);
-    const many = normalizePlan([{ projectName: 'X', tasks: Array.from({ length: 100 }, (_, i) => ({ taskName: `P${i}` })) }]);
-    assert.equal(many[0].posts.length, PLAN_LIMITS.postsPerTheme);
-    // What the app sends back after review keeps the chosen existing theme (and only valid ids).
-    const back = validatePlan([
-      { name: 'Existing', existingId: '64b7f0c2a1b2c3d4e5f60718', posts: [{ name: 'One', day: '2026-11-21', status: 'Draft' }] },
-      { name: 'Bad id', existingId: 'nope', posts: [{ name: 'Two' }] }
+    assert.deepEqual(posts.map((p) => [p.name, p.day, p.status]), [
+      ['', '2026-11-20', 'Draft'],
+      ['Teaser', '2026-11-22', 'Ready'],
+      ['Other names work', null, 'Idea']
     ]);
-    assert.equal(back[0].existingId, '64b7f0c2a1b2c3d4e5f60718');
-    assert.equal(back[1].existingId, null);
-    assert.throws(() => validatePlan([{ name: 'Empty', posts: [] }]));
-    assert.throws(() => validatePlan('nope'));
+    // Older prompts answer in themes: the groups are flattened.
+    const flat = normalizePlan([
+      { projectName: 'Launch', tasks: [{ taskName: 'A', taskDate: '2026-11-21' }, { taskName: 'B', taskDate: '2026-11-19' }] },
+      { projectName: 'Tips', posts: [{ title: 'C' }] }
+    ]);
+    assert.deepEqual(flat.map((p) => p.name), ['B', 'A', 'C']);
+    const many = normalizePlan(Array.from({ length: 300 }, (_, i) => ({ title: `P${i}` })));
+    assert.equal(many.length, PLAN_LIMITS.posts);
+    // What the app sends back after review: { posts }, or the older { themes }.
+    assert.equal(validatePlan({ posts: [{ name: 'One', day: '2026-11-21', status: 'Draft' }] })[0].name, 'One');
+    assert.equal(validatePlan({ themes: [{ name: 'Old', posts: [{ name: 'Two' }] }] })[0].name, 'Two');
+    assert.throws(() => validatePlan({ posts: [] }));
+    assert.throws(() => validatePlan({} as any));
+    assert.equal(parsePlanReply('{"posts":[{"title":"A"},{"title":"B"}]}').length, 2);
+  });
+
+  await test('automatic titles come from the caption, then the brief', () => {
+    assert.equal(titleFrom('🎉 Big news! Our cold brew is back this Friday at all shops #coffee'), 'Big news! Our cold brew is back');
+    assert.equal(titleFrom('#ad #summer\nFresh lemonade, all summer long'), 'Fresh lemonade, all summer long');
+    assert.equal(titleFrom('', '  ', 'Launch of the winter menu'), 'Launch of the winter menu');
+    assert.equal(titleFrom('Check https://example.com/x now'), 'Check now');
+    assert.equal(titleFrom('', null, undefined), 'Untitled post');
+    assert.equal(titleFrom('😀🎉 #only #tags'), 'Untitled post');
+    assert.ok(titleFrom('Supercalifragilisticexpialidocious '.repeat(4)).length <= 60);
+    assert.equal(titleFrom('Hello there, —'), 'Hello there');
+  });
+
+  await test('pictures: sizes, shapes and choices', () => {
+    assert.deepEqual([FORMAT_SIZES.square.api, FORMAT_SIZES.portrait.api, FORMAT_SIZES.landscape.api], ['1024x1024', '1024x1536', '1536x1024']);
+    assert.equal(FORMAT_SIZES.portrait.width / FORMAT_SIZES.portrait.height, 0.8); // Instagram's tallest feed shape (4:5)
+    assert.equal(apiSizeFor(1080, 1350), '1024x1536');
+    assert.equal(apiSizeFor(1080, 1080), '1024x1024');
+    assert.equal(apiSizeFor(1920, 1080), '1536x1024');
+    assert.equal(apiSizeFor(0, 0), '1024x1024');
+    assert.equal(formatOf(1024, 1280), 'portrait');
+    assert.ok(isFormat('square') && !isFormat('banner'));
+    assert.ok(isCorner('bottom-right') && !isCorner('middle') && !isCorner(null));
+    assert.ok(isRole('style') && isRole('include') && !isRole('logo'));
+    assert.equal(cleanInstruction('  make   it\n bluer '), 'make it bluer');
+    assert.equal(cleanInstruction(42), '');
+  });
+
+  await test('pictures: the logo fits its corner and stays inside', () => {
+    // A wide logo is limited by width (18%), a tall one by height (12%); 4% margin.
+    const wide = logoBox(1000, 1000, 400, 100, 'bottom-right');
+    assert.deepEqual(wide, { left: 1000 - 180 - 40, top: 1000 - 45 - 40, width: 180, height: 45 });
+    const tall = logoBox(1000, 1000, 100, 400, 'top-left');
+    assert.deepEqual(tall, { left: 40, top: 40, width: 30, height: 120 });
+    const portrait = logoBox(1024, 1280, 512, 512, 'top-right');
+    assert.equal(portrait.left + portrait.width + Math.round(1024 * 0.04), 1024);
+    for (const corner of ['top-left', 'top-right', 'bottom-left', 'bottom-right'] as const) {
+      const b = logoBox(1536, 1024, 3000, 1000, corner);
+      assert.ok(b.left >= 0 && b.top >= 0 && b.left + b.width <= 1536 && b.top + b.height <= 1024, corner);
+    }
+  });
+
+  await test('pictures: the words sent to the AI', () => {
+    const notes = referenceNotes([{ role: 'include', name: 'Cold brew bottle' }, { role: 'style' }]);
+    assert.match(notes, /^Picture 1 \(“Cold brew bottle”\): INCLUDE THIS/);
+    assert.match(notes, /Picture 2: STYLE ONLY/);
+    assert.match(notes, /Do NOT copy its words, logos, brand names, people or products/);
+    assert.equal(referenceNotes([]), '');
+    assert.match(logoNote('top-left'), /top-left corner/);
+    assert.match(logoNote(null), /Do not add any logo/);
+    assert.equal(changeLogoNote(null), '');
+    assert.match(changeLogoNote('bottom-right'), /bottom-right corner/);
+    assert.equal(brandText(null), 'Not given.');
+    assert.equal(brandText({ companyName: 'Bean There', brandTone: ' warm ' }), 'Name: Bean There\nTone: warm');
+    assert.match(campaignText(null), /everyday content/);
+    // Every placeholder of the built-in words is filled; unknown ones are left alone.
+    const values = { brief: 'b', caption: 'c', brand: 'x', campaign: 'y', references: 'r', format: 'f', logoNote: 'l', instruction: 'i' };
+    assert.ok(!/\{[a-zA-Z]+\}/.test(fillTemplate(BUILTIN_CREATE_IMAGE, values)));
+    assert.ok(!/\{[a-zA-Z]+\}/.test(fillTemplate(BUILTIN_CHANGE_IMAGE, values)));
+    assert.equal(fillTemplate('{a} {b} {"x": 1}', { a: '$1 & $&' }), '$1 & $& {b} {"x": 1}');
+    assert.ok(isKnownPlaceholder('references') && isKnownPlaceholder('logoNote') && isKnownPlaceholder('format'));
+  });
+
+  await test('pictures: trimmed to shape, logo stamped exactly, saved as JPEG', async () => {
+    // A 2:3 "AI picture": red top third, green middle, blue bottom third.
+    const raw = await sharp({ create: { width: 1024, height: 1536, channels: 3, background: '#00aa00' } })
+      .composite([
+        { input: { create: { width: 1024, height: 512, channels: 3, background: '#ff0000' } }, left: 0, top: 0 },
+        { input: { create: { width: 1024, height: 512, channels: 3, background: '#0000ff' } }, left: 0, top: 1024 }
+      ])
+      .png()
+      .toBuffer();
+    const plain = await composePicture(raw, FORMAT_SIZES.portrait, null);
+    const meta = await sharp(plain).metadata();
+    assert.deepEqual([meta.format, meta.width, meta.height], ['jpeg', 1024, 1280]);
+    assert.ok(plain.length < raw.length * 4, 'JPEG stays small');
+    // Trimmed evenly from top and bottom: the centre is still green.
+    const centre = await sharp(plain).extract({ left: 512, top: 640, width: 1, height: 1 }).raw().toBuffer();
+    assert.ok(centre[1] > 150 && centre[0] < 60, 'centre kept');
+    // An SVG logo (a black rectangle), bottom-right.
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><rect width="200" height="100" fill="#000"/></svg>');
+    const stamped = await composePicture(raw, FORMAT_SIZES.square, { buffer: svg, corner: 'bottom-right' });
+    const box = logoBox(1024, 1024, 200, 100, 'bottom-right');
+    const inLogo = await sharp(stamped).extract({ left: box.left + Math.floor(box.width / 2), top: box.top + Math.floor(box.height / 2), width: 1, height: 1 }).raw().toBuffer();
+    assert.ok(inLogo[0] < 40 && inLogo[1] < 40 && inLogo[2] < 40, 'logo is where logoBox says');
+    const outside = await sharp(stamped).extract({ left: 20, top: 1000, width: 1, height: 1 }).raw().toBuffer();
+    assert.ok(outside[2] > 150, 'the rest is untouched');
   });
 
   await test('AI allowance: month window, limits and messages', () => {

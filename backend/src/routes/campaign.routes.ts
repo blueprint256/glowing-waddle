@@ -2,8 +2,10 @@ import express, { Request, Response } from 'express';
 import { onCampaignArchived } from '../services/lifecycle';
 import { Campaign, CampaignStatus } from '../models/Campaign';
 import { User, UserRole } from '../models/User';
-import { Project } from '../models/Project';
+import mongoose from 'mongoose';
 import { Task } from '../models/Task';
+import { SocialPost } from '../models/SocialPost';
+import { LibraryAsset } from '../models/LibraryAsset';
 import { normalizePostStatus } from '../services/postStatus';
 import { applyCampaignPlan, draftCampaignPlan, validatePlan, type PlanOptions } from '../services/campaignPlan';
 import { aiErrorMessage } from '../services/postAI';
@@ -144,20 +146,19 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
       .skip(skip)
       .limit(limit);
 
-    // ?include=counts: posts by status and number of themes, for the campaign cards.
-    let counts: Record<string, { posts: number; themes: number; byStatus: Record<string, number>; nextDay: Date | null }> | undefined;
+    // ?include=counts: posts by status and the next post day, for the campaign cards.
+    let counts: Record<string, { posts: number; byStatus: Record<string, number>; nextDay: Date | null }> | undefined;
     if (String(req.query.include || '').split(',').includes('counts') && campaigns.length) {
       const ids = campaigns.map((c) => c._id);
-      const [byStatus, themes, next] = await Promise.all([
+      const [byStatus, next] = await Promise.all([
         Task.aggregate([{ $match: { campaignId: { $in: ids } } }, { $group: { _id: { c: '$campaignId', s: '$status' }, n: { $sum: 1 } } }]),
-        Project.aggregate([{ $match: { campaignId: { $in: ids } } }, { $group: { _id: '$campaignId', n: { $sum: 1 } } }]),
         Task.aggregate([
           { $match: { campaignId: { $in: ids }, taskDate: { $gte: new Date(new Date().toISOString().slice(0, 10)) } } },
           { $group: { _id: '$campaignId', d: { $min: '$taskDate' } } }
         ])
       ]);
       counts = {};
-      for (const c of campaigns) counts[String(c._id)] = { posts: 0, themes: 0, byStatus: {}, nextDay: null };
+      for (const c of campaigns) counts[String(c._id)] = { posts: 0, byStatus: {}, nextDay: null };
       for (const r of byStatus) {
         const e = counts[String(r._id.c)];
         if (!e) continue;
@@ -165,7 +166,6 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
         e.byStatus[s] = (e.byStatus[s] || 0) + r.n;
         e.posts += r.n;
       }
-      for (const r of themes) if (counts[String(r._id)]) counts[String(r._id)].themes = r.n;
       for (const r of next) if (counts[String(r._id)]) counts[String(r._id)].nextDay = r.d;
     }
 
@@ -441,6 +441,32 @@ router.delete('/:id', isAuthenticated, validateMongoId('id'), async (req: Reques
       }
     }
 
+    // ?keepPosts=true: delete the campaign itself; its posts stay, without a campaign (campaigns are
+    // only a way to group posts). Nothing is cancelled: scheduled posts still go out.
+    if (req.query.keepPosts === 'true') {
+      const moved = await Task.updateMany({ campaignId: campaign._id }, { $set: { campaignId: null, projectId: null } });
+      await Promise.all([
+        SocialPost.updateMany({ campaignId: campaign._id }, { $set: { campaignId: null } }),
+        LibraryAsset.updateMany({ 'links.campaignId': campaign._id }, { $set: { 'links.campaignId': null, 'links.projectId': null } }),
+        mongoose.connection.collection('projects').deleteMany({ campaignId: campaign._id })
+      ]);
+      await Campaign.deleteOne({ _id: campaign._id });
+      await logAudit({
+        action: AuditAction.CAMPAIGN_DELETED,
+        userId: req.user!._id,
+        targetType: 'Campaign',
+        targetId: campaign._id,
+        metadata: { keptPosts: moved.modifiedCount, name: campaign.name },
+        req
+      });
+      const n = moved.modifiedCount;
+      return res.json({
+        success: true,
+        message: n ? `Campaign deleted. Its ${n} post${n === 1 ? ' is' : 's are'} kept, without a campaign.` : 'Campaign deleted',
+        keptPosts: n
+      });
+    }
+
     // Archive campaign (soft delete)
     campaign.archived = true;
     await campaign.save();
@@ -605,7 +631,7 @@ const planOptions = (body: any): PlanOptions => ({
 
 /**
  * @route   POST /api/campaigns/:id/plan
- * @desc    Plan with AI, step 1: a draft of themes and posts to review. Nothing is saved.
+ * @desc    Plan with AI, step 1: a list of posts to review. Nothing is saved.
  *          Body: { notes?, from?, to?, perWeek?, command? }
  * @access  Private (campaign owner or System Admin; AI on)
  */
@@ -624,27 +650,26 @@ router.post('/:id/plan', isAuthenticated, validateMongoId('id'), async (req: Req
 
 /**
  * @route   POST /api/campaigns/:id/plan/apply
- * @desc    Plan with AI, step 2: creates the reviewed themes and posts. Body: { themes: PlanTheme[] }
+ * @desc    Plan with AI, step 2: creates the reviewed posts. Body: { posts: PlanPost[] }
  * @access  Private (campaign owner or System Admin)
  */
 router.post('/:id/plan/apply', isAuthenticated, validateMongoId('id'), async (req: Request, res: Response) => {
   try {
     const campaign = await campaignForPlanning(req, res);
     if (!campaign) return;
-    const themes = validatePlan(req.body?.themes);
-    const result = await applyCampaignPlan(campaign, themes, req.user!._id as any);
+    const posts = validatePlan(req.body || {});
+    const result = await applyCampaignPlan(campaign, posts, req.user!._id as any);
     await logAudit({
       action: AuditAction.CAMPAIGN_UPDATED,
       userId: req.user!._id,
       targetType: 'Campaign',
       targetId: campaign._id,
-      metadata: { action: 'plan_with_ai', themes: result.themes.length, posts: result.postCount },
+      metadata: { action: 'plan_with_ai', posts: result.postCount },
       req
     });
-    const newThemes = result.themes.filter((t) => t.isNew).length;
     res.status(201).json({
       success: true,
-      message: `Created ${result.postCount} post${result.postCount === 1 ? '' : 's'}${newThemes ? ` and ${newThemes} new theme${newThemes === 1 ? '' : 's'}` : ''}.`,
+      message: `Created ${result.postCount} post${result.postCount === 1 ? '' : 's'}.`,
       ...result
     });
   } catch (error: any) {
@@ -665,23 +690,22 @@ router.post('/:id/generate', isAuthenticated, validateMongoId('id'), async (req:
     const campaign = await campaignForPlanning(req, res);
     if (!campaign) return;
     const draft = await draftCampaignPlan(campaign, planOptions(req.body), req.user!._id as any);
-    const result = await applyCampaignPlan(campaign, draft.themes, req.user!._id as any);
+    const result = await applyCampaignPlan(campaign, draft.posts, req.user!._id as any);
     await logAudit({
       action: AuditAction.CAMPAIGN_UPDATED,
       userId: req.user!._id,
       targetType: 'Campaign',
       targetId: campaign._id,
-      metadata: { action: 'generate_campaign_content', source: draft.source, themes: result.themes.length, posts: result.postCount },
+      metadata: { action: 'generate_campaign_content', source: draft.source, posts: result.postCount },
       req
     });
-    const projects = await Project.find({ _id: { $in: result.themes.map((t) => t.id) } });
-    const order = new Map(result.themes.map((t, i) => [t.id, i]));
-    projects.sort((a, b) => (order.get(String(a._id)) ?? 0) - (order.get(String(b._id)) ?? 0));
+    const created = await Task.find({ _id: { $in: result.postIds } }).select('name taskDate status').sort({ taskDate: 1 }).lean();
     res.json({
       success: true,
-      message: `Created ${result.postCount} post${result.postCount === 1 ? '' : 's'} in ${result.themes.length} theme${result.themes.length === 1 ? '' : 's'}.`,
-      projects,
-      taskCounts: projects.map((p) => result.themes.find((t) => t.id === String(p._id))?.posts ?? 0),
+      message: `Created ${result.postCount} post${result.postCount === 1 ? '' : 's'}.`,
+      posts: created.map((t) => ({ id: String(t._id), name: t.name, day: t.taskDate ? new Date(t.taskDate).toISOString().slice(0, 10) : null, status: t.status })),
+      from: draft.from,
+      to: draft.to,
       campaignId: campaign._id,
       campaignName: campaign.name
     });

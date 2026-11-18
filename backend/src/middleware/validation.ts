@@ -168,9 +168,19 @@ export const validateProjectAssignment = [
   handleValidationErrors
 ];
 
+/** A campaign id, or nothing / null / "none" (a post without a campaign). */
+const optionalCampaign = (field: string) =>
+  body(field)
+    .optional({ values: 'null' })
+    .custom((v) => v === '' || v === 'none' || (typeof v === 'string' && /^[a-f\d]{24}$/i.test(v)))
+    .withMessage(`${field} must be a campaign id, or empty for no campaign`);
+
 export const validateTaskCreate = [
-  body('name').isString().trim().notEmpty().withMessage('Task name is required'),
-  body('projectId').isMongoId().withMessage('Valid projectId is required'),
+  // The title is optional: without one it's taken from the caption or the brief.
+  body('name').optional({ values: 'null' }).isString().trim().isLength({ max: 200 }).withMessage('The title can be 200 characters at most'),
+  optionalCampaign('campaignId'),
+  body('projectId').optional({ values: 'falsy' }).isMongoId().withMessage('projectId must be an id'),
+  body('ownerId').optional({ values: 'falsy' }).isMongoId().withMessage('ownerId must be an account id'),
   optionalEnum('status', TASK_STATUS_VALUES),
   optionalDate('taskDate'),
   optionalText('description'),
@@ -179,11 +189,13 @@ export const validateTaskCreate = [
 ];
 
 export const validateTaskUpdate = [
-  body('name').optional({ values: 'falsy' }).isString().trim().notEmpty().withMessage('name cannot be empty'),
+  // An empty title switches back to the automatic one.
+  body('name').optional({ values: 'null' }).isString().trim().isLength({ max: 200 }).withMessage('The title can be 200 characters at most'),
   optionalEnum('status', TASK_STATUS_VALUES),
   optionalDate('taskDate'),
   optionalText('description'),
   optionalText('content'),
-  body('projectId').optional().isMongoId().withMessage('projectId must be a theme id'),
+  optionalCampaign('campaignId'),
+  body('projectId').optional({ values: 'falsy' }).isMongoId().withMessage('projectId must be an id'),
   handleValidationErrors
 ];

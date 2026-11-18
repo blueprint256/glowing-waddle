@@ -44,13 +44,12 @@ export function resolveOwner(user: IUser, requested?: unknown): Id {
 
 /** A task's posts go to the channels of the campaign's owner. */
 export async function loadTaskForPublishing(user: IUser, taskId: unknown) {
-  if (!mongoose.isValidObjectId(taskId)) throw new PublishingError(400, 'Invalid task id');
+  if (!mongoose.isValidObjectId(taskId)) throw new PublishingError(400, 'Invalid post id');
   const task = await Task.findById(taskId);
-  if (!task) throw new PublishingError(404, 'Task not found');
-  const campaign = await Campaign.findById(task.campaignId).select('createdBy name');
-  if (!campaign) throw new PublishingError(404, 'Campaign not found');
-  if (!isAdmin(user) && String(campaign.createdBy) !== String(user._id)) throw new PublishingError(403, 'You do not have access to this task');
-  return { task, campaign, ownerId: campaign.createdBy as Id };
+  // A post belongs to an account (with or without a campaign). Others' posts read as missing.
+  if (!task || (!isAdmin(user) && String(task.ownerId) !== String(user._id))) throw new PublishingError(404, 'Post not found');
+  const campaign = task.campaignId ? await Campaign.findById(task.campaignId).select('createdBy name') : null;
+  return { task, campaign, ownerId: task.ownerId as Id };
 }
 
 export async function loadPostForUser(user: IUser, id: unknown): Promise<ISocialPost> {

@@ -1,17 +1,17 @@
 import mongoose from 'mongoose';
 import type { ICampaign } from '../models/Campaign';
-import { Project, ProjectStatus } from '../models/Project';
 import { Task } from '../models/Task';
+import { autoTitle } from './posts';
 import { User } from '../models/User';
 import { CommandMapping } from '../models/CommandMapping';
 import { compileSuperPrompt, executeCommandChain, sendToLLM } from './llmService';
 import { AIError } from '../lib/aiError';
-import { BUILTIN_PLAN_CAMPAIGN, PLAN_COMMAND, PLAN_LIMITS, normalizePlan, parsePlanReply, planWindow, type PlanOptions, type PlanTheme } from '../lib/campaignPlan';
+import { BUILTIN_PLAN_CAMPAIGN, PLAN_COMMAND, PLAN_LIMITS, normalizePlan, parsePlanReply, planWindow, type PlanOptions, type PlanPost } from '../lib/campaignPlan';
 
 export * from '../lib/campaignPlan';
 
 /**
- * Plan with AI: the AI drafts themes and posts for a campaign; nothing is saved until the person
+ * Plan with AI: the AI drafts posts for a campaign; nothing is saved until the person
  * reviews the draft and creates it (decision 17). The connector's generate_campaign_content keeps the
  * one-step behaviour by running both steps.
  *
@@ -22,17 +22,28 @@ export * from '../lib/campaignPlan';
 type Id = mongoose.Types.ObjectId;
 
 /** Asks the AI for a draft plan. Nothing is saved. */
-export async function draftCampaignPlan(campaign: ICampaign, opts: PlanOptions, userId: Id): Promise<{ themes: PlanTheme[]; from: string; to: string; source: 'command' | 'builtin' }> {
+export async function draftCampaignPlan(campaign: ICampaign, opts: PlanOptions, userId: Id): Promise<{ posts: PlanPost[]; from: string; to: string; source: 'command' | 'builtin' }> {
   const owner = await User.findById(campaign.createdBy);
   const { from, to } = planWindow(campaign, opts);
-  const existing = await Project.find({ campaignId: campaign._id }).select('name').lean();
   const perWeek = Number.isFinite(opts.perWeek) ? Math.min(14, Math.max(1, Math.round(Number(opts.perWeek)))) : null;
   const notes = typeof opts.notes === 'string' ? opts.notes.trim().slice(0, PLAN_LIMITS.notes) : '';
+
+  // Days that already have a post in this campaign, so the plan fills the gaps.
+  const planned = await Task.find({
+    campaignId: campaign._id,
+    taskDate: { $gte: new Date(`${from}T00:00:00Z`), $lte: new Date(`${to}T23:59:59Z`) }
+  })
+    .select('name taskDate')
+    .sort({ taskDate: 1 })
+    .limit(60)
+    .lean();
 
   const instruction = [
     `Plan posts from ${from} to ${to} (dates as YYYY-MM-DD, all within that period).`,
     perWeek ? `About ${perWeek} post${perWeek === 1 ? '' : 's'} a week in total.` : 'A realistic number of posts for the period (usually 2 to 4 a week).',
-    existing.length ? `Themes that already exist (add new ones; reuse a name exactly only to add posts to it): ${existing.map((p) => p.name).join(', ')}.` : '',
+    planned.length
+      ? `Posts already planned (don't repeat them; plan around them): ${planned.map((p) => `${new Date(p.taskDate as Date).toISOString().slice(0, 10)} “${p.name}”`).join('; ')}.`
+      : '',
     notes ? `What the person asked for: ${notes}` : ''
   ]
     .filter(Boolean)
@@ -68,49 +79,29 @@ export async function draftCampaignPlan(campaign: ICampaign, opts: PlanOptions, 
     source = 'builtin';
   }
 
-  const themes = normalizePlan(parsePlanReply(content));
-  if (!themes.length || !themes.some((t) => t.posts.length)) throw new AIError(502, 'The AI didn’t suggest any posts. Try again, perhaps with a note on what you want.');
-
-  // A theme the AI named exactly like an existing one adds to it.
-  const byName = new Map<string, string>(existing.map((p: { name: string; _id: unknown }) => [String(p.name).trim().toLowerCase(), String(p._id)]));
-  for (const t of themes) t.existingId = byName.get(t.name.toLowerCase()) || null;
-  return { themes, from, to, source };
+  const posts = normalizePlan(parsePlanReply(content));
+  if (!posts.length) throw new AIError(502, 'The AI didn’t suggest any posts. Try again, perhaps with a note on what you want.');
+  return { posts, from, to, source };
 }
 
-/** Creates the themes and posts of a reviewed plan. */
-export async function applyCampaignPlan(campaign: ICampaign, themes: PlanTheme[], userId: Id) {
-  const created: { id: string; name: string; isNew: boolean; posts: number }[] = [];
-  const postIds: string[] = [];
-  for (const t of themes) {
-    if (!t.posts.length) continue;
-    let project = t.existingId ? await Project.findOne({ _id: t.existingId, campaignId: campaign._id }) : null;
-    const isNew = !project;
-    if (!project) {
-      project = await Project.create({
-        name: t.name,
-        description: t.description,
-        campaignId: campaign._id,
-        createdBy: userId,
-        status: ProjectStatus.PLANNING,
-        startDate: t.startDate ? new Date(`${t.startDate}T00:00:00Z`) : undefined,
-        dueDate: t.dueDate ? new Date(`${t.dueDate}T00:00:00Z`) : undefined,
-        assignments: []
-      });
-    }
-    const docs = await Task.create(
-      t.posts.map((p) => ({
-        name: p.name,
+/** Creates the posts of a reviewed plan in the campaign. */
+export async function applyCampaignPlan(campaign: ICampaign, posts: PlanPost[], userId: Id) {
+  const docs = await Task.create(
+    posts.map((p) => {
+      const typed = p.name.trim();
+      return {
+        name: autoTitle(typed, p.caption, p.brief),
+        autoName: !typed,
         description: p.brief,
         content: p.caption,
         taskDate: p.day ? new Date(`${p.day}T00:00:00Z`) : null,
         status: p.status,
-        projectId: project!._id,
+        ownerId: campaign.createdBy,
         campaignId: campaign._id,
         createdBy: userId
-      }))
-    );
-    postIds.push(...docs.map((d) => String(d._id)));
-    created.push({ id: String(project._id), name: project.name, isNew, posts: docs.length });
-  }
-  return { themes: created, postIds, postCount: postIds.length };
+      };
+    })
+  );
+  const postIds = docs.map((d) => String(d._id));
+  return { postIds, postCount: postIds.length };
 }

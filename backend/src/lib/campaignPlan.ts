@@ -9,7 +9,7 @@ import { AIError } from './aiError';
 type CampaignDates = { startDate?: Date | null; endDate?: Date | null };
 
 export const PLAN_COMMAND = 'generate-campaign';
-export const PLAN_LIMITS = { themes: 12, postsPerTheme: 40, posts: 120, notes: 2000 };
+export const PLAN_LIMITS = { posts: 120, notes: 2000 };
 
 export interface PlanPost {
   name: string;
@@ -18,16 +18,6 @@ export interface PlanPost {
   /** "2026-11-20", or null when the AI gave no usable day. */
   day: string | null;
   status: 'Idea' | 'Draft' | 'Ready';
-}
-
-export interface PlanTheme {
-  name: string;
-  description: string;
-  startDate: string | null;
-  dueDate: string | null;
-  /** Set when the posts go into a theme that already exists. */
-  existingId?: string | null;
-  posts: PlanPost[];
 }
 
 export interface PlanOptions {
@@ -53,23 +43,15 @@ Campaign:
 What to plan:
 {instruction}
 
-Group the posts into a few themes (a theme is a strand of the campaign, such as "Launch week", "Behind the scenes" or "Customer stories"). For every post give a short title, a brief (the goal, the key message and the visual idea, 30 to 70 words) and a finished caption in the brand's tone.
+For every post give a short title (3 to 6 words), a brief (what the post is about: the goal, the key message and the picture idea, 30 to 70 words) and a finished caption in the brand's tone.
 
 Rules:
 - Follow the brand's tone of voice and its rules.
 - Do not invent prices, discounts, dates of events, names or links that are not given above.
-- Spread the posts sensibly over the period; avoid two posts of the same theme on the same day.
+- Spread the posts sensibly over the period and vary them (announcements, tips, behind the scenes, customer stories…); at most one post a day unless asked.
 - Reply with JSON only, no explanation, in exactly this shape:
 [
-  {
-    "projectName": "Theme name",
-    "projectDescription": "One sentence on what this theme is about",
-    "startDate": "YYYY-MM-DD",
-    "dueDate": "YYYY-MM-DD",
-    "tasks": [
-      { "taskName": "Post title", "taskDescription": "Brief", "content": "Caption", "taskDate": "YYYY-MM-DD" }
-    ]
-  }
+  { "title": "Post title", "brief": "What the post is about", "caption": "Caption", "day": "YYYY-MM-DD" }
 ]`;
 
 const ymd = (d: Date) => d.toISOString().slice(0, 10);
@@ -100,7 +82,7 @@ export function planWindow(campaign: CampaignDates, opts: PlanOptions, now = new
   return { from, to };
 }
 
-/** Finds the JSON array in an AI reply (code fences, a sentence around it, or {"projects": [...]}). */
+/** Finds the JSON array in an AI reply (code fences, a sentence around it, or {"posts": [...]}). */
 export function parsePlanReply(content: string): any[] {
   const raw = String(content || '').trim();
   const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -118,65 +100,51 @@ export function parsePlanReply(content: string): any[] {
       throw new AIError(502, 'The AI’s answer was cut off or malformed. Try again, or plan a shorter period.');
     }
   }
-  if (!Array.isArray(parsed) && parsed && typeof parsed === 'object') parsed = parsed.projects || parsed.themes || parsed.plan;
+  if (!Array.isArray(parsed) && parsed && typeof parsed === 'object') parsed = parsed.posts || parsed.tasks || parsed.projects || parsed.themes || parsed.plan;
   if (!Array.isArray(parsed)) throw new AIError(502, 'The AI’s answer wasn’t a plan. Try again.');
   return parsed;
 }
 
-/** Turns whatever the AI wrote into a clean draft (names, limits, days, statuses). */
-export function normalizePlan(raw: any[]): PlanTheme[] {
-  const themes: PlanTheme[] = [];
-  let total = 0;
-  for (const t of raw) {
-    if (!t || typeof t !== 'object' || themes.length >= PLAN_LIMITS.themes) continue;
-    const name = text(t.projectName ?? t.themeName ?? t.name ?? t.theme, 120);
-    if (!name) continue;
-    const posts: PlanPost[] = [];
-    const list = Array.isArray(t.tasks) ? t.tasks : Array.isArray(t.posts) ? t.posts : [];
-    for (const p of list) {
-      if (!p || typeof p !== 'object' || posts.length >= PLAN_LIMITS.postsPerTheme || total >= PLAN_LIMITS.posts) continue;
-      const title = text(p.taskName ?? p.postTitle ?? p.title ?? p.name, 200);
-      if (!title) continue;
-      const s = normalizePostStatus(p.status);
-      posts.push({
-        name: title,
-        brief: text(p.taskDescription ?? p.brief ?? p.description, 4000),
-        caption: text(p.content ?? p.caption, 5000),
-        day: planDay(p.taskDate ?? p.date ?? p.day),
-        status: s === TaskStatus.IDEA ? 'Idea' : s === TaskStatus.READY ? 'Ready' : 'Draft'
-      });
-      total++;
-    }
-    themes.push({
-      name,
-      description: text(t.projectDescription ?? t.description, 1000),
-      startDate: planDay(t.startDate),
-      dueDate: planDay(t.dueDate ?? t.endDate),
-      posts
+/**
+ * Turns whatever the AI wrote into a clean list of posts (titles, limits, days, statuses). Older
+ * prompts that group posts into themes ([{ projectName, tasks: [...] }]) are read too: the groups
+ * are flattened, since themes were retired.
+ */
+export function normalizePlan(raw: any[]): PlanPost[] {
+  const entries: any[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const group = Array.isArray(item.tasks) ? item.tasks : Array.isArray(item.posts) ? item.posts : null;
+    if (group) entries.push(...group);
+    else entries.push(item);
+  }
+  const posts: PlanPost[] = [];
+  for (const p of entries) {
+    if (!p || typeof p !== 'object' || posts.length >= PLAN_LIMITS.posts) continue;
+    const title = text(p.title ?? p.taskName ?? p.postTitle ?? p.name, 200);
+    const caption = text(p.caption ?? p.content, 5000);
+    const brief = text(p.brief ?? p.taskDescription ?? p.description, 4000);
+    if (!title && !caption && !brief) continue;
+    const s = normalizePostStatus(p.status);
+    posts.push({
+      name: title,
+      brief,
+      caption,
+      day: planDay(p.day ?? p.taskDate ?? p.date),
+      status: s === TaskStatus.IDEA ? 'Idea' : s === TaskStatus.READY ? 'Ready' : 'Draft'
     });
   }
-  return themes;
+  return posts.sort((a, b) => (a.day || '9999').localeCompare(b.day || '9999'));
 }
 
-/** Checks a reviewed draft sent back by the app (it may have been edited). */
-export function validatePlan(input: unknown): PlanTheme[] {
-  if (!Array.isArray(input)) throw new AIError(400, 'Nothing to create.');
-  const themes = normalizePlan(
-    input.map((t: any) => ({
-      projectName: t?.name,
-      projectDescription: t?.description,
-      startDate: t?.startDate,
-      dueDate: t?.dueDate,
-      tasks: Array.isArray(t?.posts) ? t.posts.map((p: any) => ({ taskName: p?.name, taskDescription: p?.brief, content: p?.caption, taskDate: p?.day, status: p?.status })) : []
-    }))
-  );
-  // normalizePlan drops nameless entries, so match the existing ids by position of what was kept.
-  const kept = input.filter((t: any) => typeof t?.name === 'string' && t.name.trim());
-  themes.forEach((t, i) => {
-    const id = kept[i]?.existingId;
-    t.existingId = typeof id === 'string' && /^[a-f0-9]{24}$/i.test(id) ? id : null;
-  });
-  if (!themes.some((t) => t.posts.length)) throw new AIError(400, 'Choose at least one post to create.');
-  return themes;
+/**
+ * Checks a reviewed list sent back by the app (it may have been edited): { posts: [...] }, or the
+ * older { themes: [{ posts: [...] }] }.
+ */
+export function validatePlan(input: { posts?: unknown; themes?: unknown }): PlanPost[] {
+  const list = Array.isArray(input?.posts) ? input.posts : Array.isArray(input?.themes) ? input.themes : null;
+  if (!list) throw new AIError(400, 'Nothing to create.');
+  const posts = normalizePlan(list);
+  if (!posts.length) throw new AIError(400, 'Choose at least one post to create.');
+  return posts;
 }
-

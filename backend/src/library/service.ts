@@ -67,7 +67,10 @@ export async function loadAccessibleAsset(user: IUser, id: unknown, opts: { incl
   return asset;
 }
 
-/** Validate and complete links (a task implies its project and campaign). */
+/**
+ * Validate and complete links (a post implies its campaign). Themes were retired in Post v2: an old
+ * theme link is read as its campaign, and projectId is always returned empty.
+ */
 export async function resolveLinks(
   user: IUser,
   ownerId: Id,
@@ -76,24 +79,27 @@ export async function resolveLinks(
   const out: { campaignId: Id | null; projectId: Id | null; taskId: Id | null } = { campaignId: null, projectId: null, taskId: null };
   const valid = (v: unknown) => typeof v === 'string' && mongoose.isValidObjectId(v);
   if (valid(links.taskId)) {
-    const task = await Task.findById(links.taskId).select('projectId campaignId');
-    if (!task) throw new LibraryError(404, 'Task not found');
+    const task = await Task.findById(links.taskId).select('ownerId campaignId');
+    if (!task) throw new LibraryError(404, 'Post not found');
+    if (String(task.ownerId) !== String(ownerId) || (!isAdmin(user) && String(task.ownerId) !== String(user._id))) {
+      throw new LibraryError(403, 'You can only link items to your own posts');
+    }
     out.taskId = task._id as Id;
-    out.projectId = task.projectId;
-    out.campaignId = task.campaignId;
+    out.campaignId = (task.campaignId as Id) || null;
+    return out;
+  }
+  if (valid(links.campaignId)) {
+    out.campaignId = oid(links.campaignId);
   } else if (valid(links.projectId)) {
     const project = await Project.findById(links.projectId).select('campaignId');
-    if (!project) throw new LibraryError(404, 'Project not found');
-    out.projectId = project._id as Id;
+    if (!project) throw new LibraryError(404, 'Campaign not found');
     out.campaignId = project.campaignId;
-  } else if (valid(links.campaignId)) {
-    out.campaignId = oid(links.campaignId);
   }
   if (out.campaignId) {
     const campaign = await Campaign.findById(out.campaignId).select('createdBy');
     if (!campaign) throw new LibraryError(404, 'Campaign not found');
     if (!isAdmin(user) && String(campaign.createdBy) !== String(user._id)) {
-      throw new LibraryError(403, 'You can only link items to your own campaigns, projects and tasks');
+      throw new LibraryError(403, 'You can only link items to your own campaigns and posts');
     }
     if (String(campaign.createdBy) !== String(ownerId) && !isAdmin(user)) {
       throw new LibraryError(403, 'That campaign belongs to someone else');
@@ -468,6 +474,28 @@ export async function restoreVersion(asset: ILibraryAsset, versionId: unknown, u
   await enqueueAnalyze(asset.ownerId, asset._id as Id);
   invalidateOwner(asset.ownerId);
   return created;
+}
+
+/**
+ * Keeps only the newest `keep` versions of an item (the current one always stays). Files no other
+ * version uses are deleted. Used for posts' Library items, which keep 4 pictures like the post.
+ */
+export async function pruneVersions(asset: ILibraryAsset, keep: number): Promise<number> {
+  const versions = await LibraryVersion.find({ assetId: asset._id }).sort({ number: -1 });
+  const old = versions.slice(Math.max(1, keep)).filter((v) => String(v._id) !== String(asset.currentVersionId));
+  if (!old.length) return 0;
+  const keys = new Set<string>();
+  old.forEach((v) => [v.s3Key, v.thumbKey, v.aiKey].forEach((k) => k && keys.add(k)));
+  await LibraryVersion.deleteMany({ _id: { $in: old.map((v) => v._id) } });
+  asset.versionCount = Math.max(1, versions.length - old.length);
+  await asset.save();
+  for (const key of keys) {
+    const stillUsed = await LibraryVersion.exists({ $or: [{ s3Key: key }, { thumbKey: key }, { aiKey: key }] });
+    if (!stillUsed) await deleteFromS3(key).catch(() => undefined);
+  }
+  hashCache.delete(String(asset.ownerId));
+  invalidateOwner(asset.ownerId);
+  return old.length;
 }
 
 export async function trashAsset(asset: ILibraryAsset) {

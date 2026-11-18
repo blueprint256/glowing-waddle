@@ -51,12 +51,9 @@ const campaignDoc = (n: number, extra: any = {}) => ({
   _id: ID(n), name: `Campaign ${n}`, status: 'active', archived: false, startDate: '2026-11-01T00:00:00.000Z',
   createdBy: { _id: ID(900), firstName: 'Ada', lastName: 'Lovelace', email: 'ada@example.com' }, createdAt: '2026-10-01T00:00:00.000Z', ...extra
 });
-const projectDoc = (n: number, campaign = 1, extra: any = {}) => ({
-  _id: ID(n), name: `Project ${n}`, status: 'planning', campaignId: { _id: ID(campaign), name: `Campaign ${campaign}` }, assignments: [], ...extra
-});
-const taskDoc = (n: number, project = 10, extra: any = {}) => ({
+const taskDoc = (n: number, campaign: number | null = 1, extra: any = {}) => ({
   _id: ID(n), name: `Task ${n}`, status: 'Draft', taskDate: '2026-11-20T00:00:00.000Z', content: 'Post copy',
-  projectId: { _id: ID(project), name: `Project ${project}` }, campaignId: { _id: ID(1), name: 'Campaign 1' }, ...extra
+  campaignId: campaign === null ? null : { _id: ID(campaign), name: `Campaign ${campaign}` }, ...extra
 });
 
 function startFakeApi(): Promise<http.Server> {
@@ -215,7 +212,7 @@ async function main() {
     assert.equal(body.result.protocolVersion, '2025-06-18');
     assert.deepEqual(body.result.capabilities, { tools: { listChanged: false } });
     assert.equal(body.result.serverInfo.name, 'blueprint-campaigns');
-    assert.ok(body.result.instructions.includes('Campaign → Themes → Posts'));
+    assert.ok(body.result.instructions.includes('posts, optionally grouped in campaigns'));
     const unknown = (await handlePost({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '1999-01-01' } }, { tools: TOOLS, ctx: hybrid })).body as any;
     assert.equal(unknown.result.protocolVersion, LATEST_PROTOCOL_VERSION);
   });
@@ -281,13 +278,20 @@ async function main() {
   });
   await test('invalid arguments come back as a tool error Claude can fix', async () => {
     const before = recorded.length;
-    const res = await call(hybrid, 'create_task', { project_id: 'abc', name: '' });
+    const res = await call(hybrid, 'create_task', { campaign_id: 'abc', name: '' });
     assert.equal(res.result.isError, true);
-    assert.match(textOf(res), /project_id has an invalid format/);
+    assert.match(textOf(res), /campaign_id has an invalid format/);
     assert.match(textOf(res), /name must not be empty/);
     assert.equal(recorded.length, before, 'no API call on invalid input');
-    const res2 = await call(hybrid, 'create_task', { project_id: ID(10), name: 'x', priority: 'high' });
+    const res2 = await call(hybrid, 'create_task', { campaign_id: ID(1), name: 'x', priority: 'high' });
     assert.match(textOf(res2), /priority is not a recognised field/);
+    // Themes are retired: the old field is refused with a clear message.
+    const res3 = await call(hybrid, 'create_task', { project_id: ID(10), name: 'x' });
+    assert.match(textOf(res3), /project_id is not a recognised field/);
+    // A post needs something to go on.
+    const res4 = await call(hybrid, 'create_task', {});
+    assert.equal(res4.result.isError, true);
+    assert.equal(recorded.length, before, 'no API call on invalid input');
   });
 
   // -------------------------------------------------------------------------
@@ -299,24 +303,36 @@ async function main() {
   routes['POST /api/campaigns'] = (r) => ({ status: 201, body: { success: true, message: 'Campaign created successfully', campaign: campaignDoc(3, { name: r.body.name, hashtags: r.body.hashtags }) } });
   routes[`GET /api/campaigns/${ID(1)}`] = () => ({ body: { success: true, campaign: campaignDoc(1) } });
   routes[`GET /api/campaigns/${ID(66)}`] = () => ({ status: 403, body: { success: false, message: 'Access denied: You can only view campaigns you created' } });
-  routes['GET /api/projects'] = () => ({ body: { success: true, projects: [projectDoc(10), projectDoc(11)], pagination: { total: 2, page: 1, limit: 500, pages: 1 } } });
   routes['GET /api/tasks'] = () => ({
     body: {
       success: true,
-      tasks: [taskDoc(100), taskDoc(101, 10, { status: 'Ready', taskDate: '2026-11-21T09:00:00.000Z' }), taskDoc(102, 11, { taskDate: null })],
+      tasks: [taskDoc(100), taskDoc(101, 1, { status: 'Ready', taskDate: '2026-11-21T09:00:00.000Z' }), taskDoc(102, null, { taskDate: null })],
       pagination: { total: 3, page: 1, limit: 50, pages: 1 }
     }
   });
-  routes['POST /api/projects'] = (r) => ({ status: 201, body: { success: true, message: 'Project created successfully', project: projectDoc(12, 1, { name: r.body.name }) } });
-  routes[`PUT /api/projects/${ID(12)}`] = (r) => ({ body: { success: true, message: 'Project updated successfully', project: projectDoc(12, 1, { status: r.body.status }) } });
   let taskCounter = 200;
   routes['POST /api/tasks'] = (r) =>
     r.body.name === 'fail-me'
       ? { status: 400, body: { success: false, message: 'Validation error', errors: [{ path: 'taskDate', msg: 'taskDate must be a valid date' }] } }
-      : { status: 201, body: { success: true, message: 'Task created successfully', task: taskDoc(taskCounter++, 10, { name: r.body.name, content: r.body.content }) } };
-  routes[`PUT /api/tasks/${ID(100)}`] = (r) => ({ body: { success: true, message: 'Task updated successfully', task: taskDoc(100, 10, r.body) } });
+      : { status: 201, body: { success: true, message: 'Post created', task: taskDoc(taskCounter++, r.body.campaignId ? 1 : null, { name: r.body.name || 'Coming soon', content: r.body.content }) } };
+  routes[`PUT /api/tasks/${ID(100)}`] = (r) => ({ body: { success: true, message: 'Post saved', task: taskDoc(100, r.body.campaignId === null ? null : 1, r.body) } });
   routes[`DELETE /api/tasks/${ID(100)}`] = () => ({ body: { success: true, message: 'Task deleted successfully' } });
-  routes[`GET /api/tasks/${ID(100)}`] = () => ({ body: { success: true, task: taskDoc(100) } });
+  routes[`GET /api/tasks/${ID(100)}`] = () => ({
+    body: {
+      success: true,
+      task: taskDoc(100, 1, {
+        autoName: true,
+        legacyTheme: 'Launch week',
+        designedImage: 'https://cdn.example.com/now.jpg',
+        imageHistory: [{ url: 'https://cdn.example.com/before.jpg', source: 'earlier', at: '2026-11-01T00:00:00.000Z' }],
+        aiDrafts: [{ id: 'd1', url: 'https://cdn.example.com/draft.jpg', kind: 'change', prompt: 'make it blue', at: '2026-11-02T00:00:00.000Z' }],
+        references: [{ id: 'r1', url: 'https://cdn.example.com/ref.jpg', role: 'style', name: 'Poster I like' }]
+      })
+    }
+  });
+  routes[`POST /api/tasks/${ID(100)}/image/create`] = (r) => ({ body: { success: true, message: 'AI picture ready', draft: { id: 'd2', url: 'https://cdn.example.com/new.jpg', kind: 'create', got: r.body } } });
+  routes[`POST /api/tasks/${ID(100)}/image/change`] = () => ({ body: { success: true, message: 'Changed picture ready', draft: { id: 'd3', url: 'https://cdn.example.com/changed.jpg', kind: 'change' } } });
+  routes[`POST /api/tasks/${ID(100)}/image/use`] = (r) => ({ body: { success: true, message: 'Picture updated', task: { designedImage: r.body.url } } });
   routes['GET /api/comments'] = () => ({ body: { success: true, comments: [{ _id: ID(500), content: 'Looks good', authorId: { _id: ID(900), firstName: 'Ada', lastName: 'Lovelace' }, createdAt: '2026-11-02T00:00:00.000Z' }] } });
   routes['POST /api/comments'] = (r) => ({ status: 201, body: { success: true, message: 'Comment created successfully', comment: { _id: ID(501), content: r.body.content, authorId: { _id: ID(900), firstName: 'Ada', lastName: 'Lovelace' } } } });
   routes[`PUT /api/campaigns/${ID(1)}/unarchive`] = () => ({ body: { success: true, message: 'Campaign restored successfully', campaign: campaignDoc(1) } });
@@ -348,13 +364,13 @@ async function main() {
     assert.equal(data.campaigns[0].created_by.name, 'Ada Lovelace');
     assert.equal(data.pagination.total, 2);
   });
-  await test('get_campaign aggregates projects and task counts', async () => {
+  await test('get_campaign counts its posts by status and finds the next day', async () => {
     const data = jsonOf(await call(hybrid, 'get_campaign', { campaign_id: ID(1) }));
     assert.equal(data.campaign.name, 'Campaign 1');
-    assert.equal(data.projects.length, 2);
-    assert.deepEqual(data.projects[0].task_counts, { total: 2, Idea: 0, Draft: 1, Ready: 1, Scheduled: 0, Published: 0, 'Needs attention': 0 });
-    assert.equal(data.projects[1].task_counts.total, 1);
-    assert.equal(data.total_tasks, 3);
+    assert.equal(data.projects, undefined, 'themes are retired');
+    assert.deepEqual(data.post_counts, { total: 3, Idea: 0, Draft: 2, Ready: 1, Scheduled: 0, Published: 0, 'Needs attention': 0 });
+    const today = new Date().toISOString().slice(0, 10);
+    assert.equal(data.next_post_day, ['2026-11-20', '2026-11-21'].find((d) => d >= today) || null);
   });
   await test('API permission errors surface as tool errors with the API message', async () => {
     const res = await call(hybrid, 'get_campaign', { campaign_id: ID(66) });
@@ -373,33 +389,66 @@ async function main() {
     assert.match(textOf(res), /Nothing to update/);
     assert.equal(recorded.length, before);
   });
-  await test('create_project applies a non-default status with a follow-up update', async () => {
-    const data = jsonOf(await call(hybrid, 'create_project', { campaign_id: ID(1), name: 'Socials', status: 'in_progress' }));
-    const reqs = recorded.slice(-2);
-    assert.equal(reqs[0].method, 'POST');
-    assert.deepEqual(reqs[0].body, { campaignId: ID(1), name: 'Socials' });
-    assert.equal(reqs[1].method, 'PUT');
-    assert.deepEqual(reqs[1].body, { status: 'in_progress' });
-    assert.equal(data.project.status, 'in_progress');
+  await test('theme tools are gone', () => {
+    for (const gone of ['list_projects', 'get_project', 'create_project', 'update_project', 'assign_user_to_project', 'remove_user_from_project']) {
+      assert.ok(!TOOLS.some((t) => t.name === gone), gone);
+    }
   });
-  await test('create_task / update_task / delete_task', async () => {
-    const created = jsonOf(await call(hybrid, 'create_task', { project_id: ID(10), name: 'Teaser', content: 'Coming soon', task_date: '2026-11-25', status: 'Draft' }));
-    assert.deepEqual(lastReq().body, { projectId: ID(10), name: 'Teaser', content: 'Coming soon', taskDate: '2026-11-25', status: 'Draft' });
+  await test('create_task (with or without a campaign) / update_task / delete_task', async () => {
+    const created = jsonOf(await call(hybrid, 'create_task', { campaign_id: ID(1), name: 'Teaser', content: 'Coming soon', task_date: '2026-11-25', status: 'Draft' }));
+    assert.deepEqual(lastReq().body, { campaignId: ID(1), name: 'Teaser', content: 'Coming soon', taskDate: '2026-11-25', status: 'Draft' });
     assert.equal(created.task.name, 'Teaser');
     assert.ok(created.task.url.startsWith('http://localhost:3000/posts/'));
+    const loose = jsonOf(await call(hybrid, 'create_task', { content: 'Coming soon' }));
+    assert.deepEqual(lastReq().body, { content: 'Coming soon' });
+    assert.equal(loose.task.campaign, null);
     const updated = jsonOf(await call(hybrid, 'update_task', { task_id: ID(100), status: 'Ready', task_date: null }));
     assert.deepEqual(lastReq().body, { status: 'Ready', taskDate: null });
     assert.equal(updated.task.status, 'Ready');
+    const out = jsonOf(await call(hybrid, 'update_task', { task_id: ID(100), campaign_id: null, name: null }));
+    assert.deepEqual(lastReq().body, { campaignId: null, name: '' });
+    assert.equal(out.task.campaign, null);
     const deleted = jsonOf(await call(hybrid, 'delete_task', { task_id: ID(100) }));
     assert.equal(lastReq().method, 'DELETE');
     assert.equal(deleted.message, 'Task deleted successfully');
   });
   await test('create_tasks reports per-item results and validation details', async () => {
-    const data = jsonOf(await call(hybrid, 'create_tasks', { project_id: ID(10), tasks: [{ name: 'A' }, { name: 'fail-me' }, { name: 'C', content: 'x' }] }));
-    assert.equal(data.message, 'Created 2 of 3 task(s)');
+    const data = jsonOf(await call(hybrid, 'create_tasks', { campaign_id: ID(1), tasks: [{ name: 'A' }, { name: 'fail-me' }, { name: 'C', content: 'x' }, { status: 'Idea' }] }));
+    assert.equal(data.message, 'Created 2 of 4 post(s)');
     assert.equal(data.results[1].created, false);
     assert.equal(data.results[1].error, 'Validation error (taskDate: taskDate must be a valid date)');
     assert.equal(data.results[2].task.content, 'x');
+    assert.match(data.results[3].error, /caption, a brief or a title/);
+  });
+  await test('list_tasks can ask for posts without a campaign', async () => {
+    await call(hybrid, 'list_tasks', { campaign_id: 'none' });
+    assert.equal(lastReq().query.campaignId, 'none');
+    const bad = await call(hybrid, 'list_tasks', { campaign_id: 'nothing' });
+    assert.equal(bad.result.isError, true);
+  });
+  await test('get_task shows the picture, earlier pictures, AI drafts and references', async () => {
+    const data = jsonOf(await call(hybrid, 'get_task', { task_id: ID(100) }));
+    assert.equal(data.task.title_is_automatic, true);
+    assert.equal(data.task.old_theme, 'Launch week');
+    assert.deepEqual(data.task.earlier_image_urls, ['https://cdn.example.com/before.jpg']);
+    assert.deepEqual(data.task.ai_draft_images[0], { id: 'd1', url: 'https://cdn.example.com/draft.jpg', kind: 'changed', change: 'make it blue', created_at: '2026-11-02T00:00:00.000Z' });
+    assert.deepEqual(data.task.reference_images, [{ id: 'r1', url: 'https://cdn.example.com/ref.jpg', role: 'copy_style', name: 'Poster I like' }]);
+  });
+  await test('picture tools: create, change and use a draft', async () => {
+    const ai = makeCtx(port, { canUseAI: true, accessMode: 'part_one' });
+    const made = jsonOf(await call(ai, 'generate_task_poster', { task_id: ID(100), format: 'portrait', logo: null }));
+    assert.deepEqual(lastReq().body, { format: 'portrait', logo: null });
+    assert.equal(made.draft_image.url, 'https://cdn.example.com/new.jpg');
+    const changed = jsonOf(await call(ai, 'change_task_picture', { task_id: ID(100), instruction: 'Replace the mountain with a waterfall' }));
+    assert.deepEqual(lastReq().body, { instruction: 'Replace the mountain with a waterfall' });
+    assert.equal(changed.draft_image.id, 'd3');
+    const used = jsonOf(await call(ai, 'adopt_task_poster', { task_id: ID(100), action: 'adopt', draft_id: 'd1' }));
+    assert.deepEqual(lastReq().body, { url: 'https://cdn.example.com/draft.jpg' });
+    assert.equal(used.image_url, 'https://cdn.example.com/draft.jpg');
+    const missing = await call(ai, 'adopt_task_poster', { task_id: ID(100), action: 'adopt', draft_id: 'gone' });
+    assert.match(textOf(missing), /no longer exists/);
+    // Without the app's AI the picture tools aren't offered.
+    assert.equal((await call(hybrid, 'change_task_picture', { task_id: ID(100), instruction: 'x y z' })).error?.code !== undefined, true);
   });
   await test('get_calendar groups by UTC day and validates the range', async () => {
     const data = jsonOf(await call(hybrid, 'get_calendar', { date_from: '2026-11-01', date_to: '2026-11-30' }));

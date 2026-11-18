@@ -38,11 +38,14 @@ export const PLACEHOLDERS: PlaceholderInfo[] = [
   { name: 'postTitle', aliasOf: 'taskName', group: 'Post', description: 'The post’s title (internal)' },
   { name: 'brief', aliasOf: 'taskDescription', group: 'Post', description: 'The post’s brief: what it should achieve and show' },
   { name: 'caption', aliasOf: 'taskContent', group: 'Post', description: 'The post’s caption (the text that gets published)' },
-  { name: 'instruction', group: 'Post', description: 'Improve caption: what to change (e.g. “make it shorter”)' },
+  { name: 'instruction', group: 'Post', description: 'Improve caption or Change image: what to change (e.g. “make it shorter”, “make the sky a sunset”)' },
   { name: 'platform', group: 'Post', description: 'Improve caption: the platform to fit, when one was chosen' },
   // Images
-  { name: 'image', aliasOf: 'baseImage', group: 'Images', description: 'Link to the post’s current image' },
+  { name: 'image', aliasOf: 'baseImage', group: 'Images', description: 'Link to the post’s current picture (empty in Create image, which starts fresh)' },
   { name: 'referenceImage1', aliasOf: 'attachedImage1', group: 'Images', description: 'Link to reference image 1 (2, 3 … also work)' },
+  { name: 'references', group: 'Images', description: 'Create image: what each reference picture is for (“Include this” or “Copy this style”); the pictures themselves are always sent' },
+  { name: 'format', group: 'Images', description: 'Create image: the shape (square, portrait or landscape)' },
+  { name: 'logoNote', group: 'Images', description: 'Create or Change image: where the real logo will be placed (or that there is none)' },
   // Steps
   { name: 'previousOutput', group: 'Steps', description: 'In a multi-step command: the previous step’s answer' },
   // Older names (still work)

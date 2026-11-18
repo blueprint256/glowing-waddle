@@ -153,21 +153,12 @@ export const checkTaskOwnership = async (
       return next();
     }
 
-    // Check ownership through parent campaign
-    const campaign = await Campaign.findById(task.campaignId);
-    if (!campaign) {
+    // A post belongs to an account (ownerId), with or without a campaign. Others' posts are
+    // reported as missing, so their ids aren't confirmed.
+    if (String(task.ownerId) !== String(req.user._id)) {
       res.status(404).json({
         success: false,
-        message: 'Parent campaign not found'
-      });
-      return;
-    }
-
-    // Hybrid users can only access tasks under campaigns they created
-    if (campaign.createdBy.toString() !== req.user._id.toString()) {
-      res.status(403).json({
-        success: false,
-        message: 'Access denied: You can only access posts under campaigns you created'
+        message: 'Post not found'
       });
       return;
     }

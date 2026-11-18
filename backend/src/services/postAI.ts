@@ -7,11 +7,11 @@ import { compileSuperPrompt, executeCommandChain, sendToLLM } from './llmService
 import { AIError } from '../lib/aiError';
 
 /**
- * AI writing help on a post (Improve caption, Improve brief).
+ * AI writing help on a post (Write / Improve caption; Improve brief for the connector).
  *
  * Each feature runs the admin's command when one is set up (Settings → AI, or the connector's
  * set_command), and otherwise a built-in prompt, so it works from day one. Always uses the brand of
- * the campaign's owner (an admin working on a client's post gets the client's brand).
+ * the account the post belongs to (an admin working on a client's post gets the client's brand).
  */
 
 type Id = mongoose.Types.ObjectId;
@@ -39,7 +39,7 @@ export const CAPTION_STYLES: Record<string, { label: string; instruction: string
     platform: 'Instagram',
     instruction: 'Fit Instagram: a hook in the first 125 characters (shown before "more"), line breaks for easy reading, hashtags at the end (30 at most).'
   },
-  write: { label: 'Write caption', instruction: 'There is no caption yet. Write one from the brief and the post title.' }
+  write: { label: 'Write caption', instruction: 'There is no caption yet. Write one from the brief (what the post is about).' }
 };
 
 export const BUILTIN_IMPROVE_CAPTION = `You are the social media copywriter for this brand.
@@ -80,10 +80,12 @@ Current caption (may be empty): {caption}
 
 Write the improved brief as plain text (no headings, no preamble), 60 to 120 words, covering the goal of the post, the key message, the visual idea, the call to action and the best platform. Follow the brand's tone and rules. Do not invent prices, dates or offers. Reply with the brief only.`;
 
-/** The brand (of the campaign owner) and the campaign, for prompts. */
+/** The brand (of the account the post belongs to) and its campaign, if any, for prompts. */
 export async function postContext(task: ITask, fallbackUserId: Id) {
-  const campaign = await Campaign.findById(task.campaignId);
-  const owner = await User.findById(campaign?.createdBy || fallbackUserId);
+  const [campaign, owner] = await Promise.all([
+    task.campaignId ? Campaign.findById(task.campaignId) : Promise.resolve(null),
+    User.findById(task.ownerId || fallbackUserId)
+  ]);
   return { campaign, companyInfo: owner?.companyInfo };
 }
 

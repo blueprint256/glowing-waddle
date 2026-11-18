@@ -39,6 +39,7 @@ import { startInboxWorker } from './inbox/rules';
 import { startPublishingWorker } from './publishing/worker';
 import { startLibraryWorker } from './library/worker';
 import { migrateTaskStatuses } from './services/postStatus';
+import { migratePostsToV2 } from './services/posts';
 import mcpRouter from './mcp/router';
 
 const app = express();
@@ -162,6 +163,8 @@ app.post('/api/tasks/:id/generate-poster', requireAI);
 app.post('/api/tasks/:id/refine-description', requireAI);
 app.post('/api/tasks/:id/improve-caption', requireAI);
 app.patch('/api/tasks/:id/adopt-poster', requireAI);
+app.post('/api/tasks/:id/image/create', requireAI);
+app.post('/api/tasks/:id/image/change', requireAI);
 
 // API Routes
 app.use('/api', connectedAppsRoutes); // /api/oauth/requests/*, /api/connected-apps
@@ -237,7 +240,11 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 API: http://localhost:${PORT}`);
-  migrateTaskStatuses().catch((e) => console.error('[posts] status migration failed:', e));
+  // Post v2 first (owners, retired themes, reference pictures), then the status names.
+  migratePostsToV2()
+    .catch((e) => console.error('[posts] Post v2 migration failed:', e))
+    .then(() => migrateTaskStatuses())
+    .catch((e) => console.error('[posts] status migration failed:', e));
   startLibraryWorker();
   startPublishingWorker();
   startInboxWorker();

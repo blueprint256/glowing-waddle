@@ -43,14 +43,14 @@ const OBJECT_ID_PATTERN = '^[a-fA-F0-9]{24}$';
 const DATE_PATTERN = '^\\d{4}-\\d{2}-\\d{2}(T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,3})?)?(Z|[+-]\\d{2}:\\d{2})?)?$';
 
 const CAMPAIGN_STATUSES = ['draft', 'planning', 'active', 'paused', 'completed', 'archived'];
-const PROJECT_STATUSES = ['planning', 'in_progress', 'review', 'completed', 'on_hold'];
 // Post (task) statuses. Scheduled / Published / Needs attention also follow Publishing automatically.
 const TASK_STATUSES = ['Idea', 'Draft', 'Ready', 'Scheduled', 'Published', 'Needs attention'];
 const SETTABLE_TASK_STATUSES = ['Idea', 'Draft', 'Ready', 'Published'];
 const emptyTaskCounts = (): Record<string, number> => Object.fromEntries([['total', 0], ...TASK_STATUSES.map((s) => [s, 0])]);
-const PROJECT_ROLES = ['project_manager', 'project_marketer', 'project_designer', 'viewer'];
 
 const id = (what: string): JsonSchema => ({ type: 'string', pattern: OBJECT_ID_PATTERN, description: `${what} (24-character hex ID)` });
+/** A campaign id, or "none" for posts without a campaign. */
+const campaignFilter = (what: string): JsonSchema => ({ type: 'string', pattern: '^([a-fA-F0-9]{24}|none)$', description: `${what} A campaign ID, or "none" for posts without a campaign.` });
 const date = (description: string, nullable = false): JsonSchema => ({
   type: nullable ? ['string', 'null'] : 'string',
   pattern: DATE_PATTERN,
@@ -128,25 +128,6 @@ function shapeCampaign(c: any, appUrl: string) {
   });
 }
 
-function shapeProject(p: any, appUrl: string) {
-  return clean({
-    id: String(p._id),
-    name: p.name,
-    description: p.description || undefined,
-    status: p.status,
-    campaign: ref(p.campaignId),
-    start_date: p.startDate || null,
-    due_date: p.dueDate || null,
-    assignments: Array.isArray(p.assignments) && p.assignments.length
-      ? p.assignments.map((a: any) => clean({ user: person(a.userId) || { id: refId(a.userId) }, role: a.role, assigned_at: a.assignedAt }))
-      : undefined,
-    created_by: person(p.createdBy),
-    created_at: p.createdAt,
-    updated_at: p.updatedAt,
-    url: absolute(appUrl, links.theme(p.campaignId, p._id))
-  });
-}
-
 function shapeTask(t: any, appUrl: string) {
   return clean({
     id: String(t._id),
@@ -155,11 +136,15 @@ function shapeTask(t: any, appUrl: string) {
     status: t.status,
     task_date: t.taskDate || null,
     content: t.content || undefined,
-    project: ref(t.projectId),
-    campaign: ref(t.campaignId),
+    title_is_automatic: t.autoName ? true : undefined,
+    campaign: ref(t.campaignId) || null,
+    old_theme: t.legacyTheme || undefined,
     designed_image_url: t.designedImage || undefined,
-    attached_image_urls: t.attachedImages?.length ? t.attachedImages : undefined,
-    has_pending_generated_image: t.pendingGeneratedImage ? true : undefined,
+    earlier_image_urls: t.imageHistory?.length ? t.imageHistory.map((h: any) => h.url) : undefined,
+    ai_draft_images: t.aiDrafts?.length
+      ? t.aiDrafts.map((d: any) => clean({ id: d.id, url: d.url, kind: d.kind === 'change' ? 'changed' : 'created', change: d.kind === 'change' ? d.prompt : undefined, created_at: d.at }))
+      : undefined,
+    reference_images: t.references?.length ? t.references.map((r: any) => ({ id: r.id, url: r.url, role: r.role === 'style' ? 'copy_style' : 'include', name: r.name || '' })) : undefined,
     created_by: person(t.createdBy),
     last_modified_by: person(t.lastModifiedBy),
     created_at: t.createdAt,
@@ -368,31 +353,24 @@ const campaignTools: Tool[] = [
   {
     name: 'get_campaign',
     title: 'Get campaign',
-    description: 'Full details of one campaign, including its themes (projects) with post counts per status.',
+    description: 'Full details of one campaign, with how many posts it has per status and its next post day.',
     inputSchema: obj({ campaign_id: id('Campaign ID.') }, ['campaign_id']),
     annotations: READ,
     handler: async (args, ctx) => {
-      const [campaignRes, projectsRes, tasksRes] = await Promise.all([
+      const [campaignRes, tasksRes] = await Promise.all([
         ctx.api.request('GET', `/api/campaigns/${args.campaign_id}`),
-        ctx.api.request('GET', '/api/projects', { query: { campaignId: args.campaign_id, limit: 500 } }),
         ctx.api.request('GET', '/api/tasks', { query: { campaignId: args.campaign_id, limit: 5000 } })
       ]);
-      const counts = new Map<string, Record<string, number>>();
+      const counts = emptyTaskCounts();
+      const today = new Date().toISOString().slice(0, 10);
+      let nextDay: string | null = null;
       for (const t of tasksRes.tasks) {
-        const pid = refId(t.projectId) || 'unknown';
-        const c = counts.get(pid) || emptyTaskCounts();
-        c.total += 1;
-        c[t.status] = (c[t.status] || 0) + 1;
-        counts.set(pid, c);
+        counts.total += 1;
+        counts[t.status] = (counts[t.status] || 0) + 1;
+        const day = t.taskDate ? new Date(t.taskDate).toISOString().slice(0, 10) : null;
+        if (day && day >= today && (!nextDay || day < nextDay)) nextDay = day;
       }
-      return {
-        campaign: shapeCampaign(campaignRes.campaign, ctx.appUrl),
-        projects: projectsRes.projects.map((p: any) => ({
-          ...shapeProject(p, ctx.appUrl),
-          task_counts: counts.get(String(p._id)) || emptyTaskCounts()
-        })),
-        total_tasks: tasksRes.tasks.length
-      };
+      return { campaign: shapeCampaign(campaignRes.campaign, ctx.appUrl), post_counts: counts, next_post_day: nextDay };
     }
   },
   {
@@ -444,145 +422,6 @@ const campaignTools: Tool[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Projects
-// ---------------------------------------------------------------------------
-
-const projectStatus: JsonSchema = { type: 'string', enum: PROJECT_STATUSES, description: 'Project status.' };
-
-const projectTools: Tool[] = [
-  {
-    name: 'list_projects',
-    title: 'List themes (projects)',
-    description: 'List the themes (called projects in these tools) the user can see, optionally within one campaign (newest first). A theme is a strand of a campaign, e.g. "Launch week".',
-    inputSchema: obj({
-      campaign_id: id('Only projects in this campaign.'),
-      status: statusList(PROJECT_STATUSES, 'projects'),
-      search,
-      date_from: date('Only projects whose start or due date is on/after this date.'),
-      date_to: date('Only projects whose start or due date is on/before this date.'),
-      page,
-      limit: limit(50, 200)
-    }),
-    annotations: READ,
-    handler: async (args, ctx) => {
-      const res = await ctx.api.request('GET', '/api/projects', {
-        query: {
-          campaignId: args.campaign_id,
-          status: args.status,
-          search: args.search,
-          dateFrom: startOfDay(args.date_from),
-          dateTo: endOfDay(args.date_to),
-          page: args.page ?? 1,
-          limit: args.limit ?? 50
-        }
-      });
-      return { projects: res.projects.map((p: any) => shapeProject(p, ctx.appUrl)), pagination: paging(res.pagination) };
-    }
-  },
-  {
-    name: 'get_project',
-    title: 'Get theme (project)',
-    description: 'Full details of one theme (project) with its posts (tasks, ordered by day) and its comments.',
-    inputSchema: obj({ project_id: id('Project ID.') }, ['project_id']),
-    annotations: READ,
-    handler: async (args, ctx) => {
-      const [projectRes, tasksRes, commentsRes] = await Promise.all([
-        ctx.api.request('GET', `/api/projects/${args.project_id}`),
-        ctx.api.request('GET', '/api/tasks', { query: { projectId: args.project_id, limit: 1000 } }),
-        ctx.api.request('GET', '/api/comments', { query: { projectId: args.project_id } })
-      ]);
-      return {
-        project: shapeProject(projectRes.project, ctx.appUrl),
-        tasks: tasksRes.tasks.map((t: any) => shapeTask(t, ctx.appUrl)),
-        comments: commentsRes.comments.map(shapeComment)
-      };
-    }
-  },
-  {
-    name: 'create_project',
-    title: 'Create theme (project)',
-    description: 'Create a theme (project) inside a campaign, e.g. "Launch week" or "Customer stories". Status defaults to "planning".',
-    inputSchema: obj(
-      {
-        campaign_id: id('Campaign the project belongs to.'),
-        name: name('Project name.'),
-        description: text('Project description.'),
-        status: projectStatus,
-        start_date: date('Project start date.'),
-        due_date: date('Project due date.')
-      },
-      ['campaign_id', 'name']
-    ),
-    annotations: CREATE,
-    handler: async (args, ctx) => {
-      const res = await ctx.api.request('POST', '/api/projects', {
-        body: pick(args, { campaign_id: 'campaignId', name: 'name', description: 'description', start_date: 'startDate', due_date: 'dueDate' })
-      });
-      let project = res.project;
-      if (args.status && args.status !== 'planning') {
-        const updated = await ctx.api.request('PUT', `/api/projects/${project._id}`, { body: { status: args.status } });
-        project = updated.project;
-      }
-      return { message: res.message, project: shapeProject(project, ctx.appUrl) };
-    }
-  },
-  {
-    name: 'update_project',
-    title: 'Update theme (project)',
-    description: 'Change a theme (project). Only the fields you pass are changed.',
-    inputSchema: obj(
-      {
-        project_id: id('Project ID.'),
-        name: name('New project name.'),
-        description: text('Project description.', 20000, true),
-        status: projectStatus,
-        start_date: date('Project start date.', true),
-        due_date: date('Project due date.', true)
-      },
-      ['project_id']
-    ),
-    annotations: UPDATE,
-    handler: async (args, ctx) => {
-      const body = pick(args, { name: 'name', description: 'description', status: 'status', start_date: 'startDate', due_date: 'dueDate' });
-      requireSomeField(body, 'name, description, status, start_date, due_date');
-      const res = await ctx.api.request('PUT', `/api/projects/${args.project_id}`, { body });
-      return { message: res.message, project: shapeProject(res.project, ctx.appUrl) };
-    }
-  },
-  {
-    name: 'assign_user_to_project',
-    title: 'Assign user to project',
-    description: 'Add a team member to a project with a project role. Needs the user\'s ID (System Admins can look it up with list_users).',
-    inputSchema: obj(
-      {
-        project_id: id('Project ID.'),
-        user_id: id('User to assign.'),
-        role: { type: 'string', enum: PROJECT_ROLES, description: 'Role on this project.' }
-      },
-      ['project_id', 'user_id', 'role']
-    ),
-    annotations: CREATE,
-    handler: async (args, ctx) => {
-      const res = await ctx.api.request('POST', `/api/projects/${args.project_id}/assignments`, {
-        body: { userId: args.user_id, role: args.role }
-      });
-      return { message: res.message, project: shapeProject(res.project, ctx.appUrl) };
-    }
-  },
-  {
-    name: 'remove_user_from_project',
-    title: 'Remove user from project',
-    description: 'Remove a team member from a project.',
-    inputSchema: obj({ project_id: id('Project ID.'), user_id: id('User to remove.') }, ['project_id', 'user_id']),
-    annotations: DESTRUCTIVE,
-    handler: async (args, ctx) => {
-      const res = await ctx.api.request('DELETE', `/api/projects/${args.project_id}/assignments/${args.user_id}`);
-      return { message: res.message };
-    }
-  }
-];
-
-// ---------------------------------------------------------------------------
 // Tasks
 // ---------------------------------------------------------------------------
 
@@ -596,8 +435,8 @@ const taskContent = text(
   50000
 );
 const newTaskFields = {
-  name: name('Post title (only the user sees it).'),
-  description: text('The brief: what the post should achieve and show.'),
+  name: name('Post title (only the user sees it). Leave out to use the start of the caption, which is usually best.'),
+  description: text('What the post is about (the brief): its goal, key message and picture idea. The app\'s AI uses it to write the caption and create the picture.'),
   task_date: date('The day the post goes out (places it in the Planner).'),
   content: taskContent,
   status: taskStatus
@@ -608,10 +447,9 @@ const taskTools: Tool[] = [
   {
     name: 'list_tasks',
     title: 'List posts (tasks)',
-    description: 'List the posts (called tasks in these tools) the user can see, ordered by day. Filter by theme (project), campaign, status, date range or text.',
+    description: 'List the posts (called tasks in these tools) the user can see, ordered by day. Filter by campaign (or posts without one), status, date range or text.',
     inputSchema: obj({
-      project_id: id('Only tasks in this project.'),
-      campaign_id: id('Only tasks in this campaign.'),
+      campaign_id: campaignFilter('Only posts in this campaign.'),
       status: statusList(TASK_STATUSES, 'tasks'),
       date_from: date('Only tasks dated on/after this date.'),
       date_to: date('Only tasks dated on/before this date (inclusive).'),
@@ -623,7 +461,6 @@ const taskTools: Tool[] = [
     handler: async (args, ctx) => {
       const res = await ctx.api.request('GET', '/api/tasks', {
         query: {
-          projectId: args.project_id,
           campaignId: args.campaign_id,
           status: args.status,
           dateFrom: startOfDay(args.date_from),
@@ -644,8 +481,7 @@ const taskTools: Tool[] = [
       {
         date_from: date('First day (inclusive).'),
         date_to: date('Last day (inclusive). At most 366 days after date_from.'),
-        campaign_id: id('Only tasks in this campaign.'),
-        project_id: id('Only tasks in this project.'),
+        campaign_id: campaignFilter('Only posts in this campaign.'),
         status: statusList(TASK_STATUSES, 'tasks')
       },
       ['date_from', 'date_to']
@@ -661,7 +497,6 @@ const taskTools: Tool[] = [
           dateFrom: from.toISOString(),
           dateTo: to.toISOString(),
           campaignId: args.campaign_id,
-          projectId: args.project_id,
           status: args.status,
           limit: 2000
         }
@@ -677,7 +512,7 @@ const taskTools: Tool[] = [
   {
     name: 'get_task',
     title: 'Get post (task)',
-    description: 'Full details of one post (task): title, brief, caption (content), day, status, and its comments.',
+    description: 'Full details of one post (task): title, brief (description), caption (content), day, status, campaign, its picture with up to 3 earlier pictures, AI draft pictures not chosen yet, and reference pictures.',
     inputSchema: obj({ task_id: id('Task ID.') }, ['task_id']),
     annotations: READ,
     handler: async (args, ctx) => {
@@ -685,18 +520,20 @@ const taskTools: Tool[] = [
         ctx.api.request('GET', `/api/tasks/${args.task_id}`),
         ctx.api.request('GET', '/api/comments', { query: { taskId: args.task_id } })
       ]);
-      return { task: shapeTask(taskRes.task, ctx.appUrl), comments: commentsRes.comments.map(shapeComment) };
+      const comments = commentsRes.comments.map(shapeComment);
+      return { task: shapeTask(taskRes.task, ctx.appUrl), ...(comments.length ? { comments } : {}) };
     }
   },
   {
     name: 'create_task',
     title: 'Create post (task)',
-    description: 'Create a post (task) in a theme (project). Put the brief in "description" and the finished caption in "content". Status defaults to "Draft".',
-    inputSchema: obj({ project_id: id('Project the task belongs to.'), ...newTaskFields }, ['project_id', 'name']),
+    description: 'Create a post (task), in a campaign or on its own (everyday content). Put what the post is about in "description" and the finished caption in "content". Status defaults to "Draft".',
+    inputSchema: obj({ campaign_id: id('The campaign the post belongs to. Leave out for a post without a campaign.'), ...newTaskFields }),
     annotations: CREATE,
     handler: async (args, ctx) => {
+      requireSomeField(pick(args, taskMapping), 'name, description, content');
       const res = await ctx.api.request('POST', '/api/tasks', {
-        body: { projectId: args.project_id, ...pick(args, taskMapping) }
+        body: { ...(args.campaign_id ? { campaignId: args.campaign_id } : {}), ...pick(args, taskMapping) }
       });
       return { message: res.message, task: shapeTask(res.task, ctx.appUrl) };
     }
@@ -704,19 +541,19 @@ const taskTools: Tool[] = [
   {
     name: 'create_tasks',
     title: 'Create several posts (tasks)',
-    description: 'Create up to 50 posts (tasks) in one theme (project) in one go (e.g. a month of content). Each is created separately; the result lists which succeeded.',
+    description: 'Create up to 50 posts (tasks) in one go (e.g. a month of content), in one campaign or without a campaign. Each is created separately; the result lists which succeeded.',
     inputSchema: obj(
       {
-        project_id: id('Project the tasks belong to.'),
+        campaign_id: id('The campaign the posts belong to. Leave out for posts without a campaign.'),
         tasks: {
           type: 'array',
           minItems: 1,
           maxItems: 50,
-          items: obj(newTaskFields, ['name']),
-          description: 'Tasks to create.'
+          items: obj(newTaskFields),
+          description: 'Posts to create (each needs a caption, a brief or a title).'
         }
       },
-      ['project_id', 'tasks']
+      ['tasks']
     ),
     annotations: CREATE,
     handler: async (args, ctx) => {
@@ -730,13 +567,15 @@ const taskTools: Tool[] = [
           return;
         }
         try {
+          const fields = pick(args.tasks[i], taskMapping);
+          if (!fields.name && !fields.description && !fields.content) throw new ToolError('Give the post a caption, a brief or a title.');
           const res = await ctx.api.request('POST', '/api/tasks', {
-            body: { projectId: args.project_id, ...pick(args.tasks[i], taskMapping) }
+            body: { ...(args.campaign_id ? { campaignId: args.campaign_id } : {}), ...fields }
           });
           results[i] = { index: i, created: true, task: shapeTask(res.task, ctx.appUrl) };
         } catch (error: any) {
           results[i] = { index: i, created: false, name: args.tasks[i].name, error: error?.message || String(error) };
-          // Stop early on errors that will repeat for every task (no access / project gone).
+          // Stop early on errors that will repeat for every post (no access / campaign gone).
           if (error?.status === 401 || error?.status === 403 || error?.status === 404) stop = true;
         }
       };
@@ -748,18 +587,18 @@ const taskTools: Tool[] = [
         })
       );
       const created = results.filter((r) => r.created).length;
-      return { message: `Created ${created} of ${args.tasks.length} task(s)`, results };
+      return { message: `Created ${created} of ${args.tasks.length} post(s)`, results };
     }
   },
   {
     name: 'update_task',
     title: 'Update post (task)',
-    description: 'Change a post (task): title, brief (description), status, day, caption (content), or move it to another theme with project_id. Only the fields you pass are changed. A post that is Scheduled or Needs attention can\'t change status until it\'s cancelled or fixed in Publishing.',
+    description: 'Change a post (task): title, brief (description), status, day, caption (content), or its campaign (campaign_id; null takes it out of its campaign). Only the fields you pass are changed. A post that is Scheduled or Needs attention can\'t change status until it\'s cancelled or fixed in Publishing.',
     inputSchema: obj(
       {
         task_id: id('Post (task) ID.'),
-        project_id: id('Move the post to this theme (project), in this or another of the user\'s campaigns.'),
-        name: name('New post title.'),
+        campaign_id: { type: ['string', 'null'], pattern: OBJECT_ID_PATTERN, description: 'Move the post to this campaign of the same account, or null for no campaign.' },
+        name: { type: ['string', 'null'], maxLength: 200, description: 'New post title, or an empty string to go back to the automatic title (the start of the caption).' },
         description: text('The brief.', 20000, true),
         status: taskStatus,
         task_date: date('Task date.', true),
@@ -769,8 +608,9 @@ const taskTools: Tool[] = [
     ),
     annotations: UPDATE,
     handler: async (args, ctx) => {
-      const body = { ...pick(args, taskMapping), ...(args.project_id ? { projectId: args.project_id } : {}) };
-      requireSomeField(body, 'name, description, status, task_date, content, project_id');
+      const body: Record<string, unknown> = { ...pick(args, taskMapping), ...(args.campaign_id !== undefined ? { campaignId: args.campaign_id } : {}) };
+      if (args.name === null) body.name = '';
+      requireSomeField(body, 'name, description, status, task_date, content, campaign_id');
       const res = await ctx.api.request('PUT', `/api/tasks/${args.task_id}`, { body });
       return { message: res.message, task: shapeTask(res.task, ctx.appUrl) };
     }
@@ -778,7 +618,7 @@ const taskTools: Tool[] = [
   {
     name: 'delete_task',
     title: 'Delete post (task)',
-    description: 'Permanently delete a post (task) and its comments; anything scheduled for it is cancelled. This cannot be undone, so confirm with the user first.',
+    description: 'Permanently delete a post (task), its comments and its pictures (copies in the Library stay); anything scheduled for it is cancelled. This cannot be undone, so confirm with the user first.',
     inputSchema: obj({ task_id: id('Task ID.') }, ['task_id']),
     annotations: DESTRUCTIVE,
     handler: async (args, ctx) => {
@@ -792,15 +632,15 @@ const taskTools: Tool[] = [
 // Comments
 // ---------------------------------------------------------------------------
 
-const targetType: JsonSchema = { type: 'string', enum: ['campaign', 'project', 'task'], description: 'What the comment is attached to.' };
-const targetParam: Record<string, string> = { campaign: 'campaignId', project: 'projectId', task: 'taskId' };
+const targetType: JsonSchema = { type: 'string', enum: ['campaign', 'task'], description: 'What the comment is attached to (task = a post).' };
+const targetParam: Record<string, string> = { campaign: 'campaignId', task: 'taskId' };
 
 const commentTools: Tool[] = [
   {
     name: 'list_comments',
     title: 'List comments',
-    description: 'Comments on a campaign, theme (project) or post (task), newest first.',
-    inputSchema: obj({ target_type: targetType, target_id: id('ID of the campaign, project or task.') }, ['target_type', 'target_id']),
+    description: 'Comments on a campaign or a post (task), newest first.',
+    inputSchema: obj({ target_type: targetType, target_id: id('ID of the campaign or post (task).') }, ['target_type', 'target_id']),
     annotations: READ,
     handler: async (args, ctx) => {
       const res = await ctx.api.request('GET', '/api/comments', { query: { [targetParam[args.target_type]]: args.target_id } });
@@ -810,11 +650,11 @@ const commentTools: Tool[] = [
   {
     name: 'add_comment',
     title: 'Add comment',
-    description: 'Add a comment on a campaign, theme (project) or post (task), as the user. Optionally reply to another comment.',
+    description: 'Add a comment on a campaign or a post (task), as the user. Optionally reply to another comment.',
     inputSchema: obj(
       {
         target_type: targetType,
-        target_id: id('ID of the campaign, project or task.'),
+        target_id: id('ID of the campaign or post (task).'),
         content: { type: 'string', minLength: 1, maxLength: 10000, description: 'Comment text.' },
         reply_to_comment_id: id('Comment being replied to.')
       },
@@ -868,7 +708,7 @@ const aiTools: Tool[] = [
     name: 'generate_campaign_content',
     title: 'Plan a campaign with the app AI',
     description:
-      'Run the app\'s Plan with AI on a campaign: it drafts themes and posts (titles, briefs, captions, days) with the brand and campaign details and creates them straight away. In the app people review the draft first, so only use this when the user explicitly asks for the app\'s own AI planning; otherwise plan the posts yourself with create_project / create_tasks. Confirm the period with the user first.',
+      'Run the app\'s Plan with AI on a campaign: it drafts posts (titles, briefs, captions, days) with the brand and campaign details and creates them straight away. In the app people review the draft first, so only use this when the user explicitly asks for the app\'s own AI planning; otherwise plan the posts yourself with create_tasks. Confirm the period with the user first.',
     inputSchema: obj(
       {
         campaign_id: id('Campaign ID.'),
@@ -889,14 +729,16 @@ const aiTools: Tool[] = [
       });
       return {
         message: res.message,
-        themes: (res.projects || []).map((p: any, i: number) => ({ ...shapeProject(p, ctx.appUrl), posts_created: res.taskCounts?.[i] }))
+        date_from: res.from,
+        date_to: res.to,
+        posts: (res.posts || []).map((p: any) => ({ id: p.id, name: p.name, day: p.day, status: p.status, url: absolute(ctx.appUrl, links.post(p.id)) }))
       };
     }
   },
   {
     name: 'refine_task_description',
     title: 'Improve a post\'s brief (app AI)',
-    description: 'Ask the app\'s AI to rewrite a post\'s brief (the task description). Returns a suggestion only; nothing is saved until you call update_task.',
+    description: 'Ask the app\'s AI to rewrite what a post is about (its brief, the task description). Returns a suggestion only; nothing is saved until you call update_task.',
     inputSchema: obj({ task_id: id('Task ID.') }, ['task_id']),
     annotations: READ,
     isAvailable: canUseAI,
@@ -1084,7 +926,6 @@ function shapeLibraryItem(i: any, appUrl: string, detail = false) {
         })
       : undefined,
     linked_campaign_id: i.links?.campaignId || undefined,
-    linked_project_id: i.links?.projectId || undefined,
     linked_task_id: i.links?.taskId || undefined,
     needs_review: i.needsReview || undefined,
     ai_status: i.aiStatus !== 'done' ? i.aiStatus : undefined,
@@ -1199,7 +1040,7 @@ const libraryTools: Tool[] = [
   {
     name: 'update_library_item',
     title: 'Update Library item',
-    description: 'Fix or enrich a Library item: title, description, event, tags (replaces the list), notes, date, or link it to a task, project or campaign (one link; null to unlink).',
+    description: 'Fix or enrich a Library item: title, description, event, tags (replaces the list), notes, date, or link it to a post (task) or a campaign (one link; null to unlink).',
     inputSchema: obj(
       {
         item_id: id('Library item ID.'),
@@ -1209,8 +1050,7 @@ const libraryTools: Tool[] = [
         tags: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 40 }, maxItems: 30, description: 'Tags (replaces the list).' },
         notes: text('Notes.', 5000),
         date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'The date the item is from, YYYY-MM-DD.' },
-        link_task_id: { type: ['string', 'null'], pattern: OBJECT_ID_PATTERN, description: 'Link to this task (its project and campaign are linked too). null to unlink.' },
-        link_project_id: { type: 'string', pattern: OBJECT_ID_PATTERN, description: 'Link to this project.' },
+        link_task_id: { type: ['string', 'null'], pattern: OBJECT_ID_PATTERN, description: 'Link to this post (task); its campaign is linked too. null to unlink.' },
         link_campaign_id: { type: 'string', pattern: OBJECT_ID_PATTERN, description: 'Link to this campaign.' }
       },
       ['item_id']
@@ -1221,9 +1061,8 @@ const libraryTools: Tool[] = [
       const body: Record<string, unknown> = pick(args, { title: 'title', description: 'description', event: 'event', tags: 'tags', notes: 'notes', date: 'capturedAt' });
       if (args.link_task_id === null) body.links = {};
       else if (args.link_task_id) body.links = { taskId: args.link_task_id };
-      else if (args.link_project_id) body.links = { projectId: args.link_project_id };
       else if (args.link_campaign_id) body.links = { campaignId: args.link_campaign_id };
-      requireSomeField(body, 'title, description, event, tags, notes, date, link_task_id, link_project_id, link_campaign_id');
+      requireSomeField(body, 'title, description, event, tags, notes, date, link_task_id, link_campaign_id');
       const res = await ctx.api.request('PATCH', `/api/library/items/${args.item_id}`, { body });
       return { message: 'Saved', item: shapeLibraryItem(res.item, ctx.appUrl) };
     }
@@ -1455,11 +1294,13 @@ const inboxTools: Tool[] = [
 // AI setup (System Admin): prompts, commands, connection test, usage, posters
 // ---------------------------------------------------------------------------
 
-/** The commands the app's buttons call. */
+/** The commands the app's buttons call. Each one is optional: without it the app uses its built-in prompt. */
 const APP_COMMANDS: Record<string, string> = {
-  'generate-campaign': 'Generate Campaign button: must return a JSON array of projects with tasks',
-  'refine-task-description': 'Refine button on a task: returns the improved description as plain text',
-  'generate-poster': 'Generate Poster with AI on a task: an image prompt (gpt-image-1.5)'
+  'generate-campaign': 'Plan with AI: must return a JSON array of posts [{ title, brief, caption, day }] (older answers grouped in themes still work)',
+  'improve-caption': 'Write caption / Improve caption on a post: returns the caption as plain text ({instruction} says what to do)',
+  'generate-poster': 'Create image on a post: an image prompt (gpt-image-1.5); can use {brief}, {references}, {format} and {logoNote}; reference pictures are always sent',
+  'change-image': 'Change image on a post: a single image prompt with {instruction} and {logoNote}',
+  'refine-task-description': 'Improve brief (connector only): returns the improved brief as plain text'
 };
 
 const PROVIDERS = ['openai', 'anthropic', 'grok', 'gemini'];
@@ -1492,7 +1333,7 @@ const aiAdminTools: Tool[] = [
     name: 'ai_setup_status',
     title: 'AI setup status',
     description:
-      "System Admin: which AI providers have API keys, every prompt, every command mapping, and which of the app's own commands (generate-campaign, refine-task-description, generate-poster) are still missing.",
+      "System Admin: which AI providers have API keys, every prompt, every command mapping, and and which of the app's own commands (generate-campaign, improve-caption, generate-poster, change-image, refine-task-description) still use their built-in prompt.",
     inputSchema: obj({}),
     annotations: READ,
     isAvailable: isAdmin,
@@ -1508,9 +1349,9 @@ const aiAdminTools: Tool[] = [
         api_keys: Object.fromEntries(PROVIDERS.map((p) => [p, Boolean(i[p]?.configured)])),
         prompts: (prompts.prompts || []).map((p: any) => shapePrompt(p)),
         commands: (mappings.mappings || []).map(shapeMapping),
-        app_commands_missing: Object.keys(APP_COMMANDS).filter((c) => !configured.has(c)).map((c) => ({ command: c, used_by: APP_COMMANDS[c] })),
+        app_commands_using_built_in_prompt: Object.keys(APP_COMMANDS).filter((c) => !configured.has(c)).map((c) => ({ command: c, used_by: APP_COMMANDS[c] })),
         placeholders:
-          'Prompts can use {companyInfo} {companyName} {sector} {brandTone} {brandGuidelines} {campaignDetails} {campaignName} {coreMessages} {hashtags} {taskName} {taskDescription} {taskContent} {baseImage} {primaryLogo} {previousOutput}; unknown or empty ones are removed before sending.'
+          'Prompts can use {brand} {brandName} {sector} {brandTone} {brandGuidelines} {campaign} {campaignName} {coreMessages} {hashtags} {postTitle} {brief} {caption} {instruction} {platform} {references} {format} {logoNote} {image} {primaryLogo} {previousOutput} (older names like {companyInfo} and {taskDescription} still work); unknown or empty ones are removed before sending.'
       };
     }
   },
@@ -1572,7 +1413,7 @@ const aiAdminTools: Tool[] = [
     name: 'set_command',
     title: 'Point a command at a prompt',
     description:
-      "System Admin: make a command (e.g. generate-campaign, refine-task-description, generate-poster, or your own) run a prompt, by prompt name. Creates the command or re-points it.",
+      "System Admin: make a command (e.g. generate-campaign, improve-caption, generate-poster, change-image, or your own) run a prompt, by prompt name. Creates the command or re-points it.",
     inputSchema: obj(
       {
         command: { type: 'string', minLength: 1, maxLength: 100, pattern: '^[a-z0-9][a-z0-9-]*$', description: 'Command name, lower-case with dashes.' },
@@ -1650,26 +1491,78 @@ const aiAdminTools: Tool[] = [
   },
   {
     name: 'generate_task_poster',
-    title: 'Create an AI image for a post (app AI)',
+    title: 'Create a picture for a post (app AI)',
     description:
-      "Make an image for a post (task) with the app's AI. It's saved as a pending image: adopt it with adopt_task_poster (it becomes the post's image and a new Library version) or discard it. Uses one of the account's monthly AI images; confirm with the user first.",
-    inputSchema: obj({ task_id: id('Task ID.') }, ['task_id']),
+      "Create a picture for a post (task) with the app's AI, from what the post is about (its brief), the brand, its campaign and its reference pictures (\"include\" ones are shown faithfully; \"copy_style\" ones only lend their style). The real logo can be placed in a corner. The result is an AI draft next to the current picture: use it with adopt_task_poster, or change it with change_task_picture. Unchosen drafts are deleted after 7 days. Uses one of the account's monthly AI images; confirm with the user first.",
+    inputSchema: obj(
+      {
+        task_id: id('Post (task) ID.'),
+        format: { type: 'string', enum: ['square', 'portrait', 'landscape'], description: 'Shape: square (1:1, default), portrait (4:5) or landscape (3:2).' },
+        logo: { type: ['string', 'null'], enum: ['top-left', 'top-right', 'bottom-left', 'bottom-right', null], description: "Place the brand's real logo in this corner, or null for no logo. Leave out to use the post's last choice." }
+      },
+      ['task_id']
+    ),
     annotations: CREATE,
     isAvailable: canUseAI,
     handler: async (args, ctx) => {
-      const res = await ctx.api.request('POST', `/api/tasks/${args.task_id}/generate-poster`, { timeoutMs: 240000 });
-      return { message: res.message, pending_image_url: res.generatedImageUrl, task_url: absolute(ctx.appUrl, links.post(args.task_id)) };
+      const body: Record<string, unknown> = {};
+      if (args.format) body.format = args.format;
+      if (args.logo !== undefined) body.logo = args.logo;
+      const res = await ctx.api.request('POST', `/api/tasks/${args.task_id}/image/create`, { body, timeoutMs: 240000 });
+      return { message: res.message, draft_image: { id: res.draft?.id, url: res.draft?.url }, task_url: absolute(ctx.appUrl, links.post(args.task_id)) };
+    }
+  },
+  {
+    name: 'change_task_picture',
+    title: "Change a post's picture (app AI)",
+    description:
+      "Edit one of a post's pictures with the app's AI following a sentence (e.g. \"replace the mountain with a waterfall\"); everything else is kept. By default it changes the post's current picture; pass from_url to change an AI draft or an earlier picture. The result is a new AI draft: use it with adopt_task_poster. Uses one of the account's monthly AI images; confirm with the user first.",
+    inputSchema: obj(
+      {
+        task_id: id('Post (task) ID.'),
+        instruction: { type: 'string', minLength: 3, maxLength: 2000, description: 'What to change, in plain words.' },
+        from_url: { type: 'string', maxLength: 2000, description: "The picture to change (one of the post's: current, AI draft or earlier). Default: the current picture." }
+      },
+      ['task_id', 'instruction']
+    ),
+    annotations: CREATE,
+    isAvailable: canUseAI,
+    handler: async (args, ctx) => {
+      const res = await ctx.api.request('POST', `/api/tasks/${args.task_id}/image/change`, {
+        body: { instruction: args.instruction, ...(args.from_url ? { from: args.from_url } : {}) },
+        timeoutMs: 240000
+      });
+      return { message: res.message, draft_image: { id: res.draft?.id, url: res.draft?.url }, task_url: absolute(ctx.appUrl, links.post(args.task_id)) };
     }
   },
   {
     name: 'adopt_task_poster',
-    title: 'Use or discard a pending AI image',
-    description: 'Keep the pending AI image as the post\'s image (adopt) or throw it away (discard).',
-    inputSchema: obj({ task_id: id('Task ID.'), action: { type: 'string', enum: ['adopt', 'discard'], description: 'adopt or discard' } }, ['task_id', 'action']),
+    title: 'Use or discard an AI draft picture',
+    description:
+      "Make an AI draft picture the post's picture (adopt; the previous picture is kept among the 3 earlier ones and the new one is added to the Library) or throw a draft away (discard). Without draft_id it acts on the newest draft.",
+    inputSchema: obj(
+      {
+        task_id: id('Post (task) ID.'),
+        action: { type: 'string', enum: ['adopt', 'discard'], description: 'adopt or discard' },
+        draft_id: { type: 'string', maxLength: 40, description: 'Which AI draft (from get_task ai_draft_images). Default: the newest.' }
+      },
+      ['task_id', 'action']
+    ),
     annotations: UPDATE,
     isAvailable: canUseAI,
     handler: async (args, ctx) => {
-      const res = await ctx.api.request('PATCH', `/api/tasks/${args.task_id}/${args.action === 'adopt' ? 'adopt-poster' : 'discard-poster'}`);
+      if (!args.draft_id) {
+        const res = await ctx.api.request('PATCH', `/api/tasks/${args.task_id}/${args.action === 'adopt' ? 'adopt-poster' : 'discard-poster'}`);
+        return { message: res.message, image_url: res.task?.designedImage || undefined };
+      }
+      if (args.action === 'discard') {
+        const res = await ctx.api.request('DELETE', `/api/tasks/${args.task_id}/image/drafts/${encodeURIComponent(args.draft_id)}`);
+        return { message: res.message, image_url: res.task?.designedImage || undefined };
+      }
+      const current = await ctx.api.request('GET', `/api/tasks/${args.task_id}`);
+      const draft = (current.task?.aiDrafts || []).find((d: any) => d.id === args.draft_id);
+      if (!draft) throw new ToolError('That AI draft picture no longer exists (drafts are deleted after 7 days).');
+      const res = await ctx.api.request('POST', `/api/tasks/${args.task_id}/image/use`, { body: { url: draft.url } });
       return { message: res.message, image_url: res.task?.designedImage || undefined };
     }
   }
@@ -1678,7 +1571,6 @@ const aiAdminTools: Tool[] = [
 export const TOOLS: Tool[] = [
   ...accountTools,
   ...campaignTools,
-  ...projectTools,
   ...taskTools,
   ...commentTools,
   ...libraryTools,
@@ -1691,17 +1583,16 @@ export const TOOLS: Tool[] = [
 
 export const SERVER_INSTRUCTIONS = `This connector works with the user's Blueprint app (planning and publishing social media posts), acting as the user with exactly their permissions.
 
-Structure: Campaign → Themes → Posts. In the tools a theme is a "project" and a post is a "task" (older names for the same things); talk to the user about themes and posts. A post has a title (name), a brief (description), a day (task_date, which places it in the Planner), a status and a caption (content, the text that gets published and shown in the app's social previews). Statuses: Idea, Draft and Ready are set by the user; Scheduled, Published and Needs attention follow Publishing automatically and can't be set by hand. Comments can be attached to campaigns, themes and posts.
+Structure: posts, optionally grouped in campaigns. A post is called a "task" in the tools (an older name); talk to the user about posts. A post can belong to one campaign or to none (everyday content). It has what it's about (description, the brief the app's AI works from), a caption (content, the text that gets published and shown in the app's social previews), a day (task_date, which places it in the Planner), a status, and a picture. The title (name) is only a label: leave it out and the app uses the start of the caption. Statuses: Idea, Draft and Ready are set by the user; Scheduled, Published and Needs attention follow Publishing automatically and can't be set by hand. Older posts may show the "theme" they were in (old_theme); themes no longer exist.
 
 How to work:
-- Use list_campaigns / get_campaign / get_project / list_tasks to find ids before changing anything. Never invent ids.
+- Use list_campaigns / get_campaign / list_tasks to find ids before changing anything. Never invent ids.
 - Use get_my_account or get_company_info to write in the user's brand voice.
-- To plan content, create the campaign and its themes (create_project), then add posts with create_tasks (each with a day, a brief and a finished caption).
+- To plan content, create a campaign if it's a campaign (or none for everyday posts), then add posts with create_tasks (each with a day, what it's about and a finished caption).
 - Updates only change the fields you pass.
-- archive_campaign, delete_task, delete_comment, remove_user_from_project and deactivate_user remove things: confirm with the user first.
+- archive_campaign, delete_task, delete_comment and deactivate_user remove things: confirm with the user first.
 - Every result includes a "url" the user can open in the app.
-- Pictures can't be uploaded through this connector; tell the user to add them on the post in the app (Upload, From the Library, or Create image with AI).
-- Themes can be deleted only in the app, and only when they have no posts.
+- Pictures can't be uploaded through this connector; tell the user to add them on the post in the app (Upload, From the Library, or Create with AI). With the app's AI on, generate_task_poster creates a picture and change_task_picture edits one; both give a draft the user chooses (adopt_task_poster).
 - The Inbox (list_inbox) holds reminders that need the user (posts due by hand, failed posts, accounts to reconnect) and messages from the Blueprint team; inbox_action runs an item's action after the user agrees.
 - Publishing: list_publishing_channels shows connected accounts; schedule_post publishes a post now or later (always confirm accounts, caption and time with the user first); accounts that aren't connected can get "post by hand" reminders.
 - The Library holds the user's past and present work (pictures, captions, logos, files) with full version history. To find something, call library_overview first to see which years, months and events exist, then search_library with a date range and/or words. Never guess item ids.`;

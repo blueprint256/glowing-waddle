@@ -31,9 +31,12 @@ async function resolveTarget(
 
   let campaignId: unknown;
   if (pick === 'taskId') {
-    const task = await Task.findById(rawId).select('campaignId');
-    if (!task) return { ok: false, status: 404, message: 'Post not found' };
-    campaignId = task.campaignId;
+    // A post belongs to an account, with or without a campaign.
+    const task = await Task.findById(rawId).select('ownerId');
+    if (!task || (req.user!.role !== UserRole.SYSTEM_ADMIN && String(task.ownerId) !== String(req.user!._id))) {
+      return { ok: false, status: 404, message: 'Post not found' };
+    }
+    return { ok: true, target: { field: pick, id: new mongoose.Types.ObjectId(rawId) } };
   } else if (pick === 'projectId') {
     const project = await Project.findById(rawId).select('campaignId');
     if (!project) return { ok: false, status: 404, message: 'Theme not found' };

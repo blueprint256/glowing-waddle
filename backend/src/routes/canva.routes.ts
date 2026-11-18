@@ -15,6 +15,7 @@ import { PublishError } from '../publishing/types';
 import { PublishingError, loadTaskForPublishing } from '../publishing/service';
 import { loadAccessibleAsset, ingest, LibraryError } from '../library/service';
 import { queueTaskImage } from '../library/hooks';
+import { deleteUnusedPictures, setPicture } from '../services/posts';
 import { links } from '../lib/links';
 import {
   loadCanvaSettings,
@@ -142,7 +143,7 @@ router.post('/edits', isAuthenticated, async (req: Request, res: Response) => {
       back = links.libraryItem(asset._id);
     } else {
       const { task, ownerId: owner } = await loadTaskForPublishing(req.user!, req.body?.taskId);
-      if (!task.designedImage) throw new PublishingError(400, 'This task has no image yet');
+      if (!task.designedImage) throw new PublishingError(400, 'This post has no picture yet');
       image = await loadImage(task.designedImage);
       title = task.name;
       ownerId = owner;
@@ -227,10 +228,11 @@ router.post('/edits/:id/import', isAuthenticated, async (req: Request, res: Resp
       }
       const { task } = await loadTaskForPublishing(req.user!, String(edit.taskId));
       const url = await uploadBufferToS3(png, 'image/png', 'task-images');
-      task.designedImage = url;
+      const dropped = setPicture(task, url, 'Before the Canva edit');
       task.lastModifiedBy = req.user!._id as Id;
       await task.save();
-      void queueTaskImage(task.campaignId, task._id, url, req.user!._id, 'Edited in Canva');
+      void deleteUnusedPictures(dropped);
+      void queueTaskImage(task, url, req.user!._id, 'Edited in Canva');
       await CanvaEdit.updateOne({ _id: edit._id }, { $set: { status: 'imported', importedAt: new Date() } });
       res.json({ success: true, message: 'The post image was updated from Canva', imageUrl: url, taskId: task._id });
     } catch (error: any) {

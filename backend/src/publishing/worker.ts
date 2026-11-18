@@ -10,6 +10,7 @@ import { loadPublishingSetup } from './setup';
 import { accountAuth } from './service';
 import { openMedia } from './media';
 import { syncRecentlyChangedPosts } from '../services/postStatus';
+import { expireOldDrafts } from '../services/posts';
 
 /**
  * The scheduler. Every few seconds it:
@@ -181,8 +182,19 @@ async function tick() {
     await syncRecentlyChangedPosts();
   } catch (error) {
     console.error('[publishing] could not update post statuses:', error);
+  }  // Unpicked AI pictures older than 7 days are deleted (checked once an hour).
+  if (Date.now() - lastDraftSweep > 3600_000) {
+    lastDraftSweep = Date.now();
+    try {
+      const removed = await expireOldDrafts();
+      if (removed) console.log(`[posts] deleted ${removed} unpicked AI picture(s) older than 7 days`);
+    } catch (error) {
+      console.error('[posts] could not delete old AI pictures:', error);
+    }
   }
 }
+
+let lastDraftSweep = 0;
 
 /** Posts saved while the history field was misdefined may hold text entries; clear those once. */
 async function repairEventHistory() {

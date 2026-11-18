@@ -36,7 +36,7 @@ export interface AgentResult {
 const MAX_RESULT_CHARS = 24_000;
 /** Results the chat shows as a table, gallery or card under Blue's reply. */
 const SHOWN_AS_CARDS = new Set([
-  'list_tasks', 'get_task', 'get_calendar', 'create_tasks', 'list_campaigns', 'get_campaign', 'list_projects', 'get_project',
+  'list_tasks', 'get_task', 'get_calendar', 'create_tasks', 'list_campaigns', 'get_campaign',
   'list_posts', 'schedule_post', 'list_users', 'list_inbox', 'list_comments', 'search_library', 'get_library_item',
   'generate_campaign_content', 'ai_usage', 'ai_setup_status', 'list_publishing_channels', 'improve_caption', 'refine_task_description'
 ]);
