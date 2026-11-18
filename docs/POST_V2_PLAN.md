@@ -69,3 +69,36 @@ Publishing, Library links, AI context, comments, the connector and Blue.
 Post editor (rebuilt), Planner (no theme filter/grouping; "No campaign"), Today, Campaigns and the
 campaign page (no themes), Plan with AI (a list of posts, no themes), Blue (no theme panel, cards),
 search, Library item links, old `/projects/<id>` links (→ the campaign).
+
+## Done (branch `planner-v2`)
+
+Everything above is built. Notes from building it:
+
+- Old posts are moved at start-up (owner, old theme name, reference pictures). It's safe to run
+  again and logs one line: `[posts] Moved to Post v2: …`.
+- The admin's own `generate-poster` command still works for Create image; reference pictures are
+  always sent with it. A `change-image` command (one prompt) can replace the built-in Change words.
+  New placeholders: `{references}`, `{format}`, `{logoNote}`.
+- Captions can be written with AI on a new post before it's created (`POST /api/tasks/improve-caption`).
+- A campaign can be deleted while keeping its posts (Campaign page › ⋯ › Delete campaign, keep its posts).
+- The Planner tray has a "Quick idea" box (saved at once as an Idea without a day).
+- Unused AI pictures are swept hourly by the publishing worker (`PUBLISHING_WORKER=off` stops it).
+
+## How to check
+
+1. `cd backend && npm run build && npm run dev`, `cd frontend && npm run build && npm run dev`.
+2. Start-up log: one `[posts] Moved to Post v2` line the first time (none afterwards).
+3. Planner › New post (or "+" on a day): the full post screen opens, "New post · not saved yet".
+   Type a caption: the title follows it. Create post: the address gets the post's id, nothing reloads.
+4. Campaign picker: "No campaign", then your campaigns. Change it on a saved post: saved at once, Undo works.
+5. Picture: Upload, then Replace: the first picture appears under the clock icon (Earlier). Click it,
+   Bring this back. Upload 4 more: only 3 earlier pictures stay.
+6. Create with AI (AI on): add a product photo (Include this) and a poster (Copy this style), Portrait,
+   Add my logo bottom-right, Create image. The draft shows next to the current picture with
+   "AI picture · not used yet"; the logo is crisp in the corner; the file is a 1024×1280 JPEG.
+7. Type a change ("make the background a sunset"), Change: a second draft, the rest kept. Use this picture.
+8. Discard a draft: it disappears (and its file is deleted).
+9. Planner › filter Campaign › No campaign; List › By campaign shows "No campaign" last.
+10. Delete a post: its pictures go unless a scheduled/published copy uses them; Library copies stay.
+11. Self-tests: `npx tsx src/scripts/postsSelfTest.ts` (19), `mcpSelfTest` (32), `blueSelfTest` (16),
+    `librarySelfTest` (11), `publishingSelfTest` (13), `inboxSelfTest` (5).

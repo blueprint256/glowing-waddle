@@ -348,9 +348,9 @@ export default function PicturePanel({ task, brief, title, aiEnabled, brandLogo,
   const createRunning = running && job?.kind === 'create';
   const viewedIsBeingChanged = changeRunning && job?.from && viewed?.url === job.from;
   const strip = [
-    ...(current ? [{ key: 'current', url: current, label: 'Current picture', select: { kind: 'current' } as Viewing, tag: 'Now' }] : []),
-    ...drafts.map((d) => ({ key: d.id, url: d.url, label: draftLabel(d), select: { kind: 'draft', id: d.id } as Viewing, tag: 'AI' })),
-    ...earlier.map((e, i) => ({ key: `e${i}`, url: e.url, label: `Earlier picture (${formatAgo(e.at)})`, select: { kind: 'earlier', url: e.url } as Viewing, tag: '' }))
+    ...(current ? [{ key: 'current', url: current, label: 'Current picture', select: { kind: 'current' } as Viewing, tag: 'Now', earlier: false }] : []),
+    ...drafts.map((d) => ({ key: `draft:${d.id}`, url: d.url, label: draftLabel(d), select: { kind: 'draft', id: d.id } as Viewing, tag: 'AI', earlier: false })),
+    ...earlier.map((e, i) => ({ key: `earlier:${i}`, url: e.url, label: `Earlier picture (${formatAgo(e.at)})`, select: { kind: 'earlier', url: e.url } as Viewing, tag: '', earlier: true }))
   ];
   const isViewed = (v: Viewing) =>
     (v.kind === 'current' && viewed?.kind === 'current') ||
@@ -488,7 +488,7 @@ export default function PicturePanel({ task, brief, title, aiEnabled, brandLogo,
       {strip.length > 1 && (
         <Box role="list" aria-label="This post’s pictures" sx={{ display: 'flex', gap: 0.75, mt: 1.25, overflowX: 'auto', pb: 0.5 }}>
           {strip.map((s, i) => {
-            const firstEarlier = s.key.startsWith('e') && !strip[i - 1]?.key.startsWith('e');
+            const firstEarlier = s.earlier && !strip[i - 1]?.earlier;
             return (
               <Box key={s.key} role="listitem" sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexShrink: 0 }}>
                 {firstEarlier && (

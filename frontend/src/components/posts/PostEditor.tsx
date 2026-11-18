@@ -20,7 +20,7 @@ import {
 import { Visibility as PreviewIcon, DeleteOutline as DeleteIcon, Close as CloseIcon, OpenInNew as OpenIcon } from '@mui/icons-material';
 import { campaignAPI, taskAPI, userAPI } from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
-import { canUseAI, type Task } from '../../types';
+import { UserRole, canUseAI, type Task } from '../../types';
 import { SETTABLE_POST_STATUSES, isPublishingStatus, postStatusMeta, toPostStatus, type PostStatus } from '../../lib/status';
 import { dayKey, dayToISO, formatDay } from '../../lib/dates';
 import { paths, refId } from '../../lib/paths';
@@ -61,9 +61,9 @@ const NO_CAMPAIGN = 'none';
 function Label({ children, right, htmlFor }: { children: ReactNode; right?: ReactNode; htmlFor?: string }) {
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75, minHeight: 30, flexWrap: 'wrap' }}>
-      <Typography component={htmlFor ? 'label' : 'h3'} htmlFor={htmlFor} sx={{ flex: 1, fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.03em' }}>
+      <Box component={htmlFor ? 'label' : 'h3'} {...(htmlFor ? { htmlFor } : {})} sx={{ flex: 1, m: 0, fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.03em' }}>
         {children}
-      </Typography>
+      </Box>
       {right}
     </Box>
   );
@@ -177,8 +177,11 @@ export default function PostEditor({ taskId: initialId, defaults, variant = 'pan
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Campaigns to choose from: the post's account's, not archived (plus its current one).
-  const ownerId = task?.ownerId ? String(task.ownerId) : user?._id || user?.id;
+  // Campaigns to choose from: the post's account's, not archived (plus its current one). An admin
+  // making a new post can pick any account's campaign (the post then belongs to that account).
+  const me = user?._id || user?.id;
+  const isAdmin = user?.role === UserRole.SYSTEM_ADMIN;
+  const ownerId = task?.ownerId ? String(task.ownerId) : isAdmin ? null : me;
   useEffect(() => {
     let alive = true;
     campaignAPI
@@ -476,15 +479,19 @@ export default function PostEditor({ taskId: initialId, defaults, variant = 'pan
             </Box>
           </MenuItem>
           {campaignOptions.length > 0 && <ListSubheader sx={{ lineHeight: '30px', fontSize: 12 }}>Campaigns</ListSubheader>}
-          {campaignOptions.map((c) => (
-            <MenuItem key={c._id} value={c._id} sx={{ gap: 1 }}>
-              <Box component="span" aria-hidden sx={{ width: 9, height: 9, borderRadius: '3px', bgcolor: campaignColor(c._id), flexShrink: 0 }} />
-              <Typography sx={{ fontSize: 14 }}>
-                {c.name}
-                {c.archived ? ' (archived)' : ''}
-              </Typography>
-            </MenuItem>
-          ))}
+          {campaignOptions.map((c) => {
+            const owner = c.createdBy && typeof c.createdBy === 'object' && refId(c.createdBy) !== me ? [c.createdBy.firstName, c.createdBy.lastName].filter(Boolean).join(' ') : '';
+            return (
+              <MenuItem key={c._id} value={c._id} sx={{ gap: 1 }}>
+                <Box component="span" aria-hidden sx={{ width: 9, height: 9, borderRadius: '3px', bgcolor: campaignColor(c._id), flexShrink: 0 }} />
+                <Typography sx={{ fontSize: 14 }}>
+                  {c.name}
+                  {c.archived ? ' (archived)' : ''}
+                  {isNew && owner ? <Box component="span" sx={{ color: 'var(--text-muted)' }}>{` · ${owner}`}</Box> : null}
+                </Typography>
+              </MenuItem>
+            );
+          })}
           {/* A campaign that isn't in the list yet (still loading, or another account's for admins). */}
           {currentCampaign && !campaignOptions.some((c) => c._id === refId(currentCampaign)) && (
             <MenuItem value={refId(currentCampaign)} sx={{ display: 'none' }}>
