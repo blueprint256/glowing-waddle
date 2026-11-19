@@ -126,7 +126,7 @@ function textContrasts(raw: Raw, elements: MeasuredElement[]): Map<string, numbe
     if (el.kind !== 'text') continue;
     const col = parseCssColor(el.color);
     if (!col) continue;
-    const { lums } = sampleBox(raw, el.box);
+    const { lums } = sampleBox(raw, el.inner || el.box);
     if (!lums.length) continue;
     const lt = luminance(col);
     const worst = lt > 0.5 ? pct(lums, 0.9) : pct(lums, 0.1);
@@ -211,11 +211,16 @@ export async function renderDesign(template: DesignTemplate, doc: DesignDoc, kit
       await page.evaluate(([role, surface]: [string, string]) => (window as any).__design.setLogoSurface(role, surface), [l.role, dark ? 'dark' : 'light']);
     }
     await page.evaluate(() => Promise.all(Array.from(document.images).map((img) => img.decode().catch(() => null))));
+    // The choices above can move things (a logo plate adds height, a block shifts): photograph what's
+    // behind the words again, as they finally sit, for the contrast check.
+    const settledPng: Buffer = await page.locator('#poster').screenshot({ type: 'png', scale: 'css', animations: 'disabled' });
+    const settled = await sharp(settledPng).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    const settledRaw: Raw = { data: settled.data, width: settled.info.width, height: settled.info.height, channels: settled.info.channels };
     await page.evaluate(() => (window as any).__design.sampling(false));
 
     // 3) Measure everything and run the checks.
     const elements: MeasuredElement[] = await page.evaluate(() => (window as any).__design.report());
-    const contrasts = textContrasts(raw, elements);
+    const contrasts = textContrasts(settledRaw, elements);
     const report: RenderReport = {
       format: doc.format,
       width: format.width,

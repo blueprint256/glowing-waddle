@@ -271,6 +271,8 @@ export interface MeasuredElement {
   lines?: number;
   /** Text: share of it lying on a cut-out person (0..1). */
   overPerson?: number;
+  /** Text on its own coloured shape: the shape's inner area, where contrast is judged. */
+  inner?: { x: number; y: number; w: number; h: number };
   /** Text: share of it lying on a photo when the rest lies off it (it crosses the photo's edge). */
   photoEdge?: number;
   /** Text: share of it that something else (photo, shape, block) sits on top of (0..1). */

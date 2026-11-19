@@ -135,7 +135,11 @@ export const artLed: DesignTemplate = {
 #poster.d-sp-ge-4 .al-foot { flex-direction: column; align-items: stretch; justify-content: center; gap: calc(var(--logo-h) * var(--clear-primary) + 1.2cqmin); padding: 2cqmin 0 1.8cqmin; }
 #poster.d-sp-ge-4 .al-sponsors { padding: 0; }
 #poster.d-sp-ge-4 .al-sponsors-title { text-align: left; }
-#poster.d-sp-ge-4 .al-sponsor-row { justify-content: flex-start; }
+#poster.d-sp-ge-4 .al-sponsor-row { justify-content: flex-start; flex: none; height: var(--partner-h, 6.4cqmin); }
+/* The foot takes what the logos and partners need; the words take the rest. */
+#poster.d-sp-ge-4 .al-foot { height: auto; }
+#poster.d-sp-ge-4 .al-sponsors { height: auto; flex: none; }
+#poster[data-format="square"].d-sp-ge-4, #poster[data-format="landscape"].d-sp-ge-4 { --partner-h: 5.4cqmin; }
 
 #poster[data-format="square"] { --foot-h: 14cqh; --badge: 16cqmin; --logo-h: 6.6cqmin; }
 #poster[data-format="story"] { --foot-h: 10cqh; --m: 7cqmin; --badge: 21cqmin; --logo-h: 7.8cqmin; }

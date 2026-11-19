@@ -22,7 +22,7 @@ import { callClaudeTool, DESIGN_MODELS, type ClaudeImage } from '../design/claud
 import { DIRECTOR_SYSTEM, DIRECTOR_TOOL, brandText, catalogText, directorPrompt, plannedDocs, planWithoutAI, type DirectorInput, type DirectorPlan, type PlannedOption } from '../design/director';
 import { CRITIC_SYSTEM, CRITIC_TOOL, applyRanking, type CriticRanking } from '../design/critic';
 import { checkScore, editableAreas, hasErrors } from '../design/checks';
-import { normalizeParams } from '../design/template';
+import { normalizeParams, roomierSettings } from '../design/template';
 import type { BackgroundSlot, BrandKit, DesignDoc, DesignTemplate, FormatId, PhotoSlot, SponsorSlot } from '../design/types';
 
 /**
@@ -193,28 +193,7 @@ async function shorten(failing: Rendered[], apiKey: string, userId: Id): Promise
 
 /** Settings that make room for words, or light behind them, when the checks fail. */
 function roomierParams(option: PlannedOption): Record<string, number | string | boolean> | null {
-  const p: Record<string, unknown> = { ...option.doc.params };
-  let changed = false;
-  for (const def of option.design.params) {
-    if (def.type !== 'number') continue;
-    if (def.roomy) {
-      const target = def.roomy === 'min' ? def.min : def.max;
-      if (p[def.key] !== target) {
-        p[def.key] = target;
-        changed = true;
-      }
-      continue;
-    }
-    if (/^min(Photo|Art)$/.test(def.key) && p[def.key] !== def.min) {
-      p[def.key] = def.min;
-      changed = true;
-    }
-    if (def.key === 'shade' && p[def.key] !== def.max) {
-      p[def.key] = def.max;
-      changed = true;
-    }
-  }
-  return changed ? normalizeParams(option.design.params, p) : null;
+  return roomierSettings(option.design, option.doc.params);
 }
 
 const TEXT_KEYS = ['eyebrow', 'headline', 'subhead', 'body', 'cta', 'footnote', 'hashtag', 'sponsorsTitle'];

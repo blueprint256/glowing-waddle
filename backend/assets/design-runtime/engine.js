@@ -443,6 +443,13 @@
       var row = box.querySelector('[data-sponsor-row]') || box;
       var items = $all('.d-sponsor', row);
       if (!items.length) return;
+      // Measure the room with the logos collapsed: at their natural pixel size they would stretch
+      // the row and every size worked out from it.
+      items.forEach(function (it) {
+        var im = it.querySelector('img');
+        im.style.height = '0px';
+        im.style.width = '0px';
+      });
       var W0 = row.clientWidth;
       var H0 = row.clientHeight || MIN * 0.07;
       var allowTwo = box.getAttribute('data-rows') === '2' && items.length >= 3;
@@ -488,12 +495,14 @@
         return { rows: rows, gap: gap, hs: hs, ok: fits(hs), rowH: rowH };
       }
       var best = solve(1, 0.3);
-      // Too many for one row at a dignified size: two rows (where the design allows), then smaller.
-      // Two rows only for four or more partners (or when one row would make them tiny).
-      var tiny = best.hs.every(function (h) { return h < best.rowH * 0.32; });
-      if ((!best.ok || tiny || items.length >= 4) && allowTwo) {
+      // One strip is the convention (clubs' posters run up to nine partners in a single row). Two
+      // rows (where the design allows) only when one row can't hold them, or holds them so small
+      // that two rows make them clearly bigger.
+      var median = function (hs) { var a = hs.slice().sort(function (x, y) { return x - y; }); return a[Math.floor(a.length / 2)]; };
+      var small = median(best.hs) < best.rowH * 0.45;
+      if ((!best.ok || small) && allowTwo) {
         var two = solve(2, 0.3);
-        if (two.ok) best = two;
+        if (two.ok && (!best.ok || median(two.hs) >= median(best.hs) * 1.25)) best = two;
       }
       if (!best.ok) best = solve(best.rows, 0.05);
       row.style.setProperty('--sponsor-gap', best.gap + 'px');
@@ -811,6 +820,14 @@
         }
       }
       if (kind === 'text') {
+        // Words on their own coloured shape (a button, a pill): contrast is judged inside the shape,
+        // away from its rounded ends, where the words actually sit.
+        var obg = getComputedStyle(el).backgroundColor;
+        if (obg && obg !== 'transparent' && !/rgba\(.*,\s*0\)$/.test(obg)) {
+          var rad = Math.min(parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0, m.box.h / 2);
+          var ix = Math.min(m.box.w * 0.3, rad + 2), iy = Math.min(m.box.h * 0.3, 2 + rad * 0.3);
+          m.inner = { x: m.box.x + ix, y: m.box.y + iy, w: Math.max(1, m.box.w - ix * 2), h: Math.max(1, m.box.h - iy * 2) };
+        }
         var cv = coveredShare(el, m.box);
         // Partly on a bare photo and partly off it: the line crosses the photo's edge.
         var bare = onBarePhotoShare(el, m.box);

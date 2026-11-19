@@ -13,7 +13,7 @@ import path from 'path';
 import sharp from 'sharp';
 import { BUILTIN_DESIGNS } from '../design/library';
 import { renderDesign, closeRenderer } from '../design/renderer';
-import { validateTemplate } from '../design/template';
+import { roomierSettings, validateTemplate } from '../design/template';
 import { buildTestKit, testBackground, testDoc, testPhoto, SAMPLE_TEXT } from '../design/testKit';
 import type { DesignTemplate, DesignText, FormatId, PhotoSlot } from '../design/types';
 import { checkScore, hasErrors } from '../design/checks';
@@ -62,6 +62,8 @@ async function main() {
     for (const format of design.formats.filter((f) => !formats || formats.includes(f))) {
       const cases: [string, keyof typeof SAMPLE_TEXT, number][] = [
         ['typical-3', 'typical', 3],
+        // Many partners with ordinary words: clubs often list six to nine.
+        ['typical-6', 'typical', 6],
         ['short-0', 'short', 0],
         ['long-6', 'long', 6]
       ];
@@ -75,12 +77,24 @@ async function main() {
         if (design.background !== 'none' && name !== 'short-0') doc.background = background;
         const file = `${design.id}--${format}--${name}.png`;
         try {
-          const r = await renderDesign(design, doc, kit, loader, { scale: 1 });
+          let r = await renderDesign(design, doc, kit, loader, { scale: 1 });
+          // As the pipeline does: when something doesn't fit, the roomier settings get a try.
+          let roomier = false;
+          if (name !== 'long-6' && r.report.issues.some((i) => i.level === 'error')) {
+            const params = roomierSettings(design, doc.params);
+            if (params) {
+              const again = await renderDesign(design, { ...doc, params }, kit, loader, { scale: 1 });
+              if (!again.report.issues.some((i) => i.level === 'error')) {
+                r = again;
+                roomier = true;
+              }
+            }
+          }
           fs.writeFileSync(path.join(out, file), r.file);
           const errors = r.report.issues.filter((i) => i.level === 'error');
           if (errors.length && name !== 'long-6') failures++;
           console.log(
-            `${errors.length ? '✗' : '✓'} ${file} score ${checkScore(r.report.issues)} contrast ${r.report.minContrast ?? '-'} ${r.report.ms}ms` +
+            `${errors.length ? '✗' : '✓'} ${file}${roomier ? ' (roomier settings)' : ''} score ${checkScore(r.report.issues)} contrast ${r.report.minContrast ?? '-'} ${r.report.ms}ms` +
               (r.report.issues.length ? '\n    ' + r.report.issues.map((i) => `${i.level}: ${i.message}${i.key ? ' [' + (r.report.elements.find((e) => e.key === i.key)?.why || '') + ']' : ''}`).join('\n    ') : '')
           );
         } catch (e: any) {

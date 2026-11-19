@@ -156,9 +156,15 @@ export const splitPanel: DesignTemplate = {
 /* Four or more partners: they move to their own line under the logos. */
 #poster.d-sp-ge-4 { --bar-h: 19cqh; }
 #poster.d-sp-ge-4 .sp-bar { flex-direction: column; align-items: stretch; justify-content: center; gap: calc(var(--logo-h) * var(--clear-primary) + 1cqmin); padding-top: 2.4cqmin; padding-bottom: 2cqmin; }
-#poster.d-sp-ge-4 .sp-sponsors { border-left: 0; margin-left: 0; padding: 1.6cqmin 0 0; border-top: 0.25cqmin solid rgb(var(--c-ink-rgb) / 0.14); flex: 1; }
+#poster.d-sp-ge-4 .sp-sponsors { border-left: 0; margin-left: 0; padding: 1.6cqmin 0 0; border-top: 0.25cqmin solid rgb(var(--c-ink-rgb) / 0.14); flex: none; height: auto; }
+/* The bar takes what the logos and partners need (the partner row has a set height); the words
+   take the rest, so many partners never push anything off the poster. */
+#poster.d-sp-ge-4 .sp-bar { height: auto; }
+#poster.d-sp-ge-4 .sp-sponsor-row { flex: none; height: var(--partner-h, 6.4cqmin); }
+#poster[data-format="square"].d-sp-ge-4, #poster[data-format="landscape"].d-sp-ge-4 { --partner-h: 5.4cqmin; }
 
 #poster[data-format="square"] { --bar-h: 15cqh; --ring: 19cqmin; --logo-h: 6.8cqmin; }
+#poster[data-format="square"].d-sp-ge-4 { --bar-h: 18cqh; }
 #poster[data-format="square"] .sp-top { min-height: calc(var(--p-minPhoto) * 74cqh); }
 #poster[data-format="story"] { --bar-h: 12.5cqh; --m: 7cqmin; --ring: 26cqmin; --logo-h: 8.2cqmin; }
 #poster[data-format="story"] .sp-copy { gap: 2.2cqmin; padding-bottom: 6cqmin; }

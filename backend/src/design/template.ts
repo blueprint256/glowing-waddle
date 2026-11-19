@@ -77,3 +77,33 @@ export function fitsDesign(t: DesignTemplate, doc: Pick<DesignDoc, 'photos' | 's
   if (t.background === 'required' && !doc.background) reasons.push('needs a background picture');
   return reasons;
 }
+
+/**
+ * The settings that give the words the most room: each number setting at the end it declares as
+ * roomier (a smaller photo share, a deeper fade). Null when they're already there. The pipeline
+ * tries this before shortening the words; the self-test does the same.
+ */
+export function roomierSettings(design: DesignTemplate, current: Record<string, unknown>): Record<string, number | string | boolean> | null {
+  const p: Record<string, unknown> = { ...current };
+  let changed = false;
+  for (const def of design.params) {
+    if (def.type !== 'number') continue;
+    if (def.roomy) {
+      const target = def.roomy === 'min' ? def.min : def.max;
+      if (p[def.key] !== target) {
+        p[def.key] = target;
+        changed = true;
+      }
+      continue;
+    }
+    if (/^min(Photo|Art)$/.test(def.key) && p[def.key] !== def.min) {
+      p[def.key] = def.min;
+      changed = true;
+    }
+    if (def.key === 'shade' && p[def.key] !== def.max) {
+      p[def.key] = def.max;
+      changed = true;
+    }
+  }
+  return changed ? normalizeParams(design.params, p) : null;
+}
