@@ -9,9 +9,9 @@ import { allDesigns, designById } from './designLibrary';
 import { DesignError, makeBackground } from './designPipeline';
 import { uploadBufferToS3 } from '../utils/s3Service';
 import { renderDesign } from '../design/renderer';
-import { applyEdits, applyTextEdits, editPrompt, EDIT_SYSTEM, EDIT_TOOL, type EditOp } from '../design/edits';
+import { applyEdits, applyTextEdits, editPrompt, EDIT_SYSTEM, EDIT_TOOL, type EditOp, type TextEdits } from '../design/edits';
 import { callClaudeTool, DESIGN_MODELS } from '../design/claude';
-import { hasErrors } from '../design/checks';
+import { editableAreas, hasErrors } from '../design/checks';
 import type { DesignDoc, TextField } from '../design/types';
 
 /**
@@ -37,10 +37,15 @@ export function findDesign(task: ITask, ref: string): { design: PostDesign; draf
 
 export interface EditRequest {
   /** Words typed on the poster: field → new text (empty or null removes the field). */
-  text?: Partial<Record<TextField, string | null>>;
+  text?: TextEdits;
   /** A change described in words. */
   request?: string;
+  /** Quick changes from buttons (no AI): bigger headline, swap colours, another shape or design. */
+  ops?: EditOp[];
 }
+
+/** The operations the app's buttons may send directly. */
+const QUICK_OPS = new Set(['headline_size', 'swap_colours', 'change_format', 'switch_design', 'photo_focus', 'remove_sponsor', 'set_param']);
 
 export interface EditAnswer {
   draft: PostAIDraft | null;
@@ -49,7 +54,7 @@ export interface EditAnswer {
 }
 
 export async function editDesign(task: ITask, ref: string, edit: EditRequest, userId: Id): Promise<EditAnswer> {
-  const { design } = findDesign(task, ref);
+  const { design, draft: source } = findDesign(task, ref);
   let doc: DesignDoc = JSON.parse(JSON.stringify(design.doc));
   const kitDoc = await loadBrandKit(task.ownerId);
   const kit = engineKit(kitDoc);
@@ -57,6 +62,11 @@ export async function editDesign(task: ITask, ref: string, edit: EditRequest, us
   let refused: string | undefined;
 
   if (edit.text && Object.keys(edit.text).length) doc = applyTextEdits(doc, edit.text);
+  if (Array.isArray(edit.ops) && edit.ops.length) {
+    const quick = applyEdits(doc, edit.ops.filter((o: any) => o && QUICK_OPS.has(o.op)).slice(0, 10), await allDesigns({ includeDrafts: true }));
+    if (!quick.changed.length && !edit.text && !edit.request) return { draft: null, reply: 'That change isn’t possible with this design.' };
+    doc = quick.doc;
+  }
 
   if (edit.request?.trim()) {
     let apiKey: string;
@@ -112,9 +122,10 @@ export async function editDesign(task: ITask, ref: string, edit: EditRequest, us
     url,
     kind: 'design',
     prompt: (edit.request || 'Edited on the poster').slice(0, 4000),
+    from: source ? source.url : task.designedImage || undefined,
     size: doc.format,
     at: new Date(),
-    design: { doc, issues: result.report.issues.map((i) => ({ level: i.level, code: i.code, message: i.message })), why: design.why }
+    design: { doc, issues: result.report.issues.map((i) => ({ level: i.level, code: i.code, message: i.message })), why: design.why, areas: editableAreas(result.report) }
   };
   addDraft(task, draft);
   return { draft, reply, refused };

@@ -149,13 +149,54 @@ export interface PostImageHistory {
   source: string;
   note?: string;
   at: string;
+  /** A designed poster keeps its document, so it can be edited again when brought back. */
+  design?: PostDesign;
+}
+
+export type PosterFormat = 'square' | 'portrait' | 'story' | 'landscape' | 'a4' | 'a3';
+export type PosterField = 'eyebrow' | 'headline' | 'subhead' | 'body' | 'cta' | 'footnote' | 'hashtag' | 'sponsorsTitle';
+export type DetailKind = 'date' | 'time' | 'place' | 'phone' | 'web' | 'info';
+
+/** The words on a poster (design engine). */
+export interface PosterText extends Partial<Record<PosterField, string>> {
+  headline: string;
+  details?: { kind: DetailKind; text: string }[];
+  badge?: { top?: string; main: string; bottom?: string };
+}
+
+/** A designed poster's document (only what the app reads; the server keeps the rest). */
+export interface PosterDoc {
+  designId: string;
+  format: PosterFormat;
+  params: Record<string, number | string | boolean>;
+  text: PosterText;
+  photos: { url: string }[];
+  sponsors: { name: string }[];
+  background?: { url: string } | null;
+  tweaks?: { headlineScale?: number; colorSwap?: boolean };
+}
+
+/** A poster made by the design engine: what's needed to edit and print it. */
+export interface PostDesign {
+  doc: PosterDoc;
+  issues?: { level: string; code: string; message: string }[];
+  score?: number;
+  note?: string;
+  why?: string;
+  jobId?: string;
+  /** Where each editable line sits on the picture (0..1). */
+  areas?: { field: PosterField | 'details' | 'badge'; x: number; y: number; w: number; h: number }[];
+  pdf_a4?: string;
+  pdf_a3?: string;
 }
 
 /** An AI picture not chosen yet (deleted after 7 days). */
 export interface PostAIDraft {
   id: string;
   url: string;
-  kind: 'create' | 'change';
+  kind: 'create' | 'change' | 'design';
+  /** kind "design": the poster behind the picture. */
+  design?: PostDesign;
   /** Create: what the post was about; change: the instruction. */
   prompt?: string;
   /** Change: the picture that was changed. */
@@ -199,6 +240,8 @@ export interface Task {
   content?: string;
   /** The post's picture. */
   designedImage?: string;
+  /** The current picture's poster document, when it's a designed poster. */
+  pictureDesign?: PostDesign | null;
   /** Up to 3 earlier pictures, newest first. */
   imageHistory?: PostImageHistory[];
   /** AI pictures not chosen yet, newest first. */

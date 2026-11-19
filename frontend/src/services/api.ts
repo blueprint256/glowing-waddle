@@ -54,6 +54,8 @@ export interface AllowanceLine {
 }
 export interface AIUsage {
   images: AllowanceLine;
+  /** Designed posters (a set of options counts as one). */
+  designs?: AllowanceLine;
   blueMessages: AllowanceLine;
   resetsAt: string;
   unlimited: boolean;

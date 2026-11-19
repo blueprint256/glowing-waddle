@@ -20,7 +20,7 @@ import { findFocal, photoStats } from '../design/assets';
 import { callClaudeTool, DESIGN_MODELS, type ClaudeImage } from '../design/claude';
 import { DIRECTOR_SYSTEM, DIRECTOR_TOOL, brandText, catalogText, directorPrompt, plannedDocs, planWithoutAI, type DirectorInput, type DirectorPlan, type PlannedOption } from '../design/director';
 import { CRITIC_SYSTEM, CRITIC_TOOL, applyRanking, type CriticRanking } from '../design/critic';
-import { checkScore, hasErrors } from '../design/checks';
+import { checkScore, editableAreas, hasErrors } from '../design/checks';
 import { normalizeParams } from '../design/template';
 import type { BackgroundSlot, BrandKit, DesignDoc, DesignTemplate, FormatId, PhotoSlot, SponsorSlot } from '../design/types';
 
@@ -379,7 +379,8 @@ export async function runDesignJob(job: IDesignJob): Promise<void> {
         score: r.score,
         note: r.note,
         why: r.item.option.why,
-        jobId: String(job._id)
+        jobId: String(job._id),
+        areas: editableAreas(r.item.result.report)
       }
     });
   }

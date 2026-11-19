@@ -218,7 +218,7 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
     const [total, tasks] = await Promise.all([
       Task.countDocuments(query),
       Task.find(query)
-        .select('-imageHistory -references -aiDrafts.prompt')
+        .select('-imageHistory -references -aiDrafts.prompt -aiDrafts.design -pictureDesign')
         .populate('campaignId', 'name archived')
         .populate('createdBy', 'firstName lastName')
         .populate('lastModifiedBy', 'firstName lastName')

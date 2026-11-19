@@ -30,8 +30,11 @@ export interface PostDesign {
   note?: string;
   why?: string;
   jobId?: string;
-  /** Print version, made on request. */
-  pdfUrl?: string;
+  /** Where each editable line sits on the picture (0..1), for tap-to-edit. */
+  areas?: { field: string; x: number; y: number; w: number; h: number }[];
+  /** Print versions, made on request. */
+  pdf_a4?: string;
+  pdf_a3?: string;
 }
 
 /** An AI picture that hasn't been chosen yet (deleted after 7 days if it isn't used). */

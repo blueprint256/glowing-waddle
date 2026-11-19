@@ -159,3 +159,32 @@ export function checkScore(issues: DesignIssue[]): number {
 }
 
 export const hasErrors = (issues: DesignIssue[]) => issues.some((i) => i.level === 'error');
+
+/** Where each editable thing sits on the poster (0..1 of its width and height), so the app can
+ *  let people tap a line on the picture to change it. Detail lines are grouped as "details". */
+export function editableAreas(report: RenderReport): { field: string; x: number; y: number; w: number; h: number }[] {
+  const fields = new Set(['eyebrow', 'headline', 'subhead', 'body', 'cta', 'footnote', 'hashtag', 'sponsorsTitle']);
+  const boxes = new Map<string, { x0: number; y0: number; x1: number; y1: number }>();
+  for (const el of report.elements) {
+    let field: string | null = null;
+    if (el.kind === 'badge') field = 'badge';
+    else if (el.kind === 'text') {
+      const f = el.field || el.key;
+      if (fields.has(f)) field = f;
+      else if (/^detail/.test(f) || /^detail/.test(el.key)) field = 'details';
+    }
+    if (!field || el.box.w <= 0 || el.box.h <= 0) continue;
+    const b = boxes.get(field);
+    const x1 = el.box.x + el.box.w;
+    const y1 = el.box.y + el.box.h;
+    boxes.set(field, b ? { x0: Math.min(b.x0, el.box.x), y0: Math.min(b.y0, el.box.y), x1: Math.max(b.x1, x1), y1: Math.max(b.y1, y1) } : { x0: el.box.x, y0: el.box.y, x1, y1 });
+  }
+  const r = (n: number) => Math.round(n * 10000) / 10000;
+  return Array.from(boxes.entries()).map(([field, b]) => ({
+    field,
+    x: r(Math.max(0, b.x0 / report.width)),
+    y: r(Math.max(0, b.y0 / report.height)),
+    w: r(Math.min(1, (b.x1 - b.x0) / report.width)),
+    h: r(Math.min(1, (b.y1 - b.y0) / report.height))
+  }));
+}

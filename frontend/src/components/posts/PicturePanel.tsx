@@ -30,7 +30,9 @@ import {
   Brush as ChangeIcon,
   History as EarlierIcon,
   ExpandMore as OpenIcon,
-  ExpandLess as CloseSectionIcon
+  ExpandLess as CloseSectionIcon,
+  DashboardCustomizeOutlined as PosterIcon,
+  EditOutlined as EditIcon
 } from '@mui/icons-material';
 import { taskAPI, userAPI, type AIUsage } from '../../services/api';
 import { errorMessage, notify } from '../../store/toastStore';
@@ -41,6 +43,10 @@ import type { LogoCorner, PictureFormat, PostAIDraft, PostReference, ReferenceRo
 import LibraryImagePicker from './LibraryImagePicker';
 import ImageViewer from '../ui/ImageViewer';
 import EditInCanvaButton from '../Canva/EditInCanvaButton';
+import PosterMaker from './PosterMaker';
+import PosterEditor from './PosterEditor';
+import { designAPI, type DesignCatalog } from '../../services/design';
+import { posterRunning, usePosterJobsStore } from '../../store/posterJobsStore';
 
 /**
  * A post's picture (Post v2):
@@ -83,9 +89,24 @@ function daysLeft(at: string): number {
 }
 
 function draftLabel(d: PostAIDraft): string {
+  if (d.kind === 'design') return d.from ? 'Changed poster' : 'Poster option';
   if (d.kind === 'change') return d.prompt ? `Change: ${d.prompt}` : 'Changed picture';
   return 'New AI picture';
 }
+
+/** What each tappable part of a poster is called. */
+const AREA_NAME: Record<string, string> = {
+  eyebrow: 'the line above the headline',
+  headline: 'the headline',
+  subhead: 'the line under the headline',
+  body: 'the text',
+  cta: 'the call to action',
+  footnote: 'the small print',
+  hashtag: 'the hashtag',
+  sponsorsTitle: 'the words above the partner logos',
+  details: 'the details',
+  badge: 'the date badge'
+};
 
 const isPicture = (f: File) => /^image\/(png|jpe?g|webp|gif)$/i.test(f.type);
 
@@ -137,6 +158,10 @@ export default function PicturePanel({ task, brief, title, aiEnabled, brandLogo,
   const changeImage = useAIJobsStore((s) => s.changeImage);
   const clearJob = useAIJobsStore((s) => s.clear);
   const running = isRunning(job);
+  const posterJob = usePosterJobsStore((s) => (taskId ? s.jobs[taskId] : undefined));
+  const resumePoster = usePosterJobsStore((s) => s.resume);
+  const clearPoster = usePosterJobsStore((s) => s.clear);
+  const posterBusy = posterRunning(posterJob);
 
   const drafts = task?.aiDrafts || [];
   const earlier = task?.imageHistory || [];
@@ -158,6 +183,10 @@ export default function PicturePanel({ task, brief, title, aiEnabled, brandLogo,
   const [usage, setUsage] = useState<AIUsage | null>(null);
   const [now, setNow] = useState(Date.now());
   const [dragging, setDragging] = useState(false);
+  const [posterOpen, setPosterOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(true);
+  const [editFocus, setEditFocus] = useState<{ field: string; at: number } | null>(null);
+  const [catalog, setCatalog] = useState<DesignCatalog | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const refFileRef = useRef<HTMLInputElement>(null);
   const changeRef = useRef<HTMLInputElement>(null);
@@ -201,6 +230,30 @@ export default function PicturePanel({ task, brief, title, aiEnabled, brandLogo,
     }
   }, [job, drafts, taskId, clearJob]);
 
+  // A poster being made for this post (started here, elsewhere, or before a reload): follow it.
+  useEffect(() => {
+    if (taskId && aiEnabled) resumePoster(taskId, title);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskId, aiEnabled]);
+
+  // Poster options ready: show the best one.
+  useEffect(() => {
+    if (!taskId || posterJob?.status !== 'done') return;
+    const first = posterJob.draftIds[0];
+    if (!first || drafts.some((d) => d.id === first)) {
+      if (first) setViewing({ kind: 'draft', id: first });
+      setPosterOpen(false);
+      setEditOpen(true);
+      clearPoster(taskId);
+    }
+  }, [posterJob, drafts, taskId, clearPoster]);
+
+  // The designs, for the poster editor (once).
+  const hasPosters = Boolean(task?.pictureDesign) || drafts.some((d) => d.kind === 'design');
+  useEffect(() => {
+    if (hasPosters && !catalog) designAPI.catalog().then(setCatalog).catch(() => undefined);
+  }, [hasPosters, catalog]);
+
   // Ticks while a job runs, for the elapsed time.
   useEffect(() => {
     if (!running) return;
@@ -217,8 +270,8 @@ export default function PicturePanel({ task, brief, title, aiEnabled, brandLogo,
       .catch(() => setUsage(null));
   };
   useEffect(() => {
-    if (aiEnabled && aiOpen) loadUsage();
-  }, [aiEnabled, aiOpen, job?.state]);
+    if (aiEnabled && (aiOpen || posterOpen)) loadUsage();
+  }, [aiEnabled, aiOpen, posterOpen, job?.state, posterJob?.status]);
 
   const apply = (res: any, message?: string) => {
     if (res?.data?.task) onTask(res.data.task);
@@ -349,9 +402,20 @@ export default function PicturePanel({ task, brief, title, aiEnabled, brandLogo,
   const viewedIsBeingChanged = changeRunning && job?.from && viewed?.url === job.from;
   const strip = [
     ...(current ? [{ key: 'current', url: current, label: 'Current picture', select: { kind: 'current' } as Viewing, tag: 'Now', earlier: false }] : []),
-    ...drafts.map((d) => ({ key: `draft:${d.id}`, url: d.url, label: draftLabel(d), select: { kind: 'draft', id: d.id } as Viewing, tag: 'AI', earlier: false })),
+    ...drafts.map((d) => ({ key: `draft:${d.id}`, url: d.url, label: draftLabel(d), select: { kind: 'draft', id: d.id } as Viewing, tag: d.kind === 'design' ? 'Poster' : 'AI', earlier: false })),
     ...earlier.map((e, i) => ({ key: `earlier:${i}`, url: e.url, label: `Earlier picture (${formatAgo(e.at)})`, select: { kind: 'earlier', url: e.url } as Viewing, tag: '', earlier: true }))
   ];
+  const viewedDesign = viewed?.kind === 'draft' ? viewed.draft.design || null : viewed?.kind === 'current' ? task?.pictureDesign || null : null;
+  const posterRef = viewed?.kind === 'draft' ? viewed.draft.id : 'current';
+  const siblings = viewed?.kind === 'draft' && viewed.draft.design?.jobId ? drafts.filter((d) => d.design?.jobId === viewed.draft.design!.jobId) : [];
+  const editable = Boolean(aiEnabled && taskId && viewedDesign);
+  const tapAreas = editable && editOpen ? (viewedDesign?.areas || []) : [];
+  const onPosterDraft = (draft: PostAIDraft, message: string) => {
+    if (task) onTask({ ...task, aiDrafts: [draft, ...drafts.filter((d) => d.id !== draft.id)] });
+    setViewing({ kind: 'draft', id: draft.id });
+    if (taskId) announcePostChanged(taskId);
+    notify(message);
+  };
   const isViewed = (v: Viewing) =>
     (v.kind === 'current' && viewed?.kind === 'current') ||
     (v.kind === 'draft' && viewed?.kind === 'draft' && viewed.draft.id === v.id) ||
@@ -420,7 +484,34 @@ export default function PicturePanel({ task, brief, title, aiEnabled, brandLogo,
           overflow: 'hidden'
         }}
       >
-        {viewed ? (
+        {viewed && tapAreas.length > 0 ? (
+          // A poster: the picture at its own proportions, with each line tappable to change it.
+          <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+            <Box sx={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
+              <Box component="button" type="button" onClick={() => setViewer(viewed.url)} aria-label="See the poster full size" sx={{ all: 'unset', display: 'block', cursor: 'zoom-in' }}>
+                <Box component="img" src={viewed.url} alt={viewed.kind === 'draft' ? draftLabel(viewed.draft) : title} sx={{ maxWidth: '100%', maxHeight: 420, display: 'block' }} />
+              </Box>
+              {tapAreas.map((a) => (
+                <Tooltip key={a.field} title={`Change ${AREA_NAME[a.field] || 'this'}`} placement="top">
+                  <Box
+                    component="button"
+                    type="button"
+                    aria-label={`Change ${AREA_NAME[a.field] || 'this line'}`}
+                    onClick={() => {
+                      setEditOpen(true);
+                      setEditFocus({ field: a.field, at: Date.now() });
+                    }}
+                    sx={{
+                      all: 'unset', position: 'absolute', cursor: 'text', borderRadius: '3px',
+                      left: `calc(${a.x * 100}% - 3px)`, top: `calc(${a.y * 100}% - 3px)`, width: `calc(${a.w * 100}% + 6px)`, height: `calc(${a.h * 100}% + 6px)`,
+                      '&:hover, &:focus-visible': { outline: '2px dashed rgba(255,255,255,.95)', boxShadow: '0 0 0 1px rgba(0,0,0,.55), inset 0 0 0 1px rgba(0,0,0,.35)', bgcolor: 'rgba(255,255,255,.08)' }
+                    }}
+                  />
+                </Tooltip>
+              ))}
+            </Box>
+          </Box>
+        ) : viewed ? (
           <Box
             component="button"
             type="button"
@@ -439,7 +530,7 @@ export default function PicturePanel({ task, brief, title, aiEnabled, brandLogo,
 
         {viewed && viewed.kind !== 'current' && (
           <Box sx={{ position: 'absolute', top: 8, left: 8, px: 1, py: 0.25, borderRadius: 99, fontSize: 12, fontWeight: 600, bgcolor: 'rgba(0,0,0,.66)', color: '#fff' }}>
-            {viewed.kind === 'draft' ? 'AI picture · not used yet' : 'Earlier picture'}
+            {viewed.kind === 'draft' ? (viewed.draft.kind === 'design' ? 'Poster · not used yet' : 'AI picture · not used yet') : 'Earlier picture'}
           </Box>
         )}
 
@@ -457,10 +548,15 @@ export default function PicturePanel({ task, brief, title, aiEnabled, brandLogo,
       {/* Actions for what's being looked at */}
       {viewed?.kind === 'draft' && (
         <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1, mt: 1 }}>
-          <Button size="small" variant="contained" disabled={Boolean(busy)} onClick={() => use(viewed.url, 'Picture updated (also saved in the Library)')}>
-            {busy === `use:${viewed.url}` ? 'Saving…' : 'Use this picture'}
+          <Button size="small" variant="contained" disabled={Boolean(busy)} onClick={() => use(viewed.url, viewedDesign ? 'Poster in use (also saved in the Library)' : 'Picture updated (also saved in the Library)')}>
+            {busy === `use:${viewed.url}` ? 'Saving…' : viewedDesign ? 'Use this poster' : 'Use this picture'}
           </Button>
-          {aiEnabled && (
+          {editable && (
+            <Button size="small" startIcon={<EditIcon />} onClick={() => setEditOpen((o) => !o)} aria-expanded={editOpen}>
+              {editOpen ? 'Hide editing' : 'Edit'}
+            </Button>
+          )}
+          {aiEnabled && !viewedDesign && (
             <Button size="small" startIcon={<ChangeIcon />} disabled={running} onClick={() => changeRef.current?.focus()}>
               Change it
             </Button>
@@ -469,8 +565,17 @@ export default function PicturePanel({ task, brief, title, aiEnabled, brandLogo,
             Discard
           </Button>
           <Typography sx={{ fontSize: 12.5, color: 'var(--text-muted)', ml: 'auto' }}>
-            {viewed.draft.kind === 'change' ? 'Changed' : 'Made'} {formatAgo(viewed.draft.at)} · deleted in {daysLeft(viewed.draft.at)} day{daysLeft(viewed.draft.at) === 1 ? '' : 's'} if not used
+            {siblings.length > 1 ? `Option ${siblings.findIndex((d) => d.id === viewed.draft.id) + 1} of ${siblings.length} · ` : ''}
+            {viewed.draft.kind === 'change' || viewed.draft.from ? 'Changed' : 'Made'} {formatAgo(viewed.draft.at)} · deleted in {daysLeft(viewed.draft.at)} day{daysLeft(viewed.draft.at) === 1 ? '' : 's'} if not used
           </Typography>
+        </Box>
+      )}
+      {viewed?.kind === 'current' && editable && (
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1, mt: 1 }}>
+          <Button size="small" startIcon={<EditIcon />} onClick={() => setEditOpen((o) => !o)} aria-expanded={editOpen}>
+            {editOpen ? 'Hide editing' : 'Edit poster'}
+          </Button>
+          {editOpen && <Typography sx={{ fontSize: 12.5, color: 'var(--text-muted)' }}>Tap a line on the poster to change it.</Typography>}
         </Box>
       )}
       {viewed?.kind === 'earlier' && (
@@ -511,7 +616,7 @@ export default function PicturePanel({ task, brief, title, aiEnabled, brandLogo,
                   >
                     <img src={s.url} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                     {s.tag && (
-                      <Box component="span" sx={{ position: 'absolute', left: 3, bottom: 3, px: 0.5, borderRadius: 1, fontSize: 10, fontWeight: 700, lineHeight: '15px', bgcolor: s.tag === 'AI' ? 'var(--st-scheduled-dot)' : 'rgba(0,0,0,.66)', color: '#fff' }}>
+                      <Box component="span" sx={{ position: 'absolute', left: 3, bottom: 3, px: 0.5, borderRadius: 1, fontSize: 10, fontWeight: 700, lineHeight: '15px', bgcolor: s.tag === 'Now' ? 'rgba(0,0,0,.66)' : 'var(--st-scheduled-dot)', color: '#fff' }}>
                         {s.tag}
                       </Box>
                     )}
@@ -542,6 +647,18 @@ export default function PicturePanel({ task, brief, title, aiEnabled, brandLogo,
         {aiEnabled && (
           <Button
             size="small"
+            startIcon={posterBusy ? <CircularProgress size={14} /> : <PosterIcon />}
+            endIcon={posterOpen ? <CloseSectionIcon /> : <OpenIcon />}
+            onClick={() => setPosterOpen((o) => !o)}
+            aria-expanded={posterOpen || posterBusy}
+            aria-controls="design-a-poster"
+          >
+            {posterBusy ? `Designing… ${Math.round((posterJob?.progress || 0) * 100)}%` : 'Design a poster'}
+          </Button>
+        )}
+        {aiEnabled && (
+          <Button
+            size="small"
             startIcon={<AIIcon />}
             endIcon={aiOpen ? <CloseSectionIcon /> : <OpenIcon />}
             onClick={() => setAiOpen((o) => !o)}
@@ -564,7 +681,16 @@ export default function PicturePanel({ task, brief, title, aiEnabled, brandLogo,
       </Box>
 
       {/* Change the picture being looked at */}
-      {aiEnabled && viewed && taskId && (
+      {editable && editOpen && viewedDesign && taskId && (
+        <PosterEditor taskId={taskId} posterRef={posterRef} design={viewedDesign} catalog={catalog} focus={editFocus} onDraft={onPosterDraft} />
+      )}
+
+      {/* Design a poster */}
+      {aiEnabled && (posterOpen || posterBusy) && (
+        <PosterMaker task={task} title={title} brief={brief} usage={usage} ensureSaved={ensureSaved} focusBrief={focusBrief} onAddPhoto={(anchor) => openAddReference('include', anchor)} />
+      )}
+
+      {aiEnabled && viewed && taskId && !viewedDesign && (
         <Box sx={{ mt: 1.5 }}>
           <Box
             component="form"
@@ -683,55 +809,9 @@ export default function PicturePanel({ task, brief, title, aiEnabled, brandLogo,
                       </Box>
                     )}
                   </Box>
-                  <input ref={refFileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={addReferenceFile} />
                 </>
               )}
             </Box>
-            <Menu anchorEl={addAnchor} open={Boolean(addAnchor)} onClose={() => setAddAnchor(null)}>
-              <Box sx={{ px: 2, pt: 0.5, pb: 1, maxWidth: 300 }}>
-                <Typography sx={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', mb: 0.75 }}>How the AI should use it</Typography>
-                <ToggleButtonGroup size="small" exclusive fullWidth value={refRole} onChange={(_, v) => v && setRefRole(v)} sx={{ '& .MuiToggleButton-root': { textTransform: 'none', fontSize: 12.5 } }}>
-                  <ToggleButton value="include">Include this</ToggleButton>
-                  <ToggleButton value="style">Copy this style</ToggleButton>
-                </ToggleButtonGroup>
-                <Typography sx={{ fontSize: 12, color: 'var(--text-muted)', mt: 0.75 }}>{ROLE_TEXT[refRole].hint}.</Typography>
-              </Box>
-              <MenuItem
-                onClick={() => {
-                  setAddAnchor(null);
-                  refFileRef.current?.click();
-                }}
-              >
-                <ListItemIcon>
-                  <UploadIcon fontSize="small" />
-                </ListItemIcon>
-                <ListItemText primary="Upload a picture" />
-              </MenuItem>
-              <MenuItem
-                onClick={async () => {
-                  setAddAnchor(null);
-                  if (taskId || (await ensureSaved())) setPicker('reference');
-                }}
-              >
-                <ListItemIcon>
-                  <LibraryIcon fontSize="small" />
-                </ListItemIcon>
-                <ListItemText primary="From the Library" />
-              </MenuItem>
-              {current && !references.some((r) => r.url === current) && (
-                <MenuItem
-                  onClick={() => {
-                    setAddAnchor(null);
-                    addReferenceUrl(current, refRole);
-                  }}
-                >
-                  <ListItemIcon>
-                    <ImageIcon fontSize="small" />
-                  </ListItemIcon>
-                  <ListItemText primary="This post’s current picture" />
-                </MenuItem>
-              )}
-            </Menu>
           </Box>
 
           {/* Shape */}
@@ -804,6 +884,54 @@ export default function PicturePanel({ task, brief, title, aiEnabled, brandLogo,
           {createRunning && <LinearProgress variant={seconds < 60 ? 'determinate' : 'indeterminate'} value={Math.min(95, (seconds / 60) * 100)} />}
         </Box>
       )}
+
+      {/* Adding a reference picture (from Create with AI or Design a poster) */}
+      <input ref={refFileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={addReferenceFile} />
+      <Menu anchorEl={addAnchor} open={Boolean(addAnchor)} onClose={() => setAddAnchor(null)}>
+        <Box sx={{ px: 2, pt: 0.5, pb: 1, maxWidth: 300 }}>
+          <Typography sx={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', mb: 0.75 }}>How the AI should use it</Typography>
+          <ToggleButtonGroup size="small" exclusive fullWidth value={refRole} onChange={(_, v) => v && setRefRole(v)} sx={{ '& .MuiToggleButton-root': { textTransform: 'none', fontSize: 12.5 } }}>
+            <ToggleButton value="include">Include this</ToggleButton>
+            <ToggleButton value="style">Copy this style</ToggleButton>
+          </ToggleButtonGroup>
+          <Typography sx={{ fontSize: 12, color: 'var(--text-muted)', mt: 0.75 }}>{ROLE_TEXT[refRole].hint}.</Typography>
+        </Box>
+        <MenuItem
+          onClick={() => {
+            setAddAnchor(null);
+            refFileRef.current?.click();
+          }}
+        >
+          <ListItemIcon>
+            <UploadIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText primary="Upload a picture" />
+        </MenuItem>
+        <MenuItem
+          onClick={async () => {
+            setAddAnchor(null);
+            if (taskId || (await ensureSaved())) setPicker('reference');
+          }}
+        >
+          <ListItemIcon>
+            <LibraryIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText primary="From the Library" />
+        </MenuItem>
+        {current && !references.some((r) => r.url === current) && (
+          <MenuItem
+            onClick={() => {
+              setAddAnchor(null);
+              addReferenceUrl(current, refRole);
+            }}
+          >
+            <ListItemIcon>
+              <ImageIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText primary="This post’s current picture" />
+          </MenuItem>
+        )}
+      </Menu>
 
       {taskId && (
         <LibraryImagePicker

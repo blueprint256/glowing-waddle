@@ -13,6 +13,8 @@ import { cleanCopy } from './director';
 export type EditOp =
   | { op: 'set_text'; field: TextField; value: string }
   | { op: 'remove_text'; field: TextField }
+  | { op: 'set_details'; details: { kind: string; text: string }[] }
+  | { op: 'set_badge'; badge: { top?: string; main: string; bottom?: string } | null }
   | { op: 'set_param'; key: string; value: number | string | boolean }
   | { op: 'headline_size'; scale: number }
   | { op: 'swap_colours' }
@@ -36,7 +38,7 @@ export const EDIT_TOOL = {
           type: 'object',
           required: ['op'],
           properties: {
-            op: { type: 'string', enum: ['set_text', 'remove_text', 'set_param', 'headline_size', 'swap_colours', 'switch_design', 'change_format', 'photo_focus', 'remove_sponsor', 'new_background', 'refuse'] },
+            op: { type: 'string', enum: ['set_text', 'remove_text', 'set_details', 'set_badge', 'set_param', 'headline_size', 'swap_colours', 'switch_design', 'change_format', 'photo_focus', 'remove_sponsor', 'new_background', 'refuse'] },
             field: { type: 'string', enum: ['eyebrow', 'headline', 'subhead', 'body', 'cta', 'footnote', 'hashtag', 'sponsorsTitle'] },
             value: {},
             key: { type: 'string' },
@@ -47,6 +49,8 @@ export const EDIT_TOOL = {
             x: { type: 'number' },
             y: { type: 'number' },
             name: { type: 'string' },
+            details: { type: 'array', items: { type: 'object', properties: { kind: { type: 'string', enum: ['date', 'time', 'place', 'phone', 'web', 'info'] }, text: { type: 'string' } } } },
+            badge: { type: ['object', 'null'], properties: { top: { type: 'string' }, main: { type: 'string' }, bottom: { type: 'string' } } },
             prompt: { type: 'string' },
             reason: { type: 'string' }
           }
@@ -62,6 +66,8 @@ export const EDIT_SYSTEM = `You change a finished poster for a person who descri
 Operations:
 - set_text {field, value}: replace the words of a field (eyebrow, headline, subhead, body, cta, footnote, hashtag, sponsorsTitle). Keep facts exactly as given; never invent dates, numbers or names. Use \\n in the headline for a line break.
 - remove_text {field}
+- set_details {details}: the whole list of detail lines (date, time, place, phone, web, info), in order; an empty list removes them.
+- set_badge {badge}: the round badge {top, main, bottom} (e.g. SAT / 14 / DEC), or null to remove it.
 - set_param {key, value}: a setting of the current design (listed with its limits).
 - headline_size {scale}: 0.75–1.3; "bigger" ≈ 1.15, "much bigger" ≈ 1.3, "smaller" ≈ 0.85.
 - swap_colours: swap the brand's primary and secondary colours.
@@ -136,6 +142,27 @@ export function applyEdits(doc: DesignDoc, ops: EditOp[], designs: DesignTemplat
           changed.push(op.field);
         }
         break;
+      case 'set_details': {
+        if (!Array.isArray(op.details)) break;
+        const cleaned = cleanCopy({ headline: 'x', details: op.details }).details || [];
+        if (cleaned.length) next.text.details = cleaned;
+        else delete next.text.details;
+        changed.push('details');
+        break;
+      }
+      case 'set_badge': {
+        if (op.badge === null || (op.badge && !String(op.badge.main || '').trim())) {
+          if (next.text.badge) changed.push('badge');
+          delete next.text.badge;
+          break;
+        }
+        const badge = cleanCopy({ headline: 'x', badge: op.badge }).badge;
+        if (badge) {
+          next.text.badge = badge;
+          changed.push('badge');
+        }
+        break;
+      }
       case 'set_param': {
         if (!design || !design.params.some((p) => p.key === op.key)) break;
         next.params = normalizeParams(design.params, { ...next.params, [op.key]: op.value });
@@ -199,9 +226,17 @@ export function applyEdits(doc: DesignDoc, ops: EditOp[], designs: DesignTemplat
   return { doc: next, changed, backgroundPrompt, refused };
 }
 
+/** What can be typed straight into a poster: its text fields, the detail lines and the badge. */
+export type TextEdits = Partial<Record<TextField, string | null>> & {
+  details?: { kind: string; text: string }[];
+  badge?: { top?: string; main: string; bottom?: string } | null;
+};
+
 /** Direct text edits from the poster itself (tap a line, type): no AI involved. */
-export function applyTextEdits(doc: DesignDoc, text: Partial<Record<TextField, string | null>>): DesignDoc {
+export function applyTextEdits(doc: DesignDoc, text: TextEdits): DesignDoc {
   const ops: EditOp[] = [];
+  if (Array.isArray(text.details)) ops.push({ op: 'set_details', details: text.details });
+  if (text.badge !== undefined) ops.push({ op: 'set_badge', badge: text.badge });
   for (const [field, value] of Object.entries(text)) {
     if (!TEXT_FIELDS.includes(field as TextField)) continue;
     if (value === null || (typeof value === 'string' && !value.trim())) ops.push({ op: 'remove_text', field: field as TextField });

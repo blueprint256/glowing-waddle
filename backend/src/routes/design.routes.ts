@@ -16,7 +16,7 @@ import { editDesign, findDesign, printDesign } from '../services/designEdits';
 import { applyPack, brandId, engineKit, loadBrandKit, storeLogoFile } from '../services/designBrand';
 import { allDesigns } from '../services/designLibrary';
 import { BRAND_PACKS, packById } from '../design/packs';
-import { FONTS } from '../design/fonts';
+import { FONTS, FONT_DIR } from '../design/fonts';
 import { FORMATS, isFormatId } from '../design/formats';
 import { isHex } from '../design/color';
 
@@ -155,8 +155,9 @@ router.post('/tasks/:id/posters/:ref/edit', isAuthenticated, canManageTasks, val
     if (!task) throw new DesignError(404, 'Post not found');
     const text = req.body?.text && typeof req.body.text === 'object' ? req.body.text : undefined;
     const request = str(req.body?.request, 1500) || undefined;
-    if (!text && !request) throw new DesignError(400, 'Type on the poster or describe the change.');
-    const answer = await editDesign(task, String(req.params.ref), { text, request }, req.user!._id as Id);
+    const ops = Array.isArray(req.body?.ops) ? req.body.ops.slice(0, 10) : undefined;
+    if (!text && !request && !ops?.length) throw new DesignError(400, 'Type on the poster or describe the change.');
+    const answer = await editDesign(task, String(req.params.ref), { text, request, ops }, req.user!._id as Id);
     if (answer.draft) {
       task.lastModifiedBy = req.user!._id;
       await task.save();
@@ -191,14 +192,17 @@ router.post('/tasks/:id/posters/:ref/print', isAuthenticated, canManageTasks, va
 // Catalogue
 // ---------------------------------------------------------------------------
 
+/** The bundled open-licence font files, so the brand kit screen can show each font. */
+router.use('/font-files', express.static(FONT_DIR, { maxAge: '30d', fallthrough: false, index: false }));
+
 router.get('/catalog', isAuthenticated, async (_req: Request, res: Response) => {
   try {
     const designs = await allDesigns();
     res.json({
       success: true,
-      designs: designs.map((d) => ({ id: d.id, name: d.name, description: d.description, tags: d.tags, formats: d.formats, photos: d.photos, sponsors: d.sponsors, background: d.background })),
+      designs: designs.map((d) => ({ id: d.id, name: d.name, description: d.description, tags: d.tags, formats: d.formats, fields: d.fields, photos: d.photos, sponsors: d.sponsors, background: d.background })),
       packs: BRAND_PACKS.map((p) => ({ id: p.id, name: p.name, colors: p.colors, fonts: p.fonts, rules: p.rules, palette: p.palette })),
-      fonts: FONTS.map((f) => ({ id: f.id, family: f.family, category: f.category, note: f.note || null })),
+      fonts: FONTS.map((f) => ({ id: f.id, family: f.family, category: f.category, note: f.note || null, faces: f.files.map((x) => ({ path: `/design/font-files/${x.file.split('/').map(encodeURIComponent).join('/')}`, style: x.style, weight: x.weight, stretch: x.stretch || null })) })),
       formats: Object.values(FORMATS).map((f) => ({ id: f.id, label: f.label, width: f.width, height: f.height, print: !!f.print }))
     });
   } catch (error) {
