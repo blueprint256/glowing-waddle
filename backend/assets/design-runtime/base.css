@@ -1,0 +1,186 @@
+/*
+ * Poster engine base styles (shared by every design). Designs build on these tokens and treatments;
+ * see docs/DESIGN_ENGINE.md for the vocabulary.
+ */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+}
+* {
+  box-sizing: border-box;
+}
+#poster {
+  position: relative;
+  overflow: hidden;
+  container-type: size;
+  font-family: var(--f-text);
+  color: var(--c-ink);
+  background: var(--c-paper);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-kerning: normal;
+  font-feature-settings: 'kern', 'liga';
+  font-synthesis: none;
+}
+:where(#poster) :where(h1, h2, h3, p) {
+  margin: 0;
+}
+template {
+  display: none !important;
+}
+
+/* Photos: the engine places the image inside its box around the subject (never stretched). */
+.d-photo {
+  position: relative;
+  overflow: hidden;
+}
+.d-photo-img {
+  position: absolute;
+  max-width: none;
+  display: block;
+  user-select: none;
+}
+
+/* Logos: exact files, never recoloured; the box sets the height. */
+.d-logo {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+.d-logo-img {
+  display: block;
+  max-width: none;
+}
+/* No version of the logo for this surface: it sits on a plate as wide as its clear space. */
+.d-logo.d-plated {
+  background: var(--c-paper);
+  box-shadow: 0 0 0 var(--clear, 1cqmin) var(--c-paper);
+  border-radius: 0.2cqmin;
+}
+.d-logo.d-plated-dark {
+  background: var(--c-primary-deep);
+  box-shadow: 0 0 0 var(--clear, 1cqmin) var(--c-primary-deep);
+  border-radius: 0.2cqmin;
+}
+
+/* Sponsors: the engine sizes each logo by how big it looks. */
+.d-sponsor-row,
+[data-sponsors]:not(:has([data-sponsor-row])) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sponsor-gap, 3cqmin);
+}
+.d-sponsor-row.d-two-rows {
+  flex-wrap: wrap;
+  row-gap: calc(var(--sponsor-gap, 3cqmin) * 0.45);
+}
+.d-sponsor {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.d-sponsor-img {
+  display: block;
+  max-width: none;
+}
+
+/* Details (date, time, place): one line each with a drawn icon. */
+.d-detail {
+  display: flex;
+  align-items: center;
+  gap: 0.55em;
+}
+.d-detail svg {
+  width: 1.1em;
+  height: 1.1em;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Headlines wrap in balanced lines, never with a lonely last word. */
+.d-balance {
+  text-wrap: balance;
+}
+.d-pretty {
+  text-wrap: pretty;
+}
+
+/* Text colour chosen from what's behind it (data-tone="auto"). */
+[data-tone='auto'] {
+  color: var(--c-ink);
+}
+[data-tone-set='light'] {
+  color: var(--c-paper) !important;
+}
+[data-tone-set='dark'] {
+  color: var(--c-ink) !important;
+}
+
+/* Fusion treatments: one colour grade, light and texture over everything, so pieces feel designed
+   together rather than placed on top of each other. */
+.t-unify .d-photo-img,
+.d-photo.t-unify > .d-photo-img {
+  filter: contrast(1.05) saturate(0.9);
+}
+.t-warm .d-photo-img {
+  filter: sepia(0.14) saturate(1.04) contrast(1.04);
+}
+.t-duotone .d-photo-img {
+  filter: url(#d-duo);
+}
+.t-duotone-accent .d-photo-img {
+  filter: url(#d-duo-accent);
+}
+.t-tint::after,
+.t-shade::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.t-tint::after {
+  background: var(--tint, var(--c-primary));
+  mix-blend-mode: color;
+  opacity: var(--tint-amt, 0.3);
+}
+.t-shade::after {
+  background: linear-gradient(var(--shade-dir, 180deg), rgb(var(--c-primary-deep-rgb) / 0) 30%, rgb(var(--c-primary-deep-rgb) / var(--shade-amt, 0.75)) 100%);
+  mix-blend-mode: multiply;
+}
+.d-grain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: var(--grain-img);
+  background-size: 260px 260px;
+  mix-blend-mode: overlay;
+  opacity: var(--grain, 0.12);
+}
+.d-shadow {
+  box-shadow: var(--shadow-soft);
+}
+.d-fill {
+  position: absolute;
+  inset: 0;
+}
+
+/* Sampling pass: make words invisible (their own backgrounds stay, e.g. a button) and hide logos,
+   so the renderer can see what's behind them. */
+.d-sampling [data-check='text'],
+.d-sampling [data-check='text'] * {
+  color: transparent !important;
+  text-shadow: none !important;
+}
+.d-sampling [data-check='logo'],
+.d-sampling [data-check='sponsor'],
+.d-sampling .d-grain {
+  visibility: hidden !important;
+}
