@@ -30,7 +30,7 @@ export const artLed: DesignTemplate = {
     'A warm, hopeful editorial illustration with a clear focal subject in the upper middle, soft textured shapes, plenty of calm sky or open space, no text, no letters, no logos, no borders. The lower fifth fades to simple shapes because it will be covered.',
   backgroundArea: { w: 1, h: 0.55 },
   params: [
-    { key: 'minArt', label: 'Smallest share of the poster for the illustration', type: 'number', min: 0.36, max: 0.6, default: 0.44, step: 0.01 },
+    { key: 'minArt', label: 'Smallest share of the poster for the illustration', type: 'number', min: 0.36, max: 0.6, default: 0.44, step: 0.01, roomy: 'min' },
     { key: 'curve', label: 'Depth of the curve', type: 'number', min: 0, max: 9, default: 5, step: 1 },
     { key: 'ink', label: 'Headline colour', type: 'color', default: 'primary' },
     { key: 'accent', label: 'Accent colour', type: 'color', default: 'accent' }

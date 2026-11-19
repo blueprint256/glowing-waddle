@@ -105,6 +105,11 @@ const AREA_NAME: Record<string, string> = {
   hashtag: 'the hashtag',
   sponsorsTitle: 'the words above the partner logos',
   details: 'the details',
+  personLabel: 'the person’s part',
+  personName: 'the name',
+  personRole: 'the role',
+  social: 'the handle',
+  web: 'the website',
   badge: 'the date badge'
 };
 

@@ -222,7 +222,8 @@ export const spotlight: DesignTemplate = {
 #poster[data-format="story"] .sl-halo { left: 26cqw; top: 33cqh; width: 70cqmin; height: 70cqmin; }
 #poster[data-format="story"] .sl-ring-1 { left: 14cqw; top: 31cqh; width: 74cqmin; height: 74cqmin; }
 #poster[data-format="story"] .sl-ring-2 { left: 20cqw; top: 33cqh; width: 74cqmin; height: 74cqmin; }
-#poster[data-format="story"] .sl-photo { left: 0; -webkit-mask-image: linear-gradient(180deg, transparent 22%, #000 46%); mask-image: linear-gradient(180deg, transparent 22%, #000 46%); }
+#poster[data-format="story"] .sl-photo { left: 0; top: var(--top-bottom, 34cqh); bottom: calc(100cqh - var(--info-top, 72cqh) - 3cqh);
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 22%, #000 72%, transparent 100%); mask-image: linear-gradient(180deg, transparent 0, #000 22%, #000 72%, transparent 100%); }
 
 /* Landscape: logos to the left, the words beside the person. */
 #poster[data-format="landscape"] { --m: 5cqmin; --logo-h: 7.6cqmin; --band-h: 15cqh; --stage-l: 56cqw; --stage-t: 8cqh; --copy-w: 52cqw; }

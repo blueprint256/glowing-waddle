@@ -38,7 +38,12 @@ const FIELD_LABEL: Record<PosterField, string> = {
   cta: 'Call to action',
   footnote: 'Small print',
   hashtag: 'Hashtag',
-  sponsorsTitle: 'Above the partner logos'
+  sponsorsTitle: 'Above the partner logos',
+  personLabel: 'Their part (e.g. Guest speaker)',
+  personName: 'Name',
+  personRole: 'Role',
+  social: 'Handle',
+  web: 'Website'
 };
 
 const DETAIL_KINDS: { kind: DetailKind; label: string; icon: typeof DateIcon }[] = [
@@ -274,6 +279,17 @@ export default function PosterEditor({ taskId, posterRef, design, catalog, focus
             <WordField key={f} field={f} value={words.fields[f] || ''} max={maxOf(f)} onChange={(v) => setField(f, v)} multiline={f !== 'eyebrow'} required={f === 'headline'} />
           ))}
 
+        {(['personLabel', 'personName', 'personRole'] as PosterField[]).some((f) => shown.has(f)) && (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25, p: 1.25, borderRadius: 'var(--r-ctl)', bgcolor: 'var(--bg-subtle)' }}>
+            <Typography sx={{ fontSize: 12.5, color: 'var(--text-muted)' }}>Featured person (leave the name empty to show no one)</Typography>
+            {(['personLabel', 'personName', 'personRole'] as PosterField[])
+              .filter((f) => shown.has(f))
+              .map((f) => (
+                <WordField key={f} field={f} value={words.fields[f] || ''} max={maxOf(f)} onChange={(v) => setField(f, v)} multiline={f === 'personRole'} />
+              ))}
+          </Box>
+        )}
+
         {shown.has('details') && (
           <Box>
             <Typography sx={{ fontSize: 12.5, color: 'var(--text-muted)', mb: 0.75 }}>Details</Typography>
@@ -311,7 +327,7 @@ export default function PosterEditor({ taskId, posterRef, design, catalog, focus
           </Box>
         )}
 
-        {(['cta', 'hashtag', 'sponsorsTitle', 'footnote'] as PosterField[])
+        {(['cta', 'hashtag', 'social', 'web', 'sponsorsTitle', 'footnote'] as PosterField[])
           .filter((f) => shown.has(f) && (f !== 'sponsorsTitle' || doc.sponsors.length > 0))
           .map((f) => (
             <WordField key={f} field={f} value={words.fields[f] || ''} max={maxOf(f)} onChange={(v) => setField(f, v)} />
@@ -395,7 +411,7 @@ function WordField({ field, value, max, onChange, multiline, required }: { field
       maxRows={4}
       required={required}
       inputProps={{ maxLength: 400 }}
-      helperText={long ? `Long for this design (about ${max} characters fit best). It will be set smaller.` : field === 'headline' ? 'Press Enter for a line break where you want it.' : undefined}
+      helperText={long ? `Long for this design (about ${max} characters fit best). It will be set smaller.` : field === 'headline' ? 'Enter makes a line break. Put *stars* around a word to set it in the accent colour.' : undefined}
       FormHelperTextProps={{ sx: { color: long ? 'var(--warning-text, #b45309)' : undefined, mx: 0 } }}
     />
   );

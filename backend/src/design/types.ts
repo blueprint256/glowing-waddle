@@ -61,6 +61,10 @@ export interface FocalPoint {
   y: number;
   /** The subject's box (0..1), used so crops never cut through a face or a person. */
   box?: { x: number; y: number; w: number; h: number };
+  /** How many people (from the art director). */
+  people?: number;
+  /** The box around all the faces (0..1): words must stay off it, crops must keep it. */
+  faces?: { x: number; y: number; w: number; h: number };
 }
 
 /** Sides where the photo's own frame cut the subject (a straight edge the design should soften). */
@@ -185,7 +189,8 @@ export interface BrandKit {
 
 /** A design's setting the art director may choose (inside the design's limits). */
 export type DesignParam =
-  | { key: string; label: string; type: 'number'; min: number; max: number; default: number; step?: number }
+  /** roomy: which end gives the words more room or keeps them off faces (used when a poster fails its checks). */
+  | { key: string; label: string; type: 'number'; min: number; max: number; default: number; step?: number; roomy?: 'min' | 'max' }
   | { key: string; label: string; type: 'choice'; options: string[]; default: string }
   | { key: string; label: string; type: 'color'; default: 'primary' | 'secondary' | 'accent' | 'ink' | 'paper' }
   | { key: string; label: string; type: 'toggle'; default: boolean };

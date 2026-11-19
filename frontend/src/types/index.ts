@@ -154,7 +154,7 @@ export interface PostImageHistory {
 }
 
 export type PosterFormat = 'square' | 'portrait' | 'story' | 'landscape' | 'a4' | 'a3';
-export type PosterField = 'eyebrow' | 'headline' | 'subhead' | 'body' | 'cta' | 'footnote' | 'hashtag' | 'sponsorsTitle';
+export type PosterField = 'eyebrow' | 'headline' | 'subhead' | 'body' | 'cta' | 'footnote' | 'hashtag' | 'sponsorsTitle' | 'personLabel' | 'personName' | 'personRole' | 'social' | 'web';
 export type DetailKind = 'date' | 'time' | 'place' | 'phone' | 'web' | 'info';
 
 /** The words on a poster (design engine). */

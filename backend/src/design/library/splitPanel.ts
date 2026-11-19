@@ -31,7 +31,7 @@ export const splitPanel: DesignTemplate = {
   sponsors: { min: 0, max: 8 },
   background: 'none',
   params: [
-    { key: 'minPhoto', label: 'Smallest share of the poster for the photo', type: 'number', min: 0.32, max: 0.55, default: 0.42, step: 0.01 },
+    { key: 'minPhoto', label: 'Smallest share of the poster for the photo', type: 'number', min: 0.32, max: 0.55, default: 0.42, step: 0.01, roomy: 'min' },
     { key: 'slope', label: 'Steepness of the diagonal', type: 'number', min: 0, max: 14, default: 7, step: 1 },
     { key: 'panel', label: 'Panel colour', type: 'color', default: 'primary' },
     { key: 'accent', label: 'Accent colour', type: 'color', default: 'accent' },

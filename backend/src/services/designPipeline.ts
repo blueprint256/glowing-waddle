@@ -197,6 +197,14 @@ function roomierParams(option: PlannedOption): Record<string, number | string | 
   let changed = false;
   for (const def of option.design.params) {
     if (def.type !== 'number') continue;
+    if (def.roomy) {
+      const target = def.roomy === 'min' ? def.min : def.max;
+      if (p[def.key] !== target) {
+        p[def.key] = target;
+        changed = true;
+      }
+      continue;
+    }
     if (/^min(Photo|Art)$/.test(def.key) && p[def.key] !== def.min) {
       p[def.key] = def.min;
       changed = true;
@@ -357,9 +365,27 @@ export async function runDesignJob(job: IDesignJob): Promise<void> {
     if (checkScore(again.result.report.issues) > checkScore(r.result.report.issues)) rendered = rendered.map((x) => (x === r ? again : x));
   }
   let good = rendered.filter((r) => !hasErrors(r.result.report.issues));
+  // Too few clean options: try the other designs that fit, with the same words.
+  const wanted = Math.min(input.count, 2);
+  if (good.length < wanted) {
+    const tried = new Set(rendered.map((r) => r.option.design.id));
+    const spare = designs.filter((d) => !tried.has(d.id));
+    const extra = plannedDocs({ ...plan, options: spare.map((d) => ({ design: d.id })) }, { ...input, designs: spare }, background);
+    for (const o of extra) {
+      if (good.length >= input.count) break;
+      const r = await renderOption(o, kit);
+      if (!hasErrors(r.result.report.issues)) good.push(r);
+    }
+  }
   if (!good.length) {
-    const worst = rendered[0]?.result.report.issues.find((i) => i.level === 'error');
-    throw new DesignError(422, `The words don’t fit any design${worst ? ` (${worst.message.replace(/\.$/, '')})` : ''}. Try saying less, or fewer sponsors.`);
+    const errors = rendered.flatMap((r) => r.result.report.issues.filter((i) => i.level === 'error'));
+    const has = (c: string) => errors.some((e) => e.code === c);
+    const hint = has('text-over-subject') || has('text-over-person')
+      ? 'The photo’s people would be covered by the words in every design. Try a photo with more space beside the people, or fewer words.'
+      : has('text-overflow') || has('text-small')
+        ? 'The words don’t fit any design. Try saying less, or fewer sponsors.'
+        : `No design passed its checks${errors[0] ? ` (${errors[0].message.replace(/\.$/, '')})` : ''}. Try fewer words, sponsors or another photo.`;
+    throw new DesignError(422, hint);
   }
 
   // 6) Review: the critic ranks the clean options by looking at them.

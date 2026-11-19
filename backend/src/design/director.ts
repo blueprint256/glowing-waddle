@@ -56,7 +56,17 @@ export interface PlanOption {
   why?: string;
 }
 
+/** Where the people are in a photo, as the director sees it (0..1 of the photo). */
+export interface PhotoNote {
+  photo: number;
+  subject?: { x: number; y: number; w: number; h: number };
+  faces_y?: number;
+  faces?: { x: number; y: number; w: number; h: number };
+  people?: number;
+}
+
 export interface DirectorPlan {
+  photos?: PhotoNote[];
   copy: PlanCopy;
   options: PlanOption[];
   background_prompt?: string;
@@ -70,6 +80,30 @@ export const DIRECTOR_TOOL = {
     type: 'object',
     required: ['copy', 'options'],
     properties: {
+      photos: {
+        type: 'array',
+        description: 'For each photo: where its people (or main subject) are, so crops never cut through heads and words never cover faces.',
+        items: {
+          type: 'object',
+          required: ['photo', 'subject'],
+          properties: {
+            photo: { type: 'integer' },
+            subject: {
+              type: 'object',
+              description: 'Box around all the people (or the main subject), as fractions of the photo’s width and height from the top-left.',
+              required: ['x', 'y', 'w', 'h'],
+              properties: { x: { type: 'number' }, y: { type: 'number' }, w: { type: 'number' }, h: { type: 'number' } }
+            },
+            faces: {
+              type: 'object',
+              description: 'If there are people: the box around all their faces (heads), same fractions. Words are kept off it.',
+              required: ['x', 'y', 'w', 'h'],
+              properties: { x: { type: 'number' }, y: { type: 'number' }, w: { type: 'number' }, h: { type: 'number' } }
+            },
+            people: { type: 'integer', description: 'How many people are clearly visible.' }
+          }
+        }
+      },
       copy: {
         type: 'object',
         required: ['headline'],
@@ -125,7 +159,7 @@ export const DIRECTOR_TOOL = {
 export const DIRECTOR_SYSTEM = `You are the art director and copywriter of a small, excellent design studio. You prepare posters and social media pictures for clubs, charities and businesses. Code renders your decisions exactly, so you never draw: you choose designs from a catalogue, set their options, and write the words.
 
 How you work:
-1. Read the request and everything given about the brand, the campaign and the photos. Work out the one thing the poster must make people feel and do.
+1. Read the request and everything given about the brand, the campaign and the photos. Work out the one thing the poster must make people feel and do. For every photo, note in "photos" the box around its people (all of them, heads included) and the height of their faces: crops and text placement depend on it.
 2. Write the words once, as a professional copywriter would:
    - Headline: short, specific and human; at most the design's limit (prefer 2–6 words). Lead with people and impact, not the organisation. Use the language of the request.
    - Eyebrow: the programme, occasion or series, 2–5 words. Leave it out if there is nothing useful.
@@ -264,7 +298,30 @@ export interface PlannedOption {
 }
 
 /** Turns the director's plan into poster documents, keeping only what the designs can do. */
+/** The director's view of where the people are replaces the automatic focal point. */
+export function applyPhotoNotes(photos: DirectorPhoto[], notes: PhotoNote[] | undefined): DirectorPhoto[] {
+  const clamp = (v: unknown, a = 0, b = 1) => Math.max(a, Math.min(b, Number(v)));
+  return photos.map((p, i) => {
+    const n = (notes || []).find((x) => Number(x?.photo) === i + 1);
+    const s = n?.subject;
+    if (!s || ![s.x, s.y, s.w, s.h].every((v) => Number.isFinite(Number(v)))) return p;
+    const x = clamp(s.x);
+    const y = clamp(s.y);
+    const w = clamp(s.w, 0.02, 1 - x);
+    const h = clamp(s.h, 0.02, 1 - y);
+    if (w * h < 0.004) return p;
+    // Aim at the faces when there are people (a crop keeps heads before feet), else the middle.
+    const fb = n!.faces;
+    const faces = fb && [fb.x, fb.y, fb.w, fb.h].every((v) => Number.isFinite(Number(v))) ? { x: clamp(fb.x), y: clamp(fb.y), w: clamp(fb.w, 0.01, 1 - clamp(fb.x)), h: clamp(fb.h, 0.01, 1 - clamp(fb.y)) } : undefined;
+    const fy = faces ? faces.y + faces.h / 2 : Number.isFinite(Number(n!.faces_y)) ? clamp(n!.faces_y, y, y + h) : y + h * 0.35;
+    const fx = faces ? faces.x + faces.w / 2 : x + w / 2;
+    const people = Number.isFinite(Number(n!.people)) ? Math.max(0, Math.round(Number(n!.people))) : undefined;
+    return { ...p, slot: { ...p.slot, focal: { x: fx, y: fy, box: { x, y, w, h }, people, faces } } };
+  });
+}
+
 export function plannedDocs(plan: DirectorPlan, input: DirectorInput, background: BackgroundSlot | null): PlannedOption[] {
+  input = { ...input, photos: applyPhotoNotes(input.photos, plan.photos) };
   const base = cleanCopy(plan.copy || {});
   const pack = packById(input.kit.pack);
   if (!base.sponsorsTitle && input.sponsors.length) base.sponsorsTitle = pack?.sponsorsTitle || 'With thanks to';

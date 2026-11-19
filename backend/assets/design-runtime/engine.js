@@ -318,6 +318,13 @@
     var hy = attrNumber(box, 'data-focus-y', 0.45);
     var ox = clamp(f.x * dw - hx * bw, 0, dw - bw);
     var oy = clamp(f.y * dh - hy * bh, 0, dh - bh);
+    // data-slide: a photo too narrow to move inside its box may slide right, past the box's left
+    // edge (by up to 60% of the box); its own left edge then fades into what's behind.
+    var slid = false;
+    if (box.hasAttribute('data-slide') && f.x * dw - hx * bw < 0) {
+      ox = Math.max(-bw * 0.6, f.x * dw - hx * bw);
+      slid = ox < -1;
+    }
     // Keep the whole subject (face, person) in frame when it fits.
     var b = !tweakFocus && p.focal && p.focal.box;
     if (b) {
@@ -325,15 +332,27 @@
       var right = (b.x + b.w) * dw;
       var top = b.y * dh;
       var bottom = (b.y + b.h) * dh;
-      if (right - left <= bw) ox = clamp(ox, Math.max(0, right - bw), Math.min(dw - bw, left));
+      if (!slid && right - left <= bw) ox = clamp(ox, Math.max(0, right - bw), Math.min(dw - bw, left));
       if (bottom - top <= bh) oy = clamp(oy, Math.max(0, bottom - bh), Math.min(dh - bh, top));
     }
     img.style.width = dw + 'px';
     img.style.height = dh + 'px';
     img.style.left = -ox + 'px';
     img.style.top = -oy + 'px';
+    var fade = slid ? 'linear-gradient(90deg, transparent 0, #000 ' + Math.round(Math.min(40, (bw * 0.25 * 100) / dw)) + '%)' : '';
+    img.style.webkitMaskImage = fade;
+    img.style.maskImage = fade;
     // Where the subject (usually a face) ended up, for the "words over the face" check.
-    if (!isBg && (p.focal || tweakFocus)) img.__subject = { x: f.x * dw - ox, y: f.y * dh - oy };
+    // With the people's box, the faces are a row across it at the focal height.
+    // Only where the people really are is known (the art director's boxes); the automatic focal
+    // point is a guess at texture and would raise false alarms.
+    if (!isBg && p.focal && (p.focal.faces || p.focal.box)) {
+      var sb = !tweakFocus && p.focal && p.focal.box;
+      // The faces' own box when known; else a group's row across its box, or the focal point.
+      var fb = !tweakFocus && p.focal && p.focal.faces;
+      if (fb) img.__subject = { x0: fb.x * dw - ox, x1: (fb.x + fb.w) * dw - ox, y: (fb.y + fb.h / 2) * dh - oy, hh: (fb.h * dh) / 2 };
+      else img.__subject = sb && (p.focal.people || 2) > 1 ? { x0: sb.x * dw - ox, x1: (sb.x + sb.w) * dw - ox, y: f.y * dh - oy } : { x0: f.x * dw - ox, x1: f.x * dw - ox, y: f.y * dh - oy };
+    }
   }
   // Subjects of the photos as they show on the poster (only where the photo is visible there).
   function photoSubjects() {
@@ -341,12 +360,12 @@
     $all('.d-photo-img').forEach(function (img) {
       if (!img.__subject) return;
       var b = rect(img.parentElement);
-      var x = b.x + img.__subject.x;
-      var y = b.y + img.__subject.y;
-      if (x < b.x || y < b.y || x > b.x + b.w || y > b.y + b.h) return;
-      // A photo melted away at that point (a mask) doesn't count: ask the box how opaque it is there.
-      var o = Number(img.parentElement.getAttribute('data-subject-weight') || 1);
-      if (o > 0) out.push({ x: x, y: y });
+      var s = img.__subject;
+      var y = b.y + s.y;
+      var x0 = Math.max(b.x, b.x + s.x0);
+      var x1 = Math.min(b.x + b.w, b.x + s.x1);
+      if (y < b.y || y > b.y + b.h || x1 < x0) return;
+      out.push({ x0: x0, x1: x1, y: y, hh: s.hh || 0 });
     });
     return out;
   }
@@ -577,11 +596,19 @@
   }
   // The ink of a text element (its lines), tighter than its box: what overlaps are judged on.
   function textRect(el) {
-    var range = document.createRange();
-    range.selectNodeContents(el);
-    var rs = Array.prototype.slice.call(range.getClientRects()).filter(function (r) {
-      return r.width > 0 && r.height > 0;
-    });
+    // The letters themselves: each text node's line boxes (an element's own box, e.g. a block <em>,
+    // would count its full width).
+    var rs = [];
+    var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    var node;
+    while ((node = walker.nextNode())) {
+      if (!node.nodeValue || !node.nodeValue.trim()) continue;
+      var range = document.createRange();
+      range.selectNodeContents(node);
+      Array.prototype.slice.call(range.getClientRects()).forEach(function (r) {
+        if (r.width > 0 && r.height > 0) rs.push(r);
+      });
+    }
     if (!rs.length) return rect(el);
     var p = poster.getBoundingClientRect();
     var x0 = Math.min.apply(null, rs.map(function (r) { return r.left; }));
@@ -699,7 +726,12 @@
         // A face is about a tenth of the poster's short side across: words within that are on it.
         var rFace = MIN * 0.05;
         photoSubjects().forEach(function (s) {
-          if (s.x > m.box.x - rFace && s.x < m.box.x + m.box.w + rFace && s.y > m.box.y - rFace && s.y < m.box.y + m.box.h + rFace) m.overSubject = true;
+          // With a faces box, a small margin around it; with only a point, a face-sized area.
+          var rx = s.hh ? MIN * 0.012 : rFace;
+          var ry = s.hh ? s.hh + MIN * 0.012 : rFace * 1.3;
+          var hitX = s.x1 > m.box.x - rx && s.x0 < m.box.x + m.box.w + rx;
+          var hitY = s.y > m.box.y - ry && s.y < m.box.y + m.box.h + ry;
+          if (hitX && hitY) m.overSubject = true;
         });
       }
       if (kind === 'cutout') {

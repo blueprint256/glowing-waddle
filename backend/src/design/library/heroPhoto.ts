@@ -26,7 +26,7 @@ export const heroPhoto: DesignTemplate = {
   sponsors: { min: 0, max: 8 },
   background: 'none',
   params: [
-    { key: 'shade', label: 'Depth of the colour fade', type: 'number', min: 0.55, max: 0.95, default: 0.82, step: 0.05 },
+    { key: 'shade', label: 'Depth of the colour fade', type: 'number', min: 0.55, max: 0.95, default: 0.82, step: 0.05, roomy: 'max' },
     { key: 'focusY', label: 'Where the photo’s subject sits (top to bottom)', type: 'number', min: 0.25, max: 0.55, default: 0.36, step: 0.01 },
     { key: 'badge', label: 'Show the date badge', type: 'toggle', default: true },
     { key: 'accent', label: 'Accent colour', type: 'color', default: 'accent' }

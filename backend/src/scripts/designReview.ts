@@ -29,6 +29,8 @@ async function main() {
   const photos: PhotoSlot[] = [];
   if (sc.photo) {
     const slot = await testPhoto(files, path.basename(sc.photo), fs.readFileSync(sc.photo));
+    // Where the people are, as the art director would say (the automatic focal point chases texture).
+    if (sc.focal) slot.focal = sc.focal;
     if (sc.cutout) {
       const buf = fs.readFileSync(sc.cutout);
       const meta = await sharp(buf).metadata();
