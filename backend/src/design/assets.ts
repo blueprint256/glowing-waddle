@@ -226,19 +226,25 @@ export async function prepareLogo(input: Buffer): Promise<PreparedLogo> {
   }
   // The outline: opaque ink with a see-through neighbour (within 2 px). Its luminance decides where
   // the logo reads; its colours tell whether the logo is one colour.
-  const edgeLums: number[] = [];
+  // The solid ink just inside the outline (2–4 px in), not the outermost pixel, which is smoothed
+  // into whatever the file was drawn on and would read paler than the logo looks. Thin strokes
+  // have no inside ring: then the outline itself.
+  const rim: number[] = [];
+  const inner: number[] = [];
   const solid: number[] = [];
   const opaque = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H && data[px(x, y) + 3] > 127;
+  const clearWithin = (x: number, y: number, d: number) => !opaque(x + d, y) || !opaque(x - d, y) || !opaque(x, y + d) || !opaque(x, y - d);
   for (let y = y0; y <= y1; y++) {
     for (let x = x0; x <= x1; x++) {
       if (!opaque(x, y)) continue;
       const i = px(x, y);
       solid.push(i);
-      let border = false;
-      for (let d = 1; d <= 2 && !border; d++) border = !opaque(x + d, y) || !opaque(x - d, y) || !opaque(x, y + d) || !opaque(x, y - d);
-      if (border) edgeLums.push(relLum(data[i], data[i + 1], data[i + 2]));
+      const l = relLum(data[i], data[i + 1], data[i + 2]);
+      if (clearWithin(x, y, 1)) rim.push(l);
+      else if (clearWithin(x, y, 2) || clearWithin(x, y, 3) || clearWithin(x, y, 4)) inner.push(l);
     }
   }
+  const edgeLums = inner.length >= Math.max(60, rim.length * 0.3) ? inner : rim.length ? rim : inner;
   edgeLums.sort((a2, b2) => a2 - b2);
   const edge = Array.from({ length: 16 }, (_, q) => (edgeLums.length ? Math.round(edgeLums[Math.min(edgeLums.length - 1, Math.floor(((q + 0.5) / 16) * edgeLums.length))] * 10000) / 10000 : 0.5));
   // One colour: the ink's colour is the mean of its darkest 40%; nearly every solid pixel lies on the
