@@ -14,7 +14,7 @@ import sharp from 'sharp';
 import { BUILTIN_DESIGNS } from '../design/library';
 import { renderDesign, closeRenderer } from '../design/renderer';
 import { validateTemplate } from '../design/template';
-import { buildTestKit, testDoc, testPhoto, SAMPLE_TEXT } from '../design/testKit';
+import { buildTestKit, testBackground, testDoc, testPhoto, SAMPLE_TEXT } from '../design/testKit';
 import type { FormatId, PhotoSlot } from '../design/types';
 import { checkScore } from '../design/checks';
 
@@ -38,6 +38,7 @@ async function main() {
       .toBuffer();
     photos.push(await testPhoto(files, 'standin.jpg', stand));
   }
+  const background = await testBackground(files);
   const loader = async (url: string) => {
     const b = files.get(url);
     if (!b) throw new Error('missing ' + url);
@@ -62,7 +63,9 @@ async function main() {
       ];
       for (const [name, textKey, sponsorCount] of cases) {
         const photo = photos[(name.length + format.length) % photos.length];
-        const doc = testDoc(design.id, format, SAMPLE_TEXT[textKey], [photo].slice(0, design.photos.max), sponsors.slice(0, sponsorCount));
+        const usePhotos = (name === 'long-6' && design.photos.max >= 2 ? [photo, photos[(photos.indexOf(photo) + 1) % photos.length]] : [photo]).slice(0, design.photos.max);
+        const doc = testDoc(design.id, format, SAMPLE_TEXT[textKey], usePhotos, sponsors.slice(0, sponsorCount));
+        if (design.background !== 'none' && name !== 'short-0') doc.background = background;
         const file = `${design.id}--${format}--${name}.png`;
         try {
           const r = await renderDesign(design, doc, kit, loader, { scale: 1 });

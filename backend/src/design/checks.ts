@@ -21,8 +21,8 @@ const contains = (outer: Box, inner: Box, slack = 1) => inner.x >= outer.x - sla
 /** Smallest readable size per field, as a share of the poster's short side. */
 const MIN_SIZE: Record<string, number> = {
   headline: 0.045,
-  eyebrow: 0.019,
-  subhead: 0.024,
+  eyebrow: 0.0175,
+  subhead: 0.022,
   body: 0.02,
   cta: 0.022,
   details: 0.02,

@@ -194,3 +194,23 @@ export function testDoc(designId: string, format: DesignDoc['format'], text: Des
     background: null
   };
 }
+
+/** A stand-in for an AI background (abstract sunrise over hills), sized like the real one. */
+export async function testBackground(files: Map<string, Buffer>): Promise<import('./types').BackgroundSlot> {
+  const art = `<svg xmlns="http://www.w3.org/2000/svg" width="1536" height="1024" viewBox="0 0 1536 1024">
+    <defs>
+      <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6c88a"/><stop offset="0.55" stop-color="#f3a86b"/><stop offset="1" stop-color="#e98a5c"/></linearGradient>
+      <radialGradient id="sun" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#fff3c9"/><stop offset="1" stop-color="#ffd27a"/></radialGradient>
+    </defs>
+    <rect width="1536" height="1024" fill="url(#sky)"/>
+    <circle cx="980" cy="430" r="170" fill="url(#sun)"/>
+    <path d="M0 640 C 260 520 520 600 760 560 S 1240 470 1536 560 L1536 1024 L0 1024 Z" fill="#c9714f"/>
+    <path d="M0 720 C 300 640 560 720 820 680 S 1300 610 1536 690 L1536 1024 L0 1024 Z" fill="#8e4f45"/>
+    <path d="M0 820 C 340 760 640 830 960 790 S 1360 740 1536 800 L1536 1024 L0 1024 Z" fill="#5a3a44"/>
+    <g fill="#5a3a44"><path d="M420 300 q22 -16 44 0 q22 -16 44 0" fill="none" stroke="#5a3a44" stroke-width="7" stroke-linecap="round"/><path d="M540 250 q16 -12 32 0 q16 -12 32 0" fill="none" stroke="#5a3a44" stroke-width="6" stroke-linecap="round"/></g>
+  </svg>`;
+  const buf = await sharp(Buffer.from(art)).jpeg({ quality: 90 }).toBuffer();
+  const url = 'test://bg/sunrise.jpg';
+  files.set(url, buf);
+  return { url, width: 1536, height: 1024, prompt: 'stand-in' };
+}

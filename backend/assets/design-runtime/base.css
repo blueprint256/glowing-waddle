@@ -75,7 +75,12 @@ template {
 }
 .d-sponsor-row.d-two-rows {
   flex-wrap: wrap;
-  row-gap: calc(var(--sponsor-gap, 3cqmin) * 0.45);
+  align-content: center;
+  row-gap: calc(var(--sponsor-gap, 3cqmin) * 0.4);
+}
+.d-row-break {
+  flex-basis: 100%;
+  height: 0;
 }
 .d-sponsor {
   display: flex;

@@ -35,6 +35,10 @@
   var sponsors = data.sponsors || [];
   var params = data.params || {};
 
+  // Designs adapt to how many sponsors there are: #poster.d-sp-ge-4 means "4 or more".
+  for (var spk = 1; spk <= sponsors.length; spk++) poster.classList.add('d-sp-ge-' + spk);
+  poster.setAttribute('data-sponsor-count', String(sponsors.length));
+
   function fieldValue(name) {
     if (hidden.indexOf(name) >= 0) return null;
     var v = text[name];
@@ -321,52 +325,72 @@
       if (!items.length) return;
       var W0 = row.clientWidth;
       var H0 = row.clientHeight || MIN * 0.07;
-      var rows = items.length > 4 && box.getAttribute('data-rows') === '2' ? 2 : 1;
-      var perRow = Math.ceil(items.length / rows);
-      var rowH = rows === 2 ? (H0 - H0 * 0.18) / 2 : H0;
-      var gap = rowH * 0.55;
+      var allowTwo = box.getAttribute('data-rows') === '2' && items.length >= 3;
+      // With four or more, keep two rows only if they really are bigger than one.
       var primary = logoFor('primary');
       var primaryBox = poster.querySelector('[data-logo="primary"]');
       var primaryArea = primary && primaryBox ? primaryBox.clientHeight * primaryBox.clientHeight * (primary.aspect || 2) * (0.55 + 0.45 * (primary.ink || 0.5)) : Infinity;
-      function heights(A) {
-        return items.map(function (it) {
-          var m = it.__meta;
-          var a = m.width / m.height;
-          var h = Math.sqrt(A / (a * (0.55 + 0.45 * (m.ink || 0.5))));
-          return clamp(h, rowH * 0.28, rowH * 0.92);
-        });
-      }
-      function widthOf(hs, from, to) {
-        var w = 0;
-        for (var i = from; i < to; i++) w += (items[i].__meta.width / items[i].__meta.height) * hs[i];
-        return w + gap * (to - from - 1);
-      }
-      var lo = 1;
-      var hi = rowH * rowH * 6;
-      for (var k = 0; k < 30; k++) {
-        var mid = (lo + hi) / 2;
-        var hs = heights(mid);
-        var fits = true;
-        for (var r = 0; r < rows; r++) {
-          if (widthOf(hs, r * perRow, Math.min(items.length, (r + 1) * perRow)) > W0) fits = false;
+      var f = function (m) { return 0.55 + 0.45 * (m.ink || 0.5); };
+
+      // Tries a number of rows with a smallest allowed height; returns the best sizes.
+      function solve(rows, minShare) {
+        var perRow = Math.ceil(items.length / rows);
+        var rowH = rows === 2 ? (H0 * 0.82) / 2 : H0;
+        var gap = rowH * 0.55;
+        function heights(A) {
+          return items.map(function (it) {
+            var m = it.__meta;
+            return clamp(Math.sqrt(A / ((m.width / m.height) * f(m))), rowH * minShare, rowH * 0.92);
+          });
         }
-        // Partners never outweigh the club logo (Rotary rule; a sensible default for everyone).
-        hs.forEach(function (h, i) {
-          var m = items[i].__meta;
-          if (h * h * (m.width / m.height) * (0.55 + 0.45 * (m.ink || 0.5)) > primaryArea * 0.8) fits = false;
-        });
-        if (fits) lo = mid;
-        else hi = mid;
+        function fits(hs) {
+          for (var r = 0; r < rows; r++) {
+            var w = 0;
+            var to = Math.min(items.length, (r + 1) * perRow);
+            for (var i = r * perRow; i < to; i++) w += (items[i].__meta.width / items[i].__meta.height) * hs[i];
+            if (w + gap * (to - r * perRow - 1) > W0) return false;
+          }
+          // Partners never outweigh the club logo (Rotary rule; a sensible default for everyone).
+          for (var j = 0; j < hs.length; j++) {
+            var m = items[j].__meta;
+            if (hs[j] * hs[j] * (m.width / m.height) * f(m) > primaryArea * 0.8) return false;
+          }
+          return true;
+        }
+        var lo = 1;
+        var hi = rowH * rowH * 8;
+        for (var k = 0; k < 32; k++) {
+          var mid = (lo + hi) / 2;
+          if (fits(heights(mid))) lo = mid;
+          else hi = mid;
+        }
+        var hs = heights(lo);
+        return { rows: rows, gap: gap, hs: hs, ok: fits(hs), rowH: rowH };
       }
-      var final = heights(lo);
-      row.style.setProperty('--sponsor-gap', gap + 'px');
+      var best = solve(1, 0.3);
+      // Too many for one row at a dignified size: two rows (where the design allows), then smaller.
+      // Two rows only for four or more partners (or when one row would make them tiny).
+      var tiny = best.hs.every(function (h) { return h < best.rowH * 0.32; });
+      if ((!best.ok || tiny || items.length >= 4) && allowTwo) {
+        var two = solve(2, 0.3);
+        if (two.ok) best = two;
+      }
+      if (!best.ok) best = solve(best.rows, 0.05);
+      row.style.setProperty('--sponsor-gap', best.gap + 'px');
+      row.classList.toggle('d-two-rows', best.rows === 2);
+      if (best.rows === 2) row.style.maxWidth = '100%';
       items.forEach(function (it, i) {
         var img = it.querySelector('img');
-        img.style.height = final[i] + 'px';
-        img.style.width = (it.__meta.width / it.__meta.height) * final[i] + 'px';
-        if (rows === 2) it.style.flexBasis = 'auto';
+        img.style.height = best.hs[i] + 'px';
+        img.style.width = (it.__meta.width / it.__meta.height) * best.hs[i] + 'px';
       });
-      if (rows === 2) row.classList.add('d-two-rows');
+      // Two rows: break after the first half so both rows hold about the same number.
+      if (best.rows === 2) {
+        var half = Math.ceil(items.length / 2);
+        var br = document.createElement('div');
+        br.className = 'd-row-break';
+        row.insertBefore(br, items[half]);
+      }
     });
   }
 

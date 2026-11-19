@@ -2,15 +2,15 @@ import type { DesignTemplate } from '../types';
 
 /**
  * "Hero photo": the activity photo fills the poster and sinks into a deep brand-colour fade where
- * the words sit. Logos live on a clean tab at the top; a round date badge crosses from the photo
- * into the sponsor band, tying the two together.
+ * the words sit. Logos live on a clean tab at the top; a round date badge sits where the photo
+ * meets the fade, just above the words, so it never covers them however long they are.
  */
 export const heroPhoto: DesignTemplate = {
   id: 'hero-photo',
   version: 1,
   name: 'Hero photo',
   description:
-    'One strong photo of people in action fills the poster and fades into deep brand colour where the headline sits. Logos on a clean top tab, an optional date badge crossing into a white sponsor band. Best for events and campaigns with a great photo.',
+    'One strong photo of people in action fills the poster and fades into deep brand colour where the headline sits. Logos on a clean top tab, an optional date badge just above the words, a white sponsor band. Best for events and campaigns with a photo whose people are in the upper half.',
   tags: ['photo-led', 'event', 'campaign', 'bold headline', 'sponsors'],
   formats: ['portrait', 'square', 'story', 'landscape', 'a4', 'a3'],
   fields: [
@@ -120,11 +120,8 @@ export const heroPhoto: DesignTemplate = {
   color: var(--c-paper);
 }
 .hp-copy > :first-child { margin-top: auto; }
-/* No band: the words go down to the margin. With a badge, the words never run under it: with a
-   band they stop above it, without one they keep clear of its column. */
+/* No band: the words go down to the margin. */
 #poster:not(:has(.hp-band)) { --copy-b: calc(var(--m) * 1.1); }
-#poster:has(.hp-badge):has(.hp-band) { --copy-b: calc(var(--band-h) + var(--badge) * 0.58 + 2.6cqmin); }
-#poster:has(.hp-badge):not(:has(.hp-band)) { --copy-r: calc(var(--m) + var(--badge) + 3cqmin); }
 
 .hp-eyebrow-row { display: flex; align-items: center; gap: 1.6cqmin; }
 .hp-rule { flex: none; width: 6cqmin; height: 0.55cqmin; background: var(--p-accent); border-radius: 1cqmin; }
@@ -155,17 +152,16 @@ export const heroPhoto: DesignTemplate = {
   padding: 1.5cqmin 2.6cqmin 1.45cqmin; border-radius: 0.6cqmin;
 }
 
-/* Date badge: crosses from the photo into the sponsor band. */
+/* Date badge: just above where the words start (measured), on the edge of the fade. */
 .hp-badge {
   position: absolute; z-index: 6;
-  right: var(--m); bottom: calc(var(--band-h) - var(--badge) * 0.42);
+  right: var(--m); top: max(calc(var(--m) * 1.4), calc(var(--copy-top, 50cqh) - var(--badge) - 3cqmin));
   width: var(--badge); height: var(--badge); border-radius: 50%;
   background: var(--p-accent); color: var(--c-primary-deep);
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   font-family: var(--f-display); text-align: center; line-height: 1;
   outline: 0.75cqmin solid var(--c-paper); outline-offset: -0.05cqmin;
 }
-#poster:not(:has(.hp-band)) .hp-badge { bottom: calc(var(--m) * 1.1); }
 .hp-badge-top { font-weight: 700; font-size: calc(var(--badge) * 0.13); letter-spacing: 0.14em; text-transform: uppercase; }
 .hp-badge-main { font-weight: 800; font-size: calc(var(--badge) * 0.4); font-stretch: 80%; margin: 0.3cqmin 0 0.1cqmin; }
 .hp-badge-bottom { font-weight: 700; font-size: calc(var(--badge) * 0.13); letter-spacing: 0.14em; text-transform: uppercase; }
@@ -181,7 +177,6 @@ export const heroPhoto: DesignTemplate = {
   content: ''; position: absolute; left: 0; right: 0; top: 0; height: 0.7cqmin; background: var(--p-accent);
 }
 .hp-sponsors { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: center; gap: 1.2cqmin; padding: 2.2cqmin 0 2.4cqmin; min-width: 0; }
-#poster:has(.hp-badge) .hp-sponsors { padding-right: calc(var(--badge) + 3cqmin); }
 .hp-sponsors-title {
   font-family: var(--f-display); font-weight: 700; font-size: 1.65cqmin; letter-spacing: 0.16em;
   text-transform: uppercase; color: var(--c-primary); line-height: 1;
@@ -197,7 +192,6 @@ export const heroPhoto: DesignTemplate = {
 
 /* Landscape: the photo on the right; the fade comes from the left behind the words. */
 #poster[data-format="landscape"] { --band-h: 17cqh; --m: 5.5cqmin; --badge: 17cqmin; --logo-h: 7.4cqmin; --copy-t: 20cqh; --copy-r: 47cqw; }
-#poster[data-format="landscape"]:has(.hp-badge):has(.hp-band) { --copy-b: calc(var(--band-h) + var(--m) * 0.9); }
 #poster[data-format="landscape"] .hp-photo { left: 24cqw; }
 #poster[data-format="landscape"] .hp-fade {
   background: linear-gradient(90deg,
