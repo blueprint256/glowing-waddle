@@ -2,6 +2,7 @@ import { ApiClient } from './apiClient';
 import { ToolDefinition, ToolError } from './protocol';
 import { JsonSchema } from './validate';
 import { links, absolute } from '../lib/links';
+import { DEFAULT_IMAGE_MODEL } from '../lib/imageModels';
 
 /**
  * Tools exposed to Claude through the MCP connector.
@@ -1298,7 +1299,7 @@ const inboxTools: Tool[] = [
 const APP_COMMANDS: Record<string, string> = {
   'generate-campaign': 'Plan with AI: must return a JSON array of posts [{ title, brief, caption, day }] (older answers grouped in themes still work)',
   'improve-caption': 'Write caption / Improve caption on a post: returns the caption as plain text ({instruction} says what to do)',
-  'generate-poster': 'Create image on a post: an image prompt (gpt-image-1.5); can use {brief}, {references}, {format} and {logoNote}; reference pictures are always sent',
+  'generate-poster': 'Create image on a post: an image prompt (the image model in Settings › AI); can use {brief}, {references}, {format} and {logoNote}; reference pictures are always sent',
   'change-image': 'Change image on a post: a single image prompt with {instruction} and {logoNote}',
   'refine-task-description': 'Improve brief (connector only): returns the improved brief as plain text'
 };
@@ -1368,7 +1369,7 @@ const aiAdminTools: Tool[] = [
     name: 'save_prompt',
     title: 'Create or update a prompt',
     description:
-      'System Admin: create a prompt, or update the one with the same name. For text, optionally pin a provider/model (default: the app default, gpt-4o-mini). Set makes_image=true for poster prompts (always gpt-image-1.5).',
+      'System Admin: create a prompt, or update the one with the same name. For text, optionally pin a provider/model (default: the app default, gpt-4o-mini). Set makes_image=true for poster prompts (they use the image model chosen in Settings › AI).',
     inputSchema: obj(
       {
         name: name('Prompt name (unique). Updating keeps the same name.'),
@@ -1389,7 +1390,7 @@ const aiAdminTools: Tool[] = [
       if (args.model !== undefined) settings.llmModel = args.model || null;
       if (args.makes_image !== undefined) {
         settings.imageLLMProvider = args.makes_image ? 'openai' : null;
-        settings.imageLLMModel = args.makes_image ? 'gpt-image-1.5' : null;
+        settings.imageLLMModel = args.makes_image ? DEFAULT_IMAGE_MODEL : null;
       }
       let prompt;
       if (existing) {

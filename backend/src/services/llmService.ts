@@ -8,6 +8,7 @@ import mongoose from 'mongoose';
 import { downloadImageFromUrl, uploadBufferToS3 } from '../utils/s3Service';
 import { toFile } from 'openai/uploads';
 import { applyPlaceholderAliases, knownPlaceholderRegex } from '../lib/placeholders';
+import { editExtras, imageCost, isImageModelId, qualityFor, resolveImageModel, type ImagePurpose } from '../lib/imageModels';
 
 // Cache for LLM clients and keys
 let cachedOpenAI: { client: OpenAI; key: string; timestamp: number } | null = null;
@@ -483,24 +484,30 @@ async function logLLMUsage(
   }
 }
 
-/**
- * Image quality for gpt-image-1.5, from IMAGE_QUALITY in the server's .env:
- * low (~$0.009 per square image), medium (~$0.034; the default, decision 21), high (~$0.133) or
- * auto (OpenAI decides, usually high).
- */
-export function imageQuality(): 'low' | 'medium' | 'high' | 'auto' {
-  const q = String(process.env.IMAGE_QUALITY || '').trim().toLowerCase();
-  return q === 'low' || q === 'medium' || q === 'high' || q === 'auto' ? q : 'medium';
+/** Image quality from IMAGE_QUALITY in the server's .env (lib/imageModels.ts: medium by default). */
+export function imageQuality(model: string = resolveImageModel('create')): any {
+  return qualityFor(model, process.env.IMAGE_QUALITY);
 }
 
-/** Records an image generation with its real token usage and cost (gpt-image-1.5 prices per 1M tokens). */
+/** The image model to call for making (create) or editing pictures (Settings › AI, lib/imageModels.ts). */
+export async function currentImageModel(purpose: ImagePurpose): Promise<string> {
+  try {
+    const config = await AppConfig.getConfig();
+    return resolveImageModel(purpose, config.defaultImageLLMModel);
+  } catch {
+    return resolveImageModel(purpose);
+  }
+}
+
+/** Records an image generation with its real token usage and cost. Logged as "openai/<model>". */
 async function logImageUsage(
   userId: mongoose.Types.ObjectId | undefined,
   promptName: string,
   response: any,
   duration: number,
   success: boolean,
-  errorMessage?: string
+  errorMessage?: string,
+  model: string = resolveImageModel('create')
 ): Promise<void> {
   if (!userId) return;
   try {
@@ -509,15 +516,14 @@ async function logImageUsage(
     const output = Number(u.output_tokens) || 0;
     const imageIn = Number(u.input_tokens_details?.image_tokens) || 0;
     const textIn = Number(u.input_tokens_details?.text_tokens) || Math.max(0, input - imageIn);
-    const estimatedCost = (textIn * 5 + imageIn * 8 + output * 32) / 1_000_000;
     await LLMUsage.create({
       userId,
       promptName,
-      llmModel: 'openai/gpt-image-1.5',
+      llmModel: `openai/${model}`,
       promptTokens: input,
       completionTokens: output,
       totalTokens: Number(u.total_tokens) || input + output,
-      estimatedCost,
+      estimatedCost: imageCost(model, { textIn, imageIn, out: output }),
       success,
       errorMessage,
       requestDuration: duration
@@ -744,42 +750,50 @@ export async function generateWithPrompt(
 }
 
 /**
- * Makes or edits one picture with gpt-image-1.5 and returns it as a PNG buffer (nothing is stored;
- * the caller trims it, adds the logo and saves it). With `images`, the edit endpoint is used and the
- * pictures are sent in the order given. Usage is logged for the AI allowance.
+ * Makes or edits one picture and returns it as a PNG buffer (nothing is stored; the caller trims it,
+ * adds the logo and saves it). With `images`, the edit endpoint is used and the pictures are sent in
+ * the order given. The model comes from Settings › AI (lib/imageModels.ts): making uses the default
+ * (GPT-Image-2.5 Flare), editing uses Sunburst. Usage is logged for the AI allowance.
  */
 export async function renderImage(options: {
   prompt: string;
   images?: { buffer: Buffer; name: string; contentType: string }[];
-  size: '1024x1024' | '1024x1536' | '1536x1024';
-  /** "high" keeps the attached pictures as close as possible (Change image, products). */
+  size: string;
+  /** "high" keeps the attached pictures as close as possible (only sent to models that take it). */
   fidelity?: 'high' | 'low';
+  /** "edit" (Change image, blending) uses the editing model; default "create". */
+  purpose?: ImagePurpose;
+  /** PNG with a mask: only the transparent areas may change (edit endpoint only). */
+  mask?: { buffer: Buffer; name: string; contentType: string };
   userId?: mongoose.Types.ObjectId;
   promptName: string;
 }): Promise<Buffer> {
   const startTime = Date.now();
+  const model = await currentImageModel(options.purpose || 'create');
   try {
     const openai = await getOpenAIClient();
     const files = await Promise.all(
       (options.images || []).map((img, i) => toFile(img.buffer, `${i + 1}-${img.name.replace(/[^\w.-]+/g, '_') || 'picture'}`, { type: img.contentType }))
     );
+    const mask = options.mask ? await toFile(options.mask.buffer, options.mask.name || 'mask.png', { type: 'image/png' }) : undefined;
     const response: any = files.length
       ? await openai.images.edit({
-          model: 'gpt-image-1.5',
+          model,
           image: files,
           prompt: options.prompt,
           n: 1,
           size: options.size,
-          quality: imageQuality(),
-          ...(options.fidelity ? { input_fidelity: options.fidelity } : {})
+          quality: imageQuality(model),
+          ...(mask ? { mask } : {}),
+          ...editExtras(model, options.fidelity)
         } as any)
-      : await openai.images.generate({ model: 'gpt-image-1.5', prompt: options.prompt, n: 1, size: options.size, quality: imageQuality() });
+      : await openai.images.generate({ model, prompt: options.prompt, n: 1, size: options.size, quality: imageQuality(model) } as any);
     const b64 = response?.data?.[0]?.b64_json;
     if (!b64) throw new Error('No image came back from the image AI');
-    await logImageUsage(options.userId, options.promptName, response, Date.now() - startTime, true);
+    await logImageUsage(options.userId, options.promptName, response, Date.now() - startTime, true, undefined, model);
     return Buffer.from(b64, 'base64');
   } catch (error: any) {
-    await logImageUsage(options.userId, options.promptName, null, Date.now() - startTime, false, error?.message);
+    await logImageUsage(options.userId, options.promptName, null, Date.now() - startTime, false, error?.message, model);
     throw error;
   }
 }
@@ -793,7 +807,7 @@ export async function generateImageWithPrompt(
   options?: {
     model?: string;
     size?: '1024x1024' | '1792x1024' | '1024x1792';
-    quality?: 'standard' | 'hd'; // Deprecated: not supported by gpt-image-1.5
+    quality?: 'standard' | 'hd'; // Deprecated: not used (quality comes from IMAGE_QUALITY)
     userId?: mongoose.Types.ObjectId;
   }
 ): Promise<{ imageUrl: string; compiledPrompt: string }> {
@@ -846,9 +860,8 @@ export async function generateImageWithPrompt(
     // Fetch and compile the prompt
     const compiledPrompt = await fetchAndCompilePrompt(promptName, params);
 
-    // CRITICAL: Image generation is RESTRICTED to gpt-image-1.5 ONLY (as of late 2025)
-    // All other models/providers are deprecated and not supported
-    const imageModel = 'gpt-image-1.5';
+    // The image model comes from Settings › AI (lib/imageModels.ts); retired models are never called.
+    const imageModel = await currentImageModel('create');
     const imageProvider = 'openai';
 
     // Map size to supported values for image.edit API
@@ -857,11 +870,10 @@ export async function generateImageWithPrompt(
     const validEditSizes = ['256x256', '512x512', '1024x1024', '1536x1024', '1024x1536', 'auto'];
     const size: '256x256' | '512x512' | '1024x1024' | '1536x1024' | '1024x1536' | 'auto' =
       validEditSizes.includes(requestedSize) ? requestedSize as any : '1024x1024';
-    // NOTE: quality parameter not supported by gpt-image-1.5
 
     // Log if prompt tried to use a different model (for debugging/migration purposes)
-    if (prompt?.imageLLMModel && prompt.imageLLMModel !== 'gpt-image-1.5') {
-      console.log(`⚠️  Prompt "${promptName}" configured for "${prompt.imageLLMModel}" but enforcing gpt-image-1.5`);
+    if (prompt?.imageLLMModel && prompt.imageLLMModel !== imageModel) {
+      console.log(`⚠️  Prompt "${promptName}" configured for "${prompt.imageLLMModel}" but using ${imageModel}`);
     }
     if (prompt?.imageLLMProvider && prompt.imageLLMProvider !== 'openai') {
       console.log(`⚠️  Prompt "${promptName}" configured for provider "${prompt.imageLLMProvider}" but enforcing openai`);
@@ -921,7 +933,7 @@ export async function generateImageWithPrompt(
     console.log('🖼️  IMAGE LLM REQUEST');
     console.log('========================================');
     console.log('Provider:', imageProvider, '(ENFORCED)');
-    console.log('Model:', imageModel, '(ENFORCED - gpt-image-1.5 only)');
+    console.log('Model:', imageModel);
     console.log('Prompt Name:', promptName);
     console.log('Referenced Images:', imageFiles.length, '(from prompt template)');
     console.log('Image Size:', size);
@@ -937,7 +949,7 @@ export async function generateImageWithPrompt(
     console.log('📡 Sending request to OpenAI Images API...');
 
     // Generate or edit image based on whether we have input images
-    // NOTE: gpt-image-1.5 does NOT support 'response_format' parameter
+    // GPT image models don't take 'response_format':
     // It always returns base64-encoded images (b64_json format)
     let response;
     if (imageFiles.length > 0) {
@@ -951,9 +963,8 @@ export async function generateImageWithPrompt(
         prompt: compiledPrompt,
         n: 1,
         size: size,
-        quality: imageQuality()
-        // NOTE: response_format is NOT supported by gpt-image-1.5
-      });
+        quality: imageQuality(imageModel)
+      } as any);
     } else {
       console.log('✨ Using images.generate endpoint (no images referenced in prompt)');
 
@@ -963,12 +974,11 @@ export async function generateImageWithPrompt(
         prompt: compiledPrompt,
         n: 1,
         size: size,
-        quality: imageQuality()
-        // NOTE: quality and response_format are NOT supported by gpt-image-1.5
-      });
+        quality: imageQuality(imageModel)
+      } as any);
     }
 
-    // gpt-image-1.5 returns base64-encoded images, not URLs
+    // GPT image models return base64-encoded images, not URLs
     const base64Image = response.data?.[0]?.b64_json;
 
     if (!base64Image) {
@@ -1000,7 +1010,7 @@ export async function generateImageWithPrompt(
     console.log('========================================\n');
 
     // Log usage if userId provided
-    await logImageUsage(options?.userId, promptName, response, duration, true);
+    await logImageUsage(options?.userId, promptName, response, duration, true, undefined, imageModel);
 
     return {
       imageUrl,
@@ -1121,8 +1131,8 @@ export async function executeCommandChain(
         promptName = step.description;
 
         // Detect image generation based on model name
-        // gpt-image-1.5 is the image generation model
-        isImageGeneration = step.model === 'gpt-image-1.5';
+        // Any GPT image model (gpt-image-*) makes this an image step
+        isImageGeneration = isImageModelId(step.model);
 
         console.log('Prompt Type: Embedded (from Chain)');
         console.log('Step Description:', step.description);
@@ -1194,7 +1204,7 @@ export async function executeCommandChain(
 
         if (step.isEmbedded) {
           // For embedded prompts, handle image generation inline
-          console.log('🎨 Image generation with embedded prompt (gpt-image-1.5)');
+          console.log('🎨 Image generation with embedded prompt');
 
           // Collect available images based on carryForwardImages setting
           const imagePlaceholders = [
@@ -1256,8 +1266,8 @@ export async function executeCommandChain(
 
           // Initialize OpenAI client
           const openai = await getOpenAIClient();
-          const imageModel = 'gpt-image-1.5';
-          const size = '1024x1024';
+          const imageModel = await currentImageModel(imagesToUse.length ? 'edit' : 'create');
+          const size = typeof stepParams.__size === 'string' && /^\d+x\d+$/.test(stepParams.__size) ? stepParams.__size : '1024x1024';
 
           // Generate or edit image
           const imageStart = Date.now();
@@ -1270,8 +1280,8 @@ export async function executeCommandChain(
               prompt: compiledPrompt,
               n: 1,
               size: size,
-        quality: imageQuality()
-            });
+              quality: imageQuality(imageModel)
+            } as any);
           } else {
             console.log('✨ Using images.generate (no images referenced)');
             response = await openai.images.generate({
@@ -1279,12 +1289,11 @@ export async function executeCommandChain(
               prompt: compiledPrompt,
               n: 1,
               size: size,
-        quality: imageQuality()
-              // NOTE: quality parameter not supported by gpt-image-1.5
-            });
+              quality: imageQuality(imageModel)
+            } as any);
           }
 
-          await logImageUsage(options?.userId, promptName, response, Date.now() - imageStart, true);
+          await logImageUsage(options?.userId, promptName, response, Date.now() - imageStart, true, undefined, imageModel);
 
           // Get base64 image and upload to S3
           const base64Image = response.data?.[0]?.b64_json;

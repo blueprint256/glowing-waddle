@@ -26,9 +26,9 @@ export interface IAppConfig extends Document {
   defaultLLMProvider?: string; // 'openai' | 'anthropic' | 'grok' | 'gemini'
   defaultLLMModel?: string;
 
-  // Default Image LLM configuration (RESTRICTED: gpt-image-1.5 only)
+  // Image model (lib/imageModels.ts): one of SELECTABLE_IMAGE_MODELS; retired models fall back to the default
   defaultImageLLMProvider?: string; // 'openai' (only option)
-  defaultImageLLMModel?: string; // 'gpt-image-1.5' (only option)
+  defaultImageLLMModel?: string; // e.g. 'gpt-image-2.5-flare' (the default)
 
   // Blue (in-app assistant) configuration
   blueEnabled: boolean;
@@ -131,7 +131,7 @@ const appConfigSchema = new Schema<IAppConfig>(
       default: 'gpt-4o-mini'
     },
 
-    // Default Image LLM configuration (RESTRICTED: gpt-image-1.5 only)
+    // Image model (lib/imageModels.ts)
     defaultImageLLMProvider: {
       type: String,
       enum: ['openai'],
@@ -139,7 +139,7 @@ const appConfigSchema = new Schema<IAppConfig>(
     },
     defaultImageLLMModel: {
       type: String,
-      default: 'gpt-image-1.5'
+      default: 'gpt-image-2.5-flare'
     },
 
     // Blue (in-app assistant) configuration

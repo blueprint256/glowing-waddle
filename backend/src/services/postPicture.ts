@@ -194,7 +194,7 @@ export async function changePicture(task: ITask, options: ChangeOptions): Promis
       ? compileSuperPrompt(adminWords, { instruction, logoNote: changeLogoNote(options.logo), taskName: task.name, taskDescription: task.description || '' } as any)
       : fillTemplate(BUILTIN_CHANGE_IMAGE, { instruction, logoNote: changeLogoNote(options.logo) })
   ).trim();
-  const raw = await renderImage({ prompt, images: [source], size: apiSizeFor(width, height), fidelity: 'high', userId: options.userId, promptName: 'Change image' });
+  const raw = await renderImage({ prompt, images: [source], size: apiSizeFor(width, height), fidelity: 'high', purpose: 'edit', userId: options.userId, promptName: 'Change image' });
 
   // Same shape as the picture that was changed (at most 1536 on the long side).
   const scale = Math.min(1, 1536 / Math.max(width, height));

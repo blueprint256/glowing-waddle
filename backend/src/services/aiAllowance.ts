@@ -3,18 +3,20 @@ import { LLMUsage } from '../models/LLMUsage';
 import { AppConfig } from '../models/AppConfig';
 import { UserRole, type IUser } from '../models/User';
 import { AIError } from '../lib/aiError';
+import { IMAGE_USAGE_MODEL_PATTERN } from '../lib/imageModels';
 import { DEFAULT_ALLOWANCE, effectiveLimit, limitMessage, monthWindow, remainingOf, type AllowanceKind } from '../lib/aiAllowance';
 
 export * from '../lib/aiAllowance';
 
 /**
- * Monthly AI allowance (decision 20), counted from the usage log: AI images (gpt-image-1.5) and Blue
+ * Monthly AI allowance (decision 20), counted from the usage log: AI images (any GPT image model) and Blue
  * messages that succeeded this month. Admins have no limit.
  */
 
 /** The label Blue records its messages under (routes/blue.routes.ts). */
 export const BLUE_USAGE_LABEL = 'Blue assistant';
-const IMAGE_MODEL = 'openai/gpt-image-1.5';
+/** Every image model logs as "openai/gpt-image-…" (lib/imageModels.ts), so a model change keeps counting. */
+const IMAGE_MODEL = IMAGE_USAGE_MODEL_PATTERN;
 
 type Who = Pick<IUser, 'role' | 'aiAllowance'> & { _id: unknown };
 

@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 
 /** Suggested models per provider (any other model name can be typed in). */
 export const LLM_MODELS: Record<string, string[]> = {
-  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo', 'gpt-image-1.5'],
+  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo', 'gpt-image-2.5-flare'],
   anthropic: ['claude-3-5-sonnet-20241022', 'claude-3-opus-20240229', 'claude-3-haiku-20240307'],
   grok: ['grok-beta', 'grok-2'],
   gemini: ['gemini-1.5-pro', 'gemini-1.5-flash']

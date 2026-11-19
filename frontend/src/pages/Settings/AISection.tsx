@@ -21,6 +21,10 @@ export default function AISection() {
   const [defaultProvider, setDefaultProvider] = useState('openai');
   const [defaultModel, setDefaultModel] = useState('gpt-4o-mini');
   const [savingDefault, setSavingDefault] = useState(false);
+  const [imageModels, setImageModels] = useState<{ id: string; label: string }[]>([]);
+  const [imageModel, setImageModel] = useState('');
+  const [editModel, setEditModel] = useState('');
+  const [savingImage, setSavingImage] = useState(false);
   const [prompts, setPrompts] = useState<any[] | null>(null);
   const [confirm, confirmDialog] = useConfirm();
 
@@ -53,7 +57,29 @@ export default function AISection() {
         setDefaultModel(r.data.defaultModel || 'gpt-4o-mini');
       })
       .catch(() => undefined);
+    api
+      .get('/integrations/image-llm/default')
+      .then((r) => {
+        setImageModels(Array.isArray(r.data.models) ? r.data.models : []);
+        setImageModel(r.data.defaultModel || '');
+        setEditModel(r.data.editModel || '');
+      })
+      .catch(() => undefined);
   }, [loadStatus, loadPrompts]);
+
+  const saveImageModel = async (model: string) => {
+    setSavingImage(true);
+    try {
+      const r = await api.patch('/integrations/image-llm/default', { provider: 'openai', model });
+      setImageModel(r.data.defaultModel || model);
+      setEditModel(r.data.editModel || '');
+      notify('Image model saved');
+    } catch (e) {
+      notify(errorMessage(e, 'Couldn’t save the image model.'), { tone: 'error' });
+    } finally {
+      setSavingImage(false);
+    }
+  };
 
   const saveDefault = async () => {
     if (!defaultModel.trim()) return notify('Choose or type a model.', { tone: 'error' });
@@ -123,7 +149,26 @@ export default function AISection() {
             {savingDefault ? 'Saving…' : 'Save'}
           </Button>
         </Box>
-        <Typography sx={{ fontSize: 13, color: 'var(--text-muted)', mt: 1.5 }}>Images are made with OpenAI’s gpt-image-1.5.</Typography>
+      </Section>
+
+      <Section title="Image model" hint="OpenAI makes every AI picture. GPT-Image-2.5 Flare is the fast default; changes to existing pictures use Sunburst, which edits more precisely.">
+        <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
+          <TextField
+            select
+            label="Makes pictures with"
+            value={imageModels.some((m) => m.id === imageModel) ? imageModel : ''}
+            onChange={(e) => saveImageModel(e.target.value)}
+            disabled={savingImage || imageModels.length === 0}
+            sx={{ minWidth: 320 }}
+          >
+            {imageModels.map((m) => (
+              <MenuItem key={m.id} value={m.id}>
+                {m.label}
+              </MenuItem>
+            ))}
+          </TextField>
+          {editModel && <Typography sx={{ fontSize: 13, color: 'var(--text-muted)' }}>Changes pictures with {editModel}.</Typography>}
+        </Box>
       </Section>
 
       <Section title="Model per prompt" hint="Only change these when a prompt needs a different model than the default.">
