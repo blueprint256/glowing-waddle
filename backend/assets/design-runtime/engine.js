@@ -48,7 +48,8 @@
   }
 
   // ---------------------------------------------------------------- conditions
-  // data-if="headline", "!subhead", "photos>=2", "sponsors", "background", "campaign",
+  // data-if="headline", "!subhead", "photos>=2", "sponsors", "background", "campaign", "cutout",
+  // "person" (a featured person's name), "contact" (handle or website),
   // "param:badge", "format:story|portrait"; several joined with " & ".
   function count(name) {
     if (name === 'photos') return photos.length;
@@ -77,6 +78,9 @@
     if (cond.indexOf('format:') === 0) return cond.slice(7).split('|').indexOf(data.format) >= 0;
     if (cond === 'photos' || cond === 'sponsors' || cond === 'campaign' || cond === 'details') return count(cond) > 0;
     if (cond === 'background') return !!(data.background && data.background.src);
+    if (cond === 'cutout') return !!(photos[0] && photos[0].cutout && photos[0].cutout.src);
+    if (cond === 'person') return fieldValue('personName') !== null;
+    if (cond === 'contact') return fieldValue('social') !== null || fieldValue('web') !== null;
     return fieldValue(cond) !== null;
   }
   // Outermost first: a removed parent takes its children with it.
@@ -95,12 +99,21 @@
       return;
     }
     if (el.getAttribute('data-case') === 'upper') v = v.toUpperCase();
-    // Line breaks the writer chose are kept; everything is text (never HTML).
+    // Line breaks the writer chose are kept; *words in stars* are set in the design's emphasis
+    // style (<em>); everything else is text (never HTML).
     var parts = v.split(/\n/);
     el.textContent = '';
     parts.forEach(function (part, i) {
       if (i) el.appendChild(document.createElement('br'));
-      el.appendChild(document.createTextNode(part));
+      var bits = part.split(/\*([^*]+)\*/);
+      bits.forEach(function (bit, j) {
+        if (!bit) return;
+        if (j % 2) {
+          var em = document.createElement('em');
+          em.textContent = bit;
+          el.appendChild(em);
+        } else el.appendChild(document.createTextNode(bit.replace(/\*/g, '')));
+      });
     });
     el.setAttribute('data-check', el.getAttribute('data-check') || 'text');
   });
@@ -111,8 +124,14 @@
     place: '<path d="M12 21s-6.5-6.2-6.5-11.2a6.5 6.5 0 0 1 13 0C18.5 14.8 12 21 12 21z"/><circle cx="12" cy="9.8" r="2.3"/>',
     phone: '<path d="M6.5 3.5h3l1.5 4.5-2 1.5a11 11 0 0 0 5.5 5.5l1.5-2 4.5 1.5v3a2 2 0 0 1-2 2A16 16 0 0 1 4.5 5.5a2 2 0 0 1 2-2z"/>',
     web: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.6 3.5 5.6 3.5 8.5s-.9 5.9-3.5 8.5c-2.6-2.6-3.5-5.6-3.5-8.5s.9-5.9 3.5-8.5z"/>',
-    info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.8v.4"/>'
+    info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.8v.4"/>',
+    at: '<circle cx="12" cy="12" r="3.6"/><path d="M15.6 12v1.4a2.6 2.6 0 0 0 5.2 0V12a8.8 8.8 0 1 0-3.5 7"/>'
   };
+  // Drawn icons next to words: <span data-icon="web"></span> (removed with its field's element).
+  $all('[data-icon]').forEach(function (el) {
+    el.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">' + (ICONS[el.getAttribute('data-icon')] || ICONS.info) + '</svg>';
+    el.classList.add('d-icon');
+  });
   $all('[data-details]').forEach(function (box) {
     var items = fieldValue('details') || [];
     var tpl = box.querySelector('template');
@@ -176,6 +195,21 @@
     var img = addImg(box, p.src, 'd-photo-img');
     img.setAttribute('data-photo-index', String(i));
     box.setAttribute('data-check', box.getAttribute('data-check') || 'photo');
+  });
+
+  // The first photo's subject cut out of its background, standing in a box (bottom-anchored, never
+  // cropped: a cut-out person is shown whole as far as the photo goes).
+  $all('[data-cutout]').forEach(function (box) {
+    var i = Number(box.getAttribute('data-cutout') || 1) - 1;
+    var c = photos[i] && photos[i].cutout;
+    if (!c || !c.src) {
+      remove(box);
+      return;
+    }
+    box.classList.add('d-cutout');
+    var img = addImg(box, c.src, 'd-cutout-img');
+    img.__cut = c;
+    box.setAttribute('data-check', 'cutout');
   });
 
   $all('[data-bg]').forEach(function (box) {
@@ -298,6 +332,73 @@
     img.style.height = dh + 'px';
     img.style.left = -ox + 'px';
     img.style.top = -oy + 'px';
+    // Where the subject (usually a face) ended up, for the "words over the face" check.
+    if (!isBg && (p.focal || tweakFocus)) img.__subject = { x: f.x * dw - ox, y: f.y * dh - oy };
+  }
+  // Subjects of the photos as they show on the poster (only where the photo is visible there).
+  function photoSubjects() {
+    var out = [];
+    $all('.d-photo-img').forEach(function (img) {
+      if (!img.__subject) return;
+      var b = rect(img.parentElement);
+      var x = b.x + img.__subject.x;
+      var y = b.y + img.__subject.y;
+      if (x < b.x || y < b.y || x > b.x + b.w || y > b.y + b.h) return;
+      // A photo melted away at that point (a mask) doesn't count: ask the box how opaque it is there.
+      var o = Number(img.parentElement.getAttribute('data-subject-weight') || 1);
+      if (o > 0) out.push({ x: x, y: y });
+    });
+    return out;
+  }
+
+  // Tall enough to fill the box's height, unless that makes it wider than allowed (data-max-w, a
+  // share of the box width, default 1.25: a cut-out may spill out sideways a little); then centred
+  // on data-focus-x and standing on the box's bottom edge.
+  function placeCutouts() {
+    $all('.d-cutout').forEach(function (box) {
+      var img = box.querySelector('.d-cutout-img');
+      var c = img && img.__cut;
+      if (!c) return;
+      var bw = box.clientWidth;
+      var bh = box.clientHeight;
+      var maxW = attrNumber(box, 'data-max-w', 1.25) * bw;
+      var s = bh / c.height;
+      if (c.width * s > maxW) s = maxW / c.width;
+      var w = c.width * s;
+      var h = c.height * s;
+      var cx = attrNumber(box, 'data-focus-x', 0.5) * bw;
+      var e0 = c.edges || {};
+      // A side the photo's frame already cut may run off the box (and the poster) a little.
+      var lo = Math.min(0, bw - w) - (e0.left ? w * 0.18 : 0);
+      var hi = Math.max(0, bw - w) + (e0.right ? w * 0.18 : 0);
+      img.style.width = w + 'px';
+      img.style.height = h + 'px';
+      img.style.left = clamp(cx - w / 2, lo, hi) + 'px';
+      img.style.top = bh - h + 'px';
+      // Where the photo's frame cut the person (a straight edge), let it fade out, unless that side
+      // runs off the poster anyway.
+      var e = c.edges || {};
+      var r = img.getBoundingClientRect();
+      var pr = poster.getBoundingClientRect();
+      var fadeL = e.left && r.left > pr.left + 2;
+      var fadeR = e.right && r.right < pr.right - 2;
+      // data-stand: the person stands on the box's bottom edge (a band); "data-stand=portrait|square"
+      // limits that to those formats, elsewhere a cut body fades out.
+      var stand = box.getAttribute('data-stand');
+      var stands = stand !== null && (stand === '' || stand.split('|').indexOf(data.format) >= 0);
+      var fadeB = e.bottom && (stand !== null ? !stands : r.bottom < pr.bottom - 2);
+      var masks = [];
+      if (fadeL || fadeR) masks.push('linear-gradient(90deg, ' + (fadeL ? 'transparent 0, #000 16%' : '#000 0') + ', ' + (fadeR ? '#000 84%, transparent 100%' : '#000 100%') + ')');
+      if (fadeB) masks.push('linear-gradient(180deg, #000 74%, transparent 100%)');
+      if (masks.length) {
+        img.style.webkitMaskImage = masks.join(', ');
+        img.style.maskImage = masks.join(', ');
+        if (masks.length > 1) {
+          img.style.webkitMaskComposite = 'source-in';
+          img.style.maskComposite = 'intersect';
+        }
+      }
+    });
   }
 
   function placeLogos() {
@@ -492,6 +593,69 @@
     var own = rect(el);
     return { x: x0 - p.left, y: own.y, w: x1 - x0, h: own.h };
   }
+  // How much of a box (poster px) lies on the cut-out person's solid pixels (0..1): words over a
+  // person are never allowed, whatever the contrast.
+  var cutMaps = null;
+  function cutoutMaps() {
+    if (cutMaps) return cutMaps;
+    cutMaps = [];
+    $all('.d-cutout-img').forEach(function (img) {
+      try {
+        var r = rect(img);
+        var cw = 160;
+        var ch = Math.max(1, Math.round((cw * r.h) / Math.max(1, r.w)));
+        var cv = document.createElement('canvas');
+        cv.width = cw;
+        cv.height = ch;
+        var ctx = cv.getContext('2d');
+        ctx.drawImage(img, 0, 0, cw, ch);
+        var d = ctx.getImageData(0, 0, cw, ch).data;
+        // The fade the engine put on cut sides counts as see-through.
+        var fadeL = img.style.maskImage && img.style.maskImage.indexOf('transparent 0') >= 0;
+        cutMaps.push({ r: r, w: cw, h: ch, a: d, fadeL: fadeL });
+      } catch (e) {
+        /* unreadable: no check */
+      }
+    });
+    return cutMaps;
+  }
+  function overCutout(b) {
+    var maps = cutoutMaps();
+    if (!maps.length || b.w <= 0 || b.h <= 0) return 0;
+    var hit = 0;
+    var total = 0;
+    for (var gy = 0; gy < 6; gy++) {
+      for (var gx = 0; gx < 24; gx++) {
+        var x = b.x + ((gx + 0.5) / 24) * b.w;
+        var y = b.y + ((gy + 0.5) / 6) * b.h;
+        total++;
+        for (var k = 0; k < maps.length; k++) {
+          var m = maps[k];
+          var u = (x - m.r.x) / m.r.w;
+          var v = (y - m.r.y) / m.r.h;
+          if (u < 0 || v < 0 || u >= 1 || v >= 1) continue;
+          if (m.fadeL && u < 0.12) continue;
+          var px = Math.floor(u * m.w);
+          var py = Math.floor(v * m.h);
+          if (m.a[(py * m.w + px) * 4 + 3] > 140) {
+            hit++;
+            break;
+          }
+        }
+      }
+    }
+    return hit / total;
+  }
+
+  // Words on a card or button of their own sit on that, not on what's behind it.
+  function onOwnGround(el) {
+    for (var c = el; c && c !== poster; c = c.parentElement) {
+      var bg = getComputedStyle(c).backgroundColor;
+      if (bg && bg !== 'transparent' && !/rgba\(.*,\s*0\)$/.test(bg)) return true;
+    }
+    return false;
+  }
+
   function measure() {
     var out = [];
     var n = 0;
@@ -528,6 +692,19 @@
           }
           c = c.parentElement;
         }
+      }
+      if (kind === 'text' && !onOwnGround(el)) {
+        var oc = overCutout(m.box);
+        if (oc > 0) m.overPerson = Math.round(oc * 100) / 100;
+        // A face is about a tenth of the poster's short side across: words within that are on it.
+        var rFace = MIN * 0.05;
+        photoSubjects().forEach(function (s) {
+          if (s.x > m.box.x - rFace && s.x < m.box.x + m.box.w + rFace && s.y > m.box.y - rFace && s.y < m.box.y + m.box.h + rFace) m.overSubject = true;
+        });
+      }
+      if (kind === 'cutout') {
+        var ci = el.querySelector('img');
+        if (ci) m.box = rect(ci);
       }
       if (why && why.length) m.why = why.join('; ');
       if (kind === 'logo') {
@@ -602,7 +779,10 @@
       layoutSponsors();
       fitTexts();
       // Fitting can move boxes: place photos last, then logos again (their boxes may have moved).
+      // Boxes may follow measured words (var(--copy-top) …): publish them before placing pictures.
+      publishMeasures();
       $all('.d-photo-img').forEach(placePhoto);
+      placeCutouts();
       placeLogos();
       publishMeasures();
       document.documentElement.setAttribute('data-ready', '1');

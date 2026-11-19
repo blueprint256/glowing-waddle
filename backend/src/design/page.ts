@@ -114,7 +114,13 @@ export function buildPage(template: DesignTemplate, doc: DesignDoc, kit: BrandKi
     params,
     tweaks: doc.tweaks || {},
     text: doc.text,
-    photos: doc.photos.map((p) => ({ src: address(p.url), width: p.width, height: p.height, focal: p.focal })),
+    photos: doc.photos.map((p) => ({
+      src: address(p.url),
+      width: p.width,
+      height: p.height,
+      focal: p.focal,
+      cutout: p.cutout ? { src: address(p.cutout.url), width: p.cutout.width, height: p.cutout.height, edges: p.cutout.edges || null } : null
+    })),
     background: doc.background ? { src: address(doc.background.url), width: doc.background.width, height: doc.background.height } : null,
     logos: { primary: primary ? logoData(primary, address) : null, campaign: campaign.map((l) => logoData(l, address)) },
     sponsors: doc.sponsors.map((s) => ({ name: s.name, src: address(s.logo.url), width: s.logo.width, height: s.logo.height, ink: s.logo.ink, onLight: s.logo.onLight, onDark: s.logo.onDark }))

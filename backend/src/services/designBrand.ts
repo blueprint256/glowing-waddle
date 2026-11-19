@@ -157,7 +157,8 @@ export function engineKit(doc: IBrandKit): BrandKit {
     },
     logos,
     rules: [...(pack?.rules || []), ...(doc.rules || []).map((r) => ({ id: r.id, text: r.text, hard: !!r.hard }))],
-    notes: [pack?.notes, doc.notes].filter(Boolean).join('\n')
+    notes: [pack?.notes, doc.notes].filter(Boolean).join('\n'),
+    contact: doc.contact?.social || doc.contact?.web ? { social: doc.contact.social || undefined, web: doc.contact.web || undefined } : undefined
   };
 }
 

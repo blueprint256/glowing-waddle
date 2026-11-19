@@ -17,6 +17,7 @@ import { objectKeyFromUrl, uploadBufferToS3 } from '../utils/s3Service';
 import { renderDesign, type RenderResult } from '../design/renderer';
 import { FORMATS, imageSizeForArea, isFormatId } from '../design/formats';
 import { findFocal, photoStats } from '../design/assets';
+import { cutout } from './cutout';
 import { callClaudeTool, DESIGN_MODELS, type ClaudeImage } from '../design/claude';
 import { DIRECTOR_SYSTEM, DIRECTOR_TOOL, brandText, catalogText, directorPrompt, plannedDocs, planWithoutAI, type DirectorInput, type DirectorPlan, type PlannedOption } from '../design/director';
 import { CRITIC_SYSTEM, CRITIC_TOOL, applyRanking, type CriticRanking } from '../design/critic';
@@ -254,6 +255,13 @@ export async function runDesignJob(job: IDesignJob): Promise<void> {
   const campaignLogoIds = (job.request.campaignLogoIds || []).filter((id) => kit.logos.some((l) => l.id === id && l.role === 'campaign'));
   let designs = await allDesigns();
   if (job.request.designIds?.length) designs = designs.filter((d) => job.request.designIds.includes(d.id));
+  // The subject of each photo cut out, for designs that stand a person beside the words.
+  if (designs.some((d) => d.cutout)) {
+    for (const p of photos.slice(0, 3)) {
+      const c = await cutout(p.buffer, (png) => uploadBufferToS3(png, 'image/png', 'post-pictures'));
+      if (c) p.slot.cutout = { url: c.url, width: c.width, height: c.height, edges: c.edges };
+    }
+  }
   const campaign = task.campaignId ? await Campaign.findById(task.campaignId).select('name description coreMessages') : null;
 
   const input: DirectorInput = {

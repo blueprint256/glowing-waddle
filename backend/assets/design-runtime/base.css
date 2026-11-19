@@ -43,6 +43,32 @@ template {
   user-select: none;
 }
 
+/* A cut-out person stands on the bottom of its box, shown whole (placed by the engine). */
+.d-cutout {
+  overflow: visible;
+}
+.d-cutout-img {
+  position: absolute;
+  max-width: none;
+  display: block;
+  user-select: none;
+}
+
+/* Drawn icons beside words (data-icon). */
+.d-icon {
+  display: inline-flex;
+  flex: none;
+}
+.d-icon svg {
+  width: 1.05em;
+  height: 1.05em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 /* Logos: exact files, never recoloured; the box sets the height. */
 .d-logo {
   display: inline-flex;

@@ -36,6 +36,27 @@ function colorDist(d: Buffer, i: number, c: [number, number, number]): number {
   return Math.sqrt(0.3 * dr * dr + 0.59 * dg * dg + 0.11 * db * db);
 }
 
+/** Which sides of a cut-out touch its file's edge with solid pixels (the photo's frame cut it there). */
+export async function cutoutEdges(png: Buffer): Promise<{ left: boolean; right: boolean; top: boolean; bottom: boolean }> {
+  const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const W = info.width;
+  const H = info.height;
+  const a = (x: number, y: number) => data[(y * W + x) * info.channels + 3];
+  const share = (n: number, len: number) => n / len > 0.04;
+  // Solid within the outer 3 pixels (cut-outs often have a softened last pixel or two).
+  const d = Math.min(3, W - 1, H - 1);
+  let l = 0, r = 0, t = 0, b = 0;
+  for (let y = 0; y < H; y++) {
+    if (Math.max(a(0, y), a(d, y)) > 160) l++;
+    if (Math.max(a(W - 1, y), a(W - 1 - d, y)) > 160) r++;
+  }
+  for (let x = 0; x < W; x++) {
+    if (Math.max(a(x, 0), a(x, d)) > 160) t++;
+    if (Math.max(a(x, H - 1), a(x, H - 1 - d)) > 160) b++;
+  }
+  return { left: share(l, H), right: share(r, H), top: share(t, W), bottom: share(b, W) };
+}
+
 export async function prepareLogo(input: Buffer): Promise<PreparedLogo> {
   // Vector logos are drawn at print resolution before anything else.
   const head = input.slice(0, 256).toString('utf8').trimStart();

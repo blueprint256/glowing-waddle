@@ -55,6 +55,8 @@ export interface IBrandKit extends Document {
   /** The account's own rules on top of the pack's (soft unless marked hard by an admin). */
   rules: { id: string; text: string; hard: boolean }[];
   notes?: string;
+  /** The handle line ("Rotaract D9213") and website posters show where the design has room. */
+  contact?: { social?: string; web?: string };
   updatedBy?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -114,6 +116,7 @@ const brandKitSchema = new Schema<IBrandKit>(
     partners: [new Schema<BrandKitPartner>({ id: { type: String, required: true }, name: { type: String, required: true, maxlength: 80 }, logo: { type: variantSchema, required: true } }, { _id: false })],
     rules: [new Schema({ id: { type: String, required: true }, text: { type: String, required: true, maxlength: 400 }, hard: { type: Boolean, default: false } }, { _id: false })],
     notes: { type: String, maxlength: 3000 },
+    contact: { social: { type: String, maxlength: 60 }, web: { type: String, maxlength: 60 } },
     updatedBy: { type: Schema.Types.ObjectId, ref: 'User' }
   },
   { timestamps: true }

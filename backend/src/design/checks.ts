@@ -28,7 +28,12 @@ const MIN_SIZE: Record<string, number> = {
   details: 0.02,
   footnote: 0.0155,
   hashtag: 0.018,
-  sponsorsTitle: 0.0145
+  sponsorsTitle: 0.0145,
+  personLabel: 0.0145,
+  personName: 0.024,
+  personRole: 0.017,
+  social: 0.0155,
+  web: 0.0155
 };
 
 const FIELD_LABEL: Record<string, string> = {
@@ -39,7 +44,12 @@ const FIELD_LABEL: Record<string, string> = {
   cta: 'call to action',
   footnote: 'small print',
   hashtag: 'hashtag',
-  sponsorsTitle: 'sponsor heading'
+  sponsorsTitle: 'sponsor heading',
+  personLabel: 'label above the name',
+  personName: 'name',
+  personRole: 'role under the name',
+  social: 'handle',
+  web: 'website'
 };
 
 function label(el: MeasuredElement): string {
@@ -70,6 +80,9 @@ export function runChecks({ template, doc, kit, report, contrasts }: CheckInput)
   for (const t of texts) {
     const field = (t.field || t.key).startsWith('detail-') ? 'details' : t.field || t.key;
     if (t.overflow) issues.push({ level: 'error', code: 'text-overflow', key: t.key, message: `The ${label(t)} doesn’t fit its space.` });
+    // Words lying on the cut-out person: a little at the very edge is tolerated, more never.
+    if (t.overSubject) issues.push({ level: 'error', code: 'text-over-subject', key: t.key, message: `The ${label(t)} covers the photo’s subject.` });
+    if ((t.overPerson || 0) > 0.06) issues.push({ level: (t.overPerson || 0) > 0.15 ? 'error' : 'warning', code: 'text-over-person', key: t.key, message: `The ${label(t)} runs over the person.` });
     const min = MIN_SIZE[field];
     if (min && t.fontSize && t.fontSize < min * short - 0.25) {
       issues.push({ level: field === 'headline' ? 'error' : 'warning', code: 'text-small', key: t.key, message: `The ${label(t)} is too small to read comfortably (${Math.round(t.fontSize)} px).` });
@@ -163,7 +176,7 @@ export const hasErrors = (issues: DesignIssue[]) => issues.some((i) => i.level =
 /** Where each editable thing sits on the poster (0..1 of its width and height), so the app can
  *  let people tap a line on the picture to change it. Detail lines are grouped as "details". */
 export function editableAreas(report: RenderReport): { field: string; x: number; y: number; w: number; h: number }[] {
-  const fields = new Set(['eyebrow', 'headline', 'subhead', 'body', 'cta', 'footnote', 'hashtag', 'sponsorsTitle']);
+  const fields = new Set(['eyebrow', 'headline', 'subhead', 'body', 'cta', 'footnote', 'hashtag', 'sponsorsTitle', 'personLabel', 'personName', 'personRole', 'social', 'web']);
   const boxes = new Map<string, { x0: number; y0: number; x1: number; y1: number }>();
   for (const el of report.elements) {
     let field: string | null = null;

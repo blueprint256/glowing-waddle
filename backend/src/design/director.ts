@@ -42,6 +42,9 @@ export interface PlanCopy {
   hashtag?: string;
   badge?: { top?: string; main: string; bottom?: string } | null;
   sponsorsTitle?: string;
+  personLabel?: string;
+  personName?: string;
+  personRole?: string;
 }
 
 export interface PlanOption {
@@ -90,7 +93,10 @@ export const DIRECTOR_TOOL = {
             description: 'Only for a specific date: e.g. top "Sat", main "14", bottom "Dec".',
             properties: { top: { type: 'string' }, main: { type: 'string' }, bottom: { type: 'string' } }
           },
-          sponsorsTitle: { type: 'string', description: 'Words above the partner logos.' }
+          sponsorsTitle: { type: 'string', description: 'Words above the partner logos.' },
+          personLabel: { type: 'string', description: 'When one person is featured: their part, 1–3 words, e.g. "Guest speaker", "Chief guest", "Keynote".' },
+          personName: { type: 'string', description: 'The featured person’s name with title as given, e.g. "Rtr. Jane Namuli" or "PDG Sam Okello".' },
+          personRole: { type: 'string', description: 'Their role, one or two short lines, e.g. "District Foundation Chair".' }
         }
       },
       options: {
@@ -127,9 +133,12 @@ How you work:
    - Details: only facts given in the request or post (dates, times, places, phone numbers, websites). Never invent a date, time, place, number, price, name or offer. Format dates like "Sat 14 December" when the weekday is certain.
    - Badge: only for one specific date (top: weekday, main: day number, bottom: month), else leave it out.
    - Call to action: 2–5 words that say what to do.
+   - Featured person (speaker, chief guest, honoree, new president): put them in personLabel / personName / personRole exactly as given (titles like Rtr., PDG, DG, PP, Dr. kept), never in the headline. The headline is the event, not the name.
+   - Emphasis: in the headline you may wrap one or two words in *stars* to set them in the design's accent (e.g. "World Polio *Day*"). Use it for rhythm, not decoration; not every time.
    - Never use exclamation marks unless the request does. No emoji. No hashtags unless asked.
 3. Choose the options: up to the number asked for, each one a real alternative a designer would show a client.
    - Only use designs whose limits fit (photos, sponsors, formats). Prefer different designs; when only one fits, vary its settings meaningfully (colours, proportions, focus) instead.
+   - Designs with a cut-out person need a photo of one person; they work best for speakers and guests.
    - Photo-led designs need a strong photo of people in action; their subject should sit where the design shows it (set focus settings from the photo's description and focal point).
    - Use the illustration (background) only in designs that take one, mainly when there is no strong photo.
    - Put the best option first.
@@ -157,7 +166,7 @@ export function catalogText(designs: DesignTemplate[], format: FormatId): string
         )
         .join('; ');
       return `• ${d.id} — ${d.name}: ${d.description}
-  Shows: ${fields}. Photos ${d.photos.min}–${d.photos.max}; sponsors up to ${d.sponsors.max}; illustration: ${d.background}${d.backgroundBrief ? ` (${d.backgroundBrief})` : ''}.
+  Shows: ${fields}. Photos ${d.photos.min}–${d.photos.max}${d.cutout ? ` (cut-out person ${d.cutout})` : ""}; sponsors up to ${d.sponsors.max}; illustration: ${d.background}${d.backgroundBrief ? ` (${d.backgroundBrief})` : ''}.
   Settings: ${params || 'none'}.`;
     })
     .join('\n');
@@ -184,7 +193,7 @@ export function directorPrompt(input: DirectorInput): string {
   const f = FORMATS[input.format];
   const photos = input.photos.length
     ? input.photos
-        .map((p, i) => `Photo ${i + 1}: ${p.slot.width}×${p.slot.height}, subject around ${Math.round(p.slot.focal.x * 100)}% across and ${Math.round(p.slot.focal.y * 100)}% down${p.description ? `; ${p.description}` : ''}${p.brightness !== undefined ? `; brightness ${Math.round(p.brightness * 100)}%` : ''}.`)
+        .map((p, i) => `Photo ${i + 1}: ${p.slot.width}×${p.slot.height}, subject around ${Math.round(p.slot.focal.x * 100)}% across and ${Math.round(p.slot.focal.y * 100)}% down${p.slot.cutout ? '; its subject can be cut out (one clear person)' : ''}${p.description ? `; ${p.description}` : ''}${p.brightness !== undefined ? `; brightness ${Math.round(p.brightness * 100)}%` : ''}.`)
         .join('\n')
     : 'No photos: use designs that work without one.';
   return [
@@ -238,7 +247,12 @@ export function cleanCopy(c: any): DesignText {
     footnote: clean(c?.footnote, 160),
     hashtag: clean(c?.hashtag, 40),
     badge: badgeMain ? { top: clean(c?.badge?.top, 10), main: badgeMain, bottom: clean(c?.badge?.bottom, 10) } : undefined,
-    sponsorsTitle: clean(c?.sponsorsTitle, 40)
+    sponsorsTitle: clean(c?.sponsorsTitle, 40),
+    personLabel: clean(c?.personLabel, 30),
+    personName: clean(c?.personName, 70),
+    personRole: clean(c?.personRole, 120),
+    social: clean(c?.social, 60),
+    web: clean(c?.web, 60)
   };
 }
 
@@ -254,6 +268,8 @@ export function plannedDocs(plan: DirectorPlan, input: DirectorInput, background
   const base = cleanCopy(plan.copy || {});
   const pack = packById(input.kit.pack);
   if (!base.sponsorsTitle && input.sponsors.length) base.sponsorsTitle = pack?.sponsorsTitle || 'With thanks to';
+  if (!base.social && input.kit.contact?.social) base.social = clean(input.kit.contact.social, 60);
+  if (!base.web && input.kit.contact?.web) base.web = clean(input.kit.contact.web.replace(/^https?:\/\//, '').replace(/\/$/, ''), 60);
   const primary = input.kit.logos.find((l) => l.role === 'primary');
   const out: PlannedOption[] = [];
   for (const o of (plan.options || []).slice(0, 4)) {
@@ -296,7 +312,7 @@ export function planWithoutAI(input: DirectorInput): DirectorPlan {
   let headline = sentences[0] || input.campaign?.name || 'Join us';
   if (headline.length > 60) headline = headline.split(' ').slice(0, 7).join(' ');
   const subhead = sentences.slice(1).join(' ').slice(0, 200) || undefined;
-  const fitting = input.designs.filter((d) => d.formats.includes(input.format) && input.photos.length >= d.photos.min && input.sponsors.length <= d.sponsors.max);
+  const fitting = input.designs.filter((d) => d.formats.includes(input.format) && input.photos.length >= d.photos.min && input.sponsors.length <= d.sponsors.max && (d.cutout !== 'required' || !!input.photos[0]?.slot.cutout));
   const options: PlanOption[] = [];
   for (let i = 0; i < input.count && fitting.length; i++) options.push({ design: fitting[i % fitting.length].id, photos: [((i % Math.max(1, input.photos.length)) || 0) + 1] });
   return { copy: { headline: headline.replace(/[.!]+$/, ''), subhead, eyebrow: input.campaign?.name }, options };

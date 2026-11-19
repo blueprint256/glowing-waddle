@@ -231,6 +231,7 @@ function kitView(kit: IBrandKit) {
     partners: kit.partners,
     rules: kit.rules,
     notes: kit.notes || '',
+    contact: { social: kit.contact?.social || '', web: kit.contact?.web || '' },
     /** What posters actually use: the pack's rules included. */
     effective: { colors: engine.colors, fonts: engine.fonts, rules: engine.rules }
   };
@@ -267,6 +268,7 @@ router.put('/brand-kit', isAuthenticated, canManageTasks, async (req: Request, r
       kit.fonts = { display: ok(b.fonts.display) ? b.fonts.display : kit.fonts.display, text: ok(b.fonts.text) ? b.fonts.text : kit.fonts.text, accent: ok(b.fonts.accent) ? b.fonts.accent : b.fonts.accent === null ? undefined : kit.fonts.accent };
     }
     if (typeof b.notes === 'string') kit.notes = b.notes.slice(0, 3000);
+    if (b.contact && typeof b.contact === 'object') kit.contact = { social: str(b.contact.social, 60), web: str(b.contact.web, 60) };
     if (Array.isArray(b.rules)) {
       const admin = req.user!.role === UserRole.SYSTEM_ADMIN;
       kit.rules = b.rules

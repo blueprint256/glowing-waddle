@@ -46,6 +46,13 @@ export interface DesignText {
   badge?: BadgeContent;
   /** Shown above the sponsor logos, e.g. "In partnership with". */
   sponsorsTitle?: string;
+  /** A featured person (speaker, guest, honoree): the tab above the card, their name and role. */
+  personLabel?: string;
+  personName?: string;
+  personRole?: string;
+  /** The account's handle line, e.g. "Rotaract D9213", and website. */
+  social?: string;
+  web?: string;
 }
 
 /** Where to keep a photo's subject in view (0..1 from the left/top), and its face area if known. */
@@ -54,6 +61,14 @@ export interface FocalPoint {
   y: number;
   /** The subject's box (0..1), used so crops never cut through a face or a person. */
   box?: { x: number; y: number; w: number; h: number };
+}
+
+/** Sides where the photo's own frame cut the subject (a straight edge the design should soften). */
+export interface CutEdges {
+  left: boolean;
+  right: boolean;
+  top: boolean;
+  bottom: boolean;
 }
 
 export interface PhotoSlot {
@@ -66,6 +81,8 @@ export interface PhotoSlot {
   description?: string;
   /** Consent recorded for photos of people (required for photos with children). */
   consent?: boolean;
+  /** The subject cut out of its background (transparent PNG, trimmed to the person). */
+  cutout?: { url: string; width: number; height: number; edges?: CutEdges } | null;
 }
 
 export type LogoVariant = 'color' | 'reverse' | 'mono-dark' | 'mono-light';
@@ -162,6 +179,8 @@ export interface BrandKit {
   rules: BrandRule[];
   /** Free-text guidance for the art director (tone, photography, do's and don'ts). */
   notes?: string;
+  /** Put on posters whose design has a contact line: the social handle and the website. */
+  contact?: { social?: string; web?: string };
 }
 
 /** A design's setting the art director may choose (inside the design's limits). */
@@ -188,6 +207,9 @@ export interface DesignTemplate {
   formats: FormatId[];
   /** Text fields the design shows; `max` is a soft character limit the art director keeps to. */
   fields: { name: TextField; required?: boolean; max?: number }[];
+  /** Whether the design shows the first photo's subject cut out: required (skipped without one),
+   *  preferred (it has a look for photos without one), or not used. */
+  cutout?: 'required' | 'preferred';
   photos: { min: number; max: number };
   sponsors: { min: number; max: number };
   /** "none": no AI background; "optional"/"required": the design has an area for one. */
@@ -234,7 +256,7 @@ export interface DesignTweaks {
 /** An element the renderer measured, for the code checks. */
 export interface MeasuredElement {
   key: string;
-  kind: 'text' | 'logo' | 'sponsor' | 'badge' | 'photo' | 'panel';
+  kind: 'text' | 'logo' | 'sponsor' | 'badge' | 'photo' | 'panel' | 'cutout';
   field?: string;
   box: { x: number; y: number; w: number; h: number };
   /** Text only. */
@@ -242,6 +264,10 @@ export interface MeasuredElement {
   color?: string;
   overflow?: boolean;
   lines?: number;
+  /** Text: share of it lying on a cut-out person (0..1). */
+  overPerson?: number;
+  /** Text: lies on a photo's subject (its face, from the focal point). */
+  overSubject?: boolean;
   /** Logos: clear space (px) to keep free around it. */
   clearSpace?: number;
   /** Logos/sponsors: which logo. */

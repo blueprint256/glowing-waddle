@@ -71,6 +71,7 @@ export function normalizeParams(params: DesignParam[], given: Record<string, unk
 export function fitsDesign(t: DesignTemplate, doc: Pick<DesignDoc, 'photos' | 'sponsors' | 'format' | 'background'>): string[] {
   const reasons: string[] = [];
   if (!t.formats.includes(doc.format)) reasons.push(`not made for ${doc.format}`);
+  if (t.cutout === 'required' && !doc.photos[0]?.cutout) reasons.push('needs a photo with the person cut out');
   if (doc.photos.length < t.photos.min) reasons.push(`needs at least ${t.photos.min} photo${t.photos.min === 1 ? '' : 's'}`);
   if (doc.sponsors.length > t.sponsors.max) reasons.push(`shows at most ${t.sponsors.max} sponsor logos`);
   if (t.background === 'required' && !doc.background) reasons.push('needs a background picture');

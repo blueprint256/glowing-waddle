@@ -39,7 +39,7 @@ export const EDIT_TOOL = {
           required: ['op'],
           properties: {
             op: { type: 'string', enum: ['set_text', 'remove_text', 'set_details', 'set_badge', 'set_param', 'headline_size', 'swap_colours', 'switch_design', 'change_format', 'photo_focus', 'remove_sponsor', 'new_background', 'refuse'] },
-            field: { type: 'string', enum: ['eyebrow', 'headline', 'subhead', 'body', 'cta', 'footnote', 'hashtag', 'sponsorsTitle'] },
+            field: { type: 'string', enum: ['eyebrow', 'headline', 'subhead', 'body', 'cta', 'footnote', 'hashtag', 'sponsorsTitle', 'personLabel', 'personName', 'personRole', 'social', 'web'] },
             value: {},
             key: { type: 'string' },
             scale: { type: 'number', description: '0.75–1.3 times the fitted size (1.15 = noticeably bigger).' },
@@ -64,7 +64,7 @@ export const EDIT_TOOL = {
 export const EDIT_SYSTEM = `You change a finished poster for a person who describes the change in words. The poster is a document (shown as JSON) rendered by code; you answer only with operations on it, using the submit_changes tool.
 
 Operations:
-- set_text {field, value}: replace the words of a field (eyebrow, headline, subhead, body, cta, footnote, hashtag, sponsorsTitle). Keep facts exactly as given; never invent dates, numbers or names. Use \\n in the headline for a line break.
+- set_text {field, value}: replace the words of a field (eyebrow, headline, subhead, body, cta, footnote, hashtag, sponsorsTitle, personLabel, personName, personRole, social, web). *Stars* around headline words set them in the accent style. Keep facts exactly as given; never invent dates, numbers or names. Use \\n in the headline for a line break.
 - remove_text {field}
 - set_details {details}: the whole list of detail lines (date, time, place, phone, web, info), in order; an empty list removes them.
 - set_badge {badge}: the round badge {top, main, bottom} (e.g. SAT / 14 / DEC), or null to remove it.
@@ -105,7 +105,7 @@ export function editPrompt(doc: DesignDoc, design: DesignTemplate, designs: Desi
     .join('\n\n');
 }
 
-const TEXT_FIELDS: TextField[] = ['eyebrow', 'headline', 'subhead', 'body', 'cta', 'footnote', 'hashtag', 'sponsorsTitle'];
+const TEXT_FIELDS: TextField[] = ['eyebrow', 'headline', 'subhead', 'body', 'cta', 'footnote', 'hashtag', 'sponsorsTitle', 'personLabel', 'personName', 'personRole', 'social', 'web'];
 
 export interface EditResult {
   doc: DesignDoc;
