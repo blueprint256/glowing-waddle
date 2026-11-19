@@ -209,9 +209,17 @@ template {
 .d-sampling [data-check='text'] * {
   color: transparent !important;
   text-shadow: none !important;
+  /* An outlined button's border is drawn in the words' colour: it goes with them. */
+  border-color: transparent !important;
 }
 .d-sampling [data-check='logo'],
 .d-sampling [data-check='sponsor'],
 .d-sampling .d-grain {
   visibility: hidden !important;
+}
+
+/* While the engine probes what lies under the words, every layer takes part in the hit test. */
+.d-probing #poster,
+.d-probing #poster * {
+  pointer-events: auto !important;
 }

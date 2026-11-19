@@ -683,10 +683,100 @@
     return false;
   }
 
+  // Share of a text's box that something else sits on top of (a photo, a ring, a shape).
+  // Probes a grid inside the letters' box and looks at everything stacked at each point, top first:
+  // above the words there may only be things that paint nothing (layout boxes), other words (the
+  // overlap check judges those), cut-out people (their own check) or decorations that ignore the
+  // pointer (grain, light). Points where the words aren't hit at all (clipped) aren't counted here.
+  var coveredBy = null;
+  function paints(node) {
+    if (!(node instanceof Element)) return false;
+    var tag = node.tagName.toLowerCase();
+    if (tag === 'img' || tag === 'canvas' || tag === 'video' || node instanceof SVGElement) return true;
+    var cs = getComputedStyle(node);
+    if (cs.visibility === 'hidden' || Number(cs.opacity) === 0) return false;
+    if (cs.backgroundImage && cs.backgroundImage !== 'none') return true;
+    var bg = cs.backgroundColor;
+    if (bg && bg !== 'transparent' && !/rgba\([^)]*,\s*0\)$/.test(bg)) return true;
+    return false;
+  }
+  function masked(node) {
+    for (var x = node; x && x !== poster; x = x.parentElement) {
+      var cs = getComputedStyle(x);
+      var mi = cs.maskImage || cs.webkitMaskImage;
+      if (mi && mi !== 'none') return true;
+    }
+    return false;
+  }
+  function coveredShare(el, box) {
+    var pr = poster.getBoundingClientRect();
+    var cols = 7, rows = 3, hits = 0, n = 0;
+    coveredBy = null;
+    for (var i = 0; i < cols; i++) {
+      for (var j = 0; j < rows; j++) {
+        var x = pr.left + box.x + box.w * (0.08 + 0.84 * (i / (cols - 1)));
+        var y = pr.top + box.y + box.h * (0.25 + 0.5 * (j / (rows - 1)));
+        var stack = document.elementsFromPoint(x, y);
+        var at = -1;
+        for (var k = 0; k < stack.length; k++) if (stack[k] === el || el.contains(stack[k])) { at = k; break; }
+        if (at < 0) continue;
+        n++;
+
+        for (var q = 0; q < at; q++) {
+          var t = stack[q];
+          if (t.contains(el)) continue;
+          if (t.closest('[data-cutout]') || t.closest('[data-check="text"]')) continue;
+          if (!paints(t)) continue;
+          if (!coveredBy) coveredBy = (t.getAttribute('data-check') ? t.getAttribute('data-check') + ':' : '') + (String(t.className && t.className.baseVal !== undefined ? t.className.baseVal : t.className) || t.tagName.toLowerCase());
+          hits++;
+          break;
+        }
+      }
+    }
+    return n ? hits / n : 0;
+  }
+
+  // Share of a text's box lying on a bare photo: one not veiled by a fade laid over it and not
+  // masked into the ground (those edges are soft, by design). Fades usually ignore the pointer, so
+  // every layer takes part in the hit test while this looks.
+  function onBarePhotoShare(el, box) {
+    var pr = poster.getBoundingClientRect();
+    var cols = 7, rows = 3, on = 0, n = 0;
+    document.documentElement.classList.add('d-probing');
+    try {
+      for (var i = 0; i < cols; i++) {
+        for (var j = 0; j < rows; j++) {
+          var x = pr.left + box.x + box.w * (0.08 + 0.84 * (i / (cols - 1)));
+          var y = pr.top + box.y + box.h * (0.25 + 0.5 * (j / (rows - 1)));
+          var stack = document.elementsFromPoint(x, y);
+          var at = -1;
+          for (var k = 0; k < stack.length; k++) if (stack[k] === el || el.contains(stack[k])) { at = k; break; }
+          if (at < 0) continue;
+          n++;
+          var veiled = false;
+          for (var r = at + 1; r < stack.length; r++) {
+            var below = stack[r];
+            if (below === poster) break;
+            if (below.contains(el)) continue;
+            if (below.closest('[data-photo]')) {
+              if (!veiled && !masked(below)) on++;
+              break;
+            }
+            if (paints(below)) veiled = true;
+          }
+        }
+      }
+    } finally {
+      document.documentElement.classList.remove('d-probing');
+    }
+    return n ? on / n : 0;
+  }
   function measure() {
     var out = [];
     var n = 0;
     $all('[data-check]').forEach(function (el) {
+      // Hidden on purpose (display: none, e.g. a detail the date block already shows): not on the poster.
+      if (!el.getClientRects().length) return;
       var kind = el.getAttribute('data-check');
       var key = el.getAttribute('data-key') || el.getAttribute('data-field') || el.getAttribute('data-logo') || kind + '-' + ++n;
       var m = { key: key, kind: kind, box: rect(el) };
@@ -720,9 +810,23 @@
           c = c.parentElement;
         }
       }
+      if (kind === 'text') {
+        var cv = coveredShare(el, m.box);
+        // Partly on a bare photo and partly off it: the line crosses the photo's edge.
+        var bare = onBarePhotoShare(el, m.box);
+        if (bare >= 0.08 && bare <= 0.92) m.photoEdge = Math.round(bare * 100) / 100;
+        if (cv > 0) {
+          m.covered = Math.round(cv * 100) / 100;
+          if (why) why.push('under ' + coveredBy);
+        }
+      }
       if (kind === 'text' && !onOwnGround(el)) {
         var oc = overCutout(m.box);
         if (oc > 0) m.overPerson = Math.round(oc * 100) / 100;
+        // data-person-ok="0.3": the design means the person to stand in front of these words
+        // (huge letters read with part of them covered), up to that share.
+        var allow = el.closest('[data-person-ok]');
+        if (allow) m.personOk = Number(allow.getAttribute('data-person-ok')) || 0;
         // A face is about a tenth of the poster's short side across: words within that are on it.
         var rFace = MIN * 0.05;
         photoSubjects().forEach(function (s) {

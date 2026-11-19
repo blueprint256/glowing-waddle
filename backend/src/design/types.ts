@@ -271,6 +271,12 @@ export interface MeasuredElement {
   lines?: number;
   /** Text: share of it lying on a cut-out person (0..1). */
   overPerson?: number;
+  /** Text: share of it lying on a photo when the rest lies off it (it crosses the photo's edge). */
+  photoEdge?: number;
+  /** Text: share of it that something else (photo, shape, block) sits on top of (0..1). */
+  covered?: number;
+  /** The share of it the design allows a cut-out person to cover (data-person-ok). */
+  personOk?: number;
   /** Text: lies on a photo's subject (its face, from the focal point). */
   overSubject?: boolean;
   /** Logos: clear space (px) to keep free around it. */

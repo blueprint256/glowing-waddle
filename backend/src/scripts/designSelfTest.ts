@@ -15,7 +15,7 @@ import { BUILTIN_DESIGNS } from '../design/library';
 import { renderDesign, closeRenderer } from '../design/renderer';
 import { validateTemplate } from '../design/template';
 import { buildTestKit, testBackground, testDoc, testPhoto, SAMPLE_TEXT } from '../design/testKit';
-import type { FormatId, PhotoSlot } from '../design/types';
+import type { DesignTemplate, DesignText, FormatId, PhotoSlot } from '../design/types';
 import { checkScore, hasErrors } from '../design/checks';
 import { plannedDocs, planWithoutAI, cleanCopy, type DirectorInput, type DirectorPlan } from '../design/director';
 import { applyEdits, applyTextEdits } from '../design/edits';
@@ -68,7 +68,10 @@ async function main() {
       for (const [name, textKey, sponsorCount] of cases) {
         const photo = photos[(name.length + format.length) % photos.length];
         const usePhotos = (name === 'long-6' && design.photos.max >= 2 ? [photo, photos[(photos.indexOf(photo) + 1) % photos.length]] : [photo]).slice(0, design.photos.max);
-        const doc = testDoc(design.id, format, SAMPLE_TEXT[textKey], usePhotos, sponsors.slice(0, sponsorCount));
+        // Typical and short words are written to the design's limits, as the art director writes
+        // them; the long words are the stress test and stay as they are.
+        const words = textKey === 'long' ? SAMPLE_TEXT[textKey] : withinLimits(SAMPLE_TEXT[textKey], design);
+        const doc = testDoc(design.id, format, words, usePhotos, sponsors.slice(0, sponsorCount));
         if (design.background !== 'none' && name !== 'short-0') doc.background = background;
         const file = `${design.id}--${format}--${name}.png`;
         try {
@@ -87,6 +90,21 @@ async function main() {
       }
     }
   }
+  // The checks themselves: words pushed under the circle photo, and over its edge, must be caught.
+  if (!only || only.includes('bold-event')) {
+    const be = BUILTIN_DESIGNS.find((d) => d.id === 'bold-event')!;
+    const words = { ...SAMPLE_TEXT.typical, subhead: 'Join Rotary volunteers as we help health' };
+    for (const [name, extra, code] of [
+      ['words across a photo edge', '#poster .be-info { width: 80cqw !important; }', 'text-photo-edge'],
+      ['a photo on top of words', '#poster .be-info { width: 80cqw !important; } #poster .be-circle-wrap { z-index: 9 !important; }', 'text-covered']
+    ] as const) {
+      const r = await renderDesign({ ...be, css: be.css + extra }, testDoc(be.id, 'a4', words, [photos[0]], sponsors.slice(0, 3)), kit, loader, { scale: 1 });
+      const caught = r.report.issues.some((i) => i.code === code);
+      console.log(`${caught ? '✓' : '✗'} check catches ${name}`);
+      if (!caught) failures++;
+    }
+  }
+
   // The pipeline's pure steps: a plan as the art director would send it, then typed edits.
   if (!only) {
     const input: DirectorInput = {
@@ -184,3 +202,21 @@ main().catch(async (e) => {
   await closeRenderer();
   process.exit(1);
 });
+
+/** Cuts each field to the design's limit at a word, the way a copywriter would shorten it. */
+function withinLimits(text: DesignText, design: DesignTemplate): DesignText {
+  const out: DesignText = { ...text };
+  for (const f of design.fields) {
+    const v = (out as any)[f.name];
+    // The headline stays whole (cutting it mid-phrase reads wrongly); designs shrink it to fit.
+    if (f.name === 'headline' || !f.max || typeof v !== 'string' || v.length <= f.max) continue;
+    const words = v.replace(/\s+/g, ' ').split(' ');
+    let cut = '';
+    for (const w of words) {
+      if ((cut ? cut.length + 1 : 0) + w.length > f.max) break;
+      cut = cut ? `${cut} ${w}` : w;
+    }
+    (out as any)[f.name] = cut.replace(/[,;:–-]+$/, '');
+  }
+  return out;
+}

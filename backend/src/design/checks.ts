@@ -82,7 +82,12 @@ export function runChecks({ template, doc, kit, report, contrasts }: CheckInput)
     if (t.overflow) issues.push({ level: 'error', code: 'text-overflow', key: t.key, message: `The ${label(t)} doesn’t fit its space.` });
     // Words lying on the cut-out person: a little at the very edge is tolerated, more never.
     if (t.overSubject) issues.push({ level: 'error', code: 'text-over-subject', key: t.key, message: `The ${label(t)} covers the photo’s subject.` });
-    if ((t.overPerson || 0) > 0.06) issues.push({ level: (t.overPerson || 0) > 0.15 ? 'error' : 'warning', code: 'text-over-person', key: t.key, message: `The ${label(t)} runs over the person.` });
+    // Anything else on top of the words (a photo, a ring, another block) is never right.
+    if ((t.covered || 0) >= 0.05) issues.push({ level: 'error', code: 'text-covered', key: t.key, message: `Something covers part of the ${label(t)}.` });
+    if (t.photoEdge) issues.push({ level: 'error', code: 'text-photo-edge', key: t.key, message: `The ${label(t)} runs across the edge of the photo.` });
+    const okShare = Math.min(0.4, t.personOk || 0);
+    const over = (t.overPerson || 0) - okShare;
+    if (over > 0.06) issues.push({ level: over > 0.15 ? 'error' : 'warning', code: 'text-over-person', key: t.key, message: `The ${label(t)} runs over the person.` });
     const min = MIN_SIZE[field];
     if (min && t.fontSize && t.fontSize < min * short - 0.25) {
       issues.push({ level: field === 'headline' ? 'error' : 'warning', code: 'text-small', key: t.key, message: `The ${label(t)} is too small to read comfortably (${Math.round(t.fontSize)} px).` });
