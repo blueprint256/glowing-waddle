@@ -13,7 +13,7 @@ import { assertAllowance } from '../services/aiAllowance';
 import { AIError } from '../lib/aiError';
 import { DesignError } from '../services/designPipeline';
 import { editDesign, findDesign, printDesign } from '../services/designEdits';
-import { applyPack, brandId, engineKit, loadBrandKit, storeLogoFile } from '../services/designBrand';
+import { applyPack, brandId, engineKit, loadBrandKit, mergeVersions, storeLogoFiles } from '../services/designBrand';
 import { allDesigns } from '../services/designLibrary';
 import { BRAND_PACKS, packById } from '../design/packs';
 import { FONTS, FONT_DIR } from '../design/fonts';
@@ -289,12 +289,13 @@ router.post('/brand-kit/logos', isAuthenticated, canManageTasks, uploadFile, asy
   try {
     if (!req.file) throw new DesignError(400, 'Choose a logo file.');
     const kit = await loadBrandKit(kitOwner(req));
-    const variant = await storeLogoFile(req.file.buffer);
+    const files = await storeLogoFiles(req.file.buffer);
+    const variant = files[0];
     const logoId = str(req.body?.logoId, 40);
     const existing = logoId ? kit.logos.find((l) => l.id === logoId) : null;
     const pack = packById(kit.pack);
     if (existing) {
-      existing.variants = [...existing.variants.filter((v) => v.variant !== variant.variant), variant].slice(0, 4);
+      existing.variants = mergeVersions(existing.variants, files);
     } else {
       const role = req.body?.role === 'campaign' ? 'campaign' : 'primary';
       if (role === 'primary' && kit.logos.some((l) => l.role === 'primary')) {
@@ -306,7 +307,7 @@ router.post('/brand-kit/logos', isAuthenticated, canManageTasks, uploadFile, asy
         id: brandId(),
         name: str(req.body?.name, 80) || (role === 'primary' ? 'Main logo' : 'Campaign logo'),
         role,
-        variants: [variant],
+        variants: files,
         clearSpace: d?.clearSpace ?? 0.25,
         minHeight: d?.minHeight ?? 0.05,
         requiresPrimary: role === 'campaign' ? d?.requiresPrimary ?? true : undefined,
@@ -368,8 +369,8 @@ router.post('/brand-kit/partners', isAuthenticated, canManageTasks, uploadFile, 
     if (!name) throw new DesignError(400, 'Give the partner’s name.');
     const kit = await loadBrandKit(kitOwner(req));
     if (kit.partners.length >= 60) throw new DesignError(400, 'The kit holds up to 60 partners. Remove some first.');
-    const logo = await storeLogoFile(req.file.buffer);
-    kit.partners.push({ id: brandId(), name, logo });
+    const [logo, ...alts] = await storeLogoFiles(req.file.buffer);
+    kit.partners.push({ id: brandId(), name, logo, alts });
     kit.markModified('partners');
     await kit.save();
     const warning = logo.lowRes ? 'This logo file is small and may look soft in print.' : null;

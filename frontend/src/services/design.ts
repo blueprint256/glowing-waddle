@@ -72,6 +72,8 @@ export interface LogoVariant {
   onLight: boolean;
   onDark: boolean;
   lowRes?: boolean;
+  /** Made by the app from a one-colour upload (its white or dark version). */
+  derived?: boolean;
 }
 
 export interface KitLogo {
@@ -89,6 +91,8 @@ export interface KitPartner {
   id: string;
   name: string;
   logo: LogoVariant;
+  /** Its one-colour white or dark version, made by the app. */
+  alts?: LogoVariant[];
 }
 
 export type ColorRole = 'primary' | 'secondary' | 'accent' | 'ink' | 'paper';

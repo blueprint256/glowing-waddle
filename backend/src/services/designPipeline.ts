@@ -11,7 +11,7 @@ import { getProviderKey, renderImage } from './llmService';
 import { loadPicture } from './postPicture';
 import { addDraft, deleteUnusedPictures, newId } from './posts';
 import { DESIGN_USAGE_LABEL } from './aiAllowance';
-import { engineKit, loadBrandKit } from './designBrand';
+import { engineKit, loadBrandKit, sponsorFromPartner, upgradeKitLogos } from './designBrand';
 import { allDesigns } from './designLibrary';
 import { objectKeyFromUrl, uploadBufferToS3 } from '../utils/s3Service';
 import { renderDesign, type RenderResult } from '../design/renderer';
@@ -231,6 +231,7 @@ export async function runDesignJob(job: IDesignJob): Promise<void> {
   const task = await Task.findById(job.taskId);
   if (!task) throw new DesignError(404, 'The post was deleted.');
   const kitDoc = await loadBrandKit(job.ownerId);
+  await upgradeKitLogos(kitDoc);
   const kit = engineKit(kitDoc);
   if (!kit.logos.some((l) => l.role === 'primary')) throw new DesignError(400, 'Add your logo in Settings › Brand first: every poster carries it.');
   const format: FormatId = isFormatId(job.request.format) ? job.request.format : 'portrait';
@@ -238,7 +239,7 @@ export async function runDesignJob(job: IDesignJob): Promise<void> {
   const sponsors: SponsorSlot[] = (job.request.partnerIds || [])
     .map((id) => kitDoc.partners.find((p) => p.id === id))
     .filter(Boolean)
-    .map((p) => ({ name: p!.name, logo: { id: p!.logo.id, url: p!.logo.url, variant: p!.logo.variant, width: p!.logo.width, height: p!.logo.height, ink: p!.logo.ink, lightness: p!.logo.lightness, onLight: p!.logo.onLight, onDark: p!.logo.onDark } }));
+    .map((p) => sponsorFromPartner(p!));
   const campaignLogoIds = (job.request.campaignLogoIds || []).filter((id) => kit.logos.some((l) => l.id === id && l.role === 'campaign'));
   let designs = await allDesigns();
   if (job.request.designIds?.length) designs = designs.filter((d) => job.request.designIds.includes(d.id));

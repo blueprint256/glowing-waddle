@@ -107,6 +107,11 @@ export interface LogoAsset {
   onLight: boolean;
   /** Reads on dark backgrounds (no significant dark ink). */
   onDark: boolean;
+  /** Luminance of the ink along the outline (16 quantiles): the engine picks the version that
+   *  reaches 3:1 against what's actually behind it. Older files without it use onLight/onDark. */
+  edge?: number[];
+  /** Made from the uploaded file (the one-colour white or dark version), not supplied. */
+  derived?: boolean;
 }
 
 /** A brand's logo with its variants and placement rules. */
@@ -127,6 +132,8 @@ export interface BrandLogo {
 export interface SponsorSlot {
   name: string;
   logo: LogoAsset;
+  /** Other versions of the partner's logo (its one-colour white or dark version). */
+  alts?: LogoAsset[];
 }
 
 /** The optional AI-made background or illustration (never text, never logos). */
@@ -273,6 +280,9 @@ export interface MeasuredElement {
   overPerson?: number;
   /** Text on its own coloured shape: the shape's inner area, where contrast is judged. */
   inner?: { x: number; y: number; w: number; h: number };
+  /** Logos: the version shown (e.g. "color", "mono-light-derived"), and its plate if it needed one. */
+  variant?: string;
+  plated?: 'light' | 'dark';
   /** Text: share of it lying on a photo when the rest lies off it (it crosses the photo's edge). */
   photoEdge?: number;
   /** Text: share of it that something else (photo, shape, block) sits on top of (0..1). */

@@ -204,12 +204,15 @@ export async function renderDesign(template: DesignTemplate, doc: DesignDoc, kit
       }
       await page.evaluate((m: Record<string, string>) => (window as any).__design.setTones(m), map);
     }
-    const autoLogos: { role: string; box: MeasuredElement['box'] }[] = await page.evaluate(() => (window as any).__design.autoLogos());
-    for (const l of autoLogos) {
-      const { lums } = sampleBox(raw, l.box);
-      const dark = pct(lums, 0.5) < 0.3;
-      await page.evaluate(([role, surface]: [string, string]) => (window as any).__design.setLogoSurface(role, surface), [l.role, dark ? 'dark' : 'light']);
+    // Every logo and partner logo: its version chosen again for what's actually behind it (the
+    // 10th and 90th percentiles, so a busy photo has to be readable at both ends).
+    const grounds: { key: string; box: MeasuredElement['box'] }[] = await page.evaluate(() => (window as any).__design.logoGrounds());
+    const groundMap: Record<string, { lo: number; hi: number }> = {};
+    for (const g of grounds) {
+      const { lums } = sampleBox(raw, g.box);
+      if (lums.length) groundMap[g.key] = { lo: pct(lums, 0.1), hi: pct(lums, 0.9) };
     }
+    await page.evaluate((m: Record<string, { lo: number; hi: number }>) => (window as any).__design.setLogoGrounds(m), groundMap);
     await page.evaluate(() => Promise.all(Array.from(document.images).map((img) => img.decode().catch(() => null))));
     // The choices above can move things (a logo plate adds height, a block shifts): photograph what's
     // behind the words again, as they finally sit, for the contrast check.

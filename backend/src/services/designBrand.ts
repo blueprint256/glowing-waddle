@@ -5,11 +5,11 @@ import { BrandKitModel, type IBrandKit, type BrandKitLogoVariant } from '../mode
 import { User } from '../models/User';
 import { uploadBufferToS3 } from '../utils/s3Service';
 import { loadPicture } from './postPicture';
-import { prepareLogo, guessVariant } from '../design/assets';
+import { prepareLogo, guessVariant, monoVersions, type PreparedLogo } from '../design/assets';
 import { packById } from '../design/packs';
 import { isHex, mix } from '../design/color';
 import { FONT_IDS } from '../design/fonts';
-import type { BrandKit, BrandLogo, LogoAsset } from '../design/types';
+import type { BrandKit, BrandLogo, LogoAsset, SponsorSlot } from '../design/types';
 
 /**
  * An account's brand kit for posters: read, created on first use from what the account already
@@ -31,9 +31,15 @@ const NEUTRAL = {
 
 /** Prepares an uploaded logo file (box removed, trimmed) and stores it. */
 export async function storeLogoFile(input: Buffer, originalUrl?: string): Promise<BrandKitLogoVariant> {
+  return (await storeLogoFiles(input, originalUrl))[0];
+}
+
+/** An uploaded logo, prepared and stored: the file itself first, then (for a one-colour logo) its
+ *  white and dark versions, which posters use only where the original wouldn't read. */
+export async function storeLogoFiles(input: Buffer, originalUrl?: string): Promise<BrandKitLogoVariant[]> {
   const p = await prepareLogo(input);
   const url = await uploadBufferToS3(p.png, 'image/png', 'brand-logos');
-  return {
+  const main: BrandKitLogoVariant = {
     id: newId(),
     url,
     variant: guessVariant(p),
@@ -44,8 +50,84 @@ export async function storeLogoFile(input: Buffer, originalUrl?: string): Promis
     onLight: p.onLight,
     onDark: p.onDark,
     originalUrl,
-    lowRes: p.lowRes
+    lowRes: p.lowRes,
+    edge: p.edge
   };
+  return [main, ...(await derivedFiles(p, main))];
+}
+
+async function derivedFiles(p: PreparedLogo, main: BrandKitLogoVariant): Promise<BrandKitLogoVariant[]> {
+  const out: BrandKitLogoVariant[] = [];
+  for (const m of await monoVersions(p)) {
+    out.push({
+      ...main,
+      id: newId(),
+      url: await uploadBufferToS3(m.png, 'image/png', 'brand-logos'),
+      variant: m.variant,
+      lightness: m.variant === 'mono-light' ? 1 : 0.1,
+      onLight: m.variant === 'mono-dark',
+      onDark: m.variant === 'mono-light',
+      originalUrl: undefined,
+      edge: m.edge,
+      derived: true
+    });
+  }
+  return out;
+}
+
+/** A logo's versions after a new upload: the supplied files (the new one replacing one of its kind),
+ *  then made versions only of kinds nobody supplied. */
+export function mergeVersions(current: BrandKitLogoVariant[], uploaded: BrandKitLogoVariant[]): BrandKitLogoVariant[] {
+  const [main, ...made] = uploaded;
+  const supplied = [...current.filter((v) => !v.derived && v.variant !== main.variant), main];
+  const kinds = new Set(supplied.map((v) => v.variant));
+  const keptMade = [...made, ...current.filter((v) => v.derived)].filter((v, i, all) => !kinds.has(v.variant) && all.findIndex((x) => x.variant === v.variant) === i);
+  return [...supplied.slice(-4), ...keptMade];
+}
+
+/**
+ * Logos stored before outlines were measured: measured now (from the stored, prepared file) and
+ * given their one-colour versions, once. Saves the kit when anything changed.
+ */
+export async function upgradeKitLogos(kit: IBrandKit): Promise<void> {
+  let changed = false;
+  const upgrade = async (v: BrandKitLogoVariant): Promise<BrandKitLogoVariant[] | null> => {
+    if (v.edge?.length || v.derived) return null;
+    try {
+      const { buffer } = await loadPicture(v.url);
+      const p = await prepareLogo(buffer);
+      const measured = { ...v, edge: p.edge };
+      return [measured, ...(await derivedFiles(p, measured))];
+    } catch (error) {
+      console.error('[design] Couldn’t measure a stored logo:', error);
+      return null;
+    }
+  };
+  for (const logo of kit.logos) {
+    for (const v of [...logo.variants]) {
+      const up = await upgrade(v);
+      if (!up) continue;
+      logo.variants = mergeVersions(logo.variants.filter((x) => x.id !== v.id), up);
+      changed = true;
+    }
+  }
+  for (const partner of kit.partners) {
+    const up = await upgrade(partner.logo);
+    if (!up) continue;
+    partner.logo = up[0];
+    partner.alts = up.slice(1);
+    changed = true;
+  }
+  if (changed) {
+    kit.markModified('logos');
+    kit.markModified('partners');
+    await kit.save();
+  }
+}
+
+/** A saved partner as a poster's sponsor (with its other versions). */
+export function sponsorFromPartner(p: { name: string; logo: BrandKitLogoVariant; alts?: BrandKitLogoVariant[] }): SponsorSlot {
+  return { name: p.name, logo: toAsset(p.logo), alts: (p.alts || []).map(toAsset) };
 }
 
 /** The two most characteristic colours of a logo (skipping near-whites, near-blacks and greys). */
@@ -89,8 +171,8 @@ export async function loadBrandKit(ownerId: Id | string): Promise<IBrandKit> {
   if (info.primaryLogoUrl) {
     try {
       const { buffer } = await loadPicture(info.primaryLogoUrl);
-      const variant = await storeLogoFile(buffer, info.primaryLogoUrl);
-      logos.push({ id: newId(), name: `${info.companyName || 'Our'} logo`.trim(), role: 'primary', variants: [variant], clearSpace: 0.25, minHeight: 0.05 });
+      const variants = await storeLogoFiles(buffer, info.primaryLogoUrl);
+      logos.push({ id: newId(), name: `${info.companyName || 'Our'} logo`.trim(), role: 'primary', variants, clearSpace: 0.25, minHeight: 0.05 });
       const palette = await paletteFromLogo(buffer);
       if (palette[0]) colors.primary = { name: 'Brand colour', hex: palette[0] };
       if (palette[1]) colors.accent = { name: 'Brand accent', hex: palette[1] };
@@ -120,7 +202,9 @@ const toAsset = (v: BrandKitLogoVariant): LogoAsset => ({
   ink: v.ink,
   lightness: v.lightness,
   onLight: v.onLight,
-  onDark: v.onDark
+  onDark: v.onDark,
+  ...(v.edge?.length ? { edge: v.edge } : {}),
+  ...(v.derived ? { derived: true } : {})
 });
 
 /** The engine's view of a kit: the pack's colours, fonts and rules fill whatever the kit leaves out. */

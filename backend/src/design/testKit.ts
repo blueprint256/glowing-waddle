@@ -1,7 +1,7 @@
 import sharp from 'sharp';
 import type { BrandKit, BrandLogo, DesignDoc, DesignText, LogoAsset, PhotoSlot, SponsorSlot } from './types';
 import { ROTARY_PACK } from './packs';
-import { prepareLogo, logoAsset, findFocal } from './assets';
+import { prepareLogo, logoAsset, findFocal, monoVersions } from './assets';
 
 /**
  * Stand-in material for the engine's self-test and the admin's stress test: invented logos that
@@ -83,11 +83,23 @@ async function toPng(svgBuf: Buffer, jpeg = false): Promise<Buffer> {
   return jpeg ? img.flatten({ background: '#ffffff' }).jpeg({ quality: 88 }).toBuffer() : img.png().toBuffer();
 }
 
-async function prepared(files: Map<string, Buffer>, id: string, raw: Buffer): Promise<LogoAsset> {
+export async function prepared(files: Map<string, Buffer>, id: string, raw: Buffer): Promise<LogoAsset> {
+  return (await preparedWithVersions(files, id, raw)).main;
+}
+
+/** A logo file prepared as an upload is: the file itself, and for a one-colour logo its white or
+ *  dark version. */
+export async function preparedWithVersions(files: Map<string, Buffer>, id: string, raw: Buffer): Promise<{ main: LogoAsset; derived: LogoAsset[] }> {
   const p = await prepareLogo(raw);
   const url = `test://logo/${id}.png`;
   files.set(url, p.png);
-  return logoAsset(id, url, p);
+  const derived: LogoAsset[] = [];
+  for (const m of await monoVersions(p)) {
+    const u = `test://logo/${id}-${m.variant}.png`;
+    files.set(u, m.png);
+    derived.push(logoAsset(`${id}-${m.variant}`, u, { ...p, edge: m.edge, onLight: m.variant === 'mono-dark', onDark: m.variant === 'mono-light' }, m.variant, true));
+  }
+  return { main: logoAsset(id, url, p), derived };
 }
 
 export async function buildTestKit(): Promise<TestFiles> {

@@ -80,6 +80,11 @@ function duotoneDefs(tokens: Record<string, string>): string {
   return `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>${filter('d-duo', deep, light)}${filter('d-duo-accent', deep, tokens['--c-accent'])}</defs></svg>`;
 }
 
+/** One version of a logo as the runtime needs it. */
+function versionData(v: LogoAsset, address: (url: string) => string) {
+  return { variant: v.variant, src: address(v.url), width: v.width, height: v.height, ink: v.ink, lightness: v.lightness, onLight: v.onLight, onDark: v.onDark, edge: v.edge || null, derived: !!v.derived };
+}
+
 function logoData(logo: BrandLogo, address: AssetAddress) {
   const main = logo.variants[0];
   return {
@@ -87,7 +92,7 @@ function logoData(logo: BrandLogo, address: AssetAddress) {
     clearSpace: logo.clearSpace,
     ink: main?.ink ?? 0.5,
     aspect: main ? main.width / Math.max(1, main.height) : 2,
-    variants: logo.variants.map((v: LogoAsset) => ({ variant: v.variant, src: address(v.url), width: v.width, height: v.height, ink: v.ink, onLight: v.onLight, onDark: v.onDark }))
+    variants: logo.variants.map((v: LogoAsset) => versionData(v, address))
   };
 }
 
@@ -123,7 +128,7 @@ export function buildPage(template: DesignTemplate, doc: DesignDoc, kit: BrandKi
     })),
     background: doc.background ? { src: address(doc.background.url), width: doc.background.width, height: doc.background.height } : null,
     logos: { primary: primary ? logoData(primary, address) : null, campaign: campaign.map((l) => logoData(l, address)) },
-    sponsors: doc.sponsors.map((s) => ({ name: s.name, src: address(s.logo.url), width: s.logo.width, height: s.logo.height, ink: s.logo.ink, onLight: s.logo.onLight, onDark: s.logo.onDark }))
+    sponsors: doc.sponsors.map((s) => ({ name: s.name, ...versionData(s.logo, address), variants: [s.logo, ...(s.alts || [])].map((v) => versionData(v, address)) }))
   };
 
   // Settings reach the design as CSS variables (numbers) and data attributes (choices, colours).

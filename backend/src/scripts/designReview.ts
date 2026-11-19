@@ -13,7 +13,7 @@ import path from 'path';
 import sharp from 'sharp';
 import { BUILTIN_DESIGNS } from '../design/library';
 import { renderDesign, closeRenderer } from '../design/renderer';
-import { buildTestKit, testDoc, testPhoto } from '../design/testKit';
+import { buildTestKit, prepared, preparedWithVersions, testDoc, testPhoto } from '../design/testKit';
 import { cutoutEdges } from '../design/assets';
 import { packById } from '../design/packs';
 import { normalizeParams } from '../design/template';
@@ -26,6 +26,27 @@ async function main() {
   const { files, kit, sponsors } = await buildTestKit();
   const pack = packById(sc.pack || 'rotary');
   if (pack) Object.assign(kit, { pack: pack.id, colors: pack.colors, fonts: pack.fonts, rules: pack.rules, name: `Test club (${pack.name} pack)` });
+  // Real files instead of the placeholders: "logo" (the club's), "logoReverse", "partners": [{name, file}].
+  if (sc.logo) {
+    const primary = kit.logos.find((l) => l.role === 'primary')!;
+    const club = await preparedWithVersions(files, 'real-club', fs.readFileSync(sc.logo));
+    club.main.variant = 'color';
+    primary.variants = [club.main, ...club.derived];
+    if (sc.logoReverse) {
+      const rev = await prepared(files, 'real-club-reverse', fs.readFileSync(sc.logoReverse));
+      rev.variant = 'reverse';
+      primary.variants.push(rev);
+    }
+    primary.name = 'Club logo';
+  }
+  if (sc.campaign === false) kit.logos = kit.logos.filter((l) => l.role !== 'campaign');
+  if (Array.isArray(sc.partners)) {
+    sponsors.length = 0;
+    for (const [i, p] of sc.partners.entries()) {
+      const v = await preparedWithVersions(files, `real-partner-${i + 1}`, fs.readFileSync(p.file));
+      sponsors.push({ name: p.name, logo: v.main, alts: v.derived });
+    }
+  }
   const photos: PhotoSlot[] = [];
   if (sc.photo) {
     const slot = await testPhoto(files, path.basename(sc.photo), fs.readFileSync(sc.photo));

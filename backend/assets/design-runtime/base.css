@@ -79,16 +79,22 @@ template {
   display: block;
   max-width: none;
 }
-/* No version of the logo for this surface: it sits on a plate as wide as its clear space. */
-.d-logo.d-plated {
+/* No version of a logo reads on its ground: it sits on a plate as wide as its clear space. */
+.d-logo.d-plate-light,
+.d-sponsor.d-plate-light {
   background: var(--c-paper);
   box-shadow: 0 0 0 var(--clear, 1cqmin) var(--c-paper);
   border-radius: 0.2cqmin;
 }
-.d-logo.d-plated-dark {
+.d-logo.d-plate-dark,
+.d-sponsor.d-plate-dark {
   background: var(--c-primary-deep);
   box-shadow: 0 0 0 var(--clear, 1cqmin) var(--c-primary-deep);
   border-radius: 0.2cqmin;
+}
+.d-sponsor.d-plate-light,
+.d-sponsor.d-plate-dark {
+  --clear: 0.8cqmin;
 }
 
 /* Sponsors: the engine sizes each logo by how big it looks. */

@@ -228,47 +228,89 @@
     if (role === 'campaign') return data.logos && data.logos.campaign && data.logos.campaign[0];
     return null;
   }
-  // Picks the variant that reads on the surface: light surfaces want dark/colour ink.
-  function variantFor(logo, surface) {
-    var vs = logo.variants || [];
-    if (!vs.length) return null;
-    var dark = surface === 'dark';
-    var scored = vs
-      .map(function (v) {
-        var reads = dark ? v.onDark : v.onLight;
-        var score = (reads ? 4 : 0) + (dark ? (v.variant === 'reverse' ? 1 : 0) : v.variant === 'color' ? 1 : 0);
-        return { v: v, s: score };
-      })
-      .sort(function (a, b) {
-        return b.s - a.s;
-      });
-    return scored[0].v;
+  // ---------------------------------------------------------------- logo versions
+  // Each version knows the luminance of its outline (where it meets the ground). A version reads
+  // when most of its outline reaches 3:1 against the ground (WCAG's bar for graphics). Supplied
+  // versions come first; the one-colour white or dark version made from a one-colour logo next;
+  // if none reads, the logo sits on a plate of its own clear space (never recoloured otherwise).
+  function lumOfCss(c) {
+    var m = /rgba?\(([^)]+)\)/.exec(c || '');
+    if (!m) return null;
+    var p = m[1].split(/[\s,\/]+/).filter(Boolean).map(Number);
+    if (p.length > 3 && p[3] === 0) return null;
+    var f = function (v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    return 0.2126 * f(p[0]) + 0.7152 * f(p[1]) + 0.0722 * f(p[2]);
   }
-  // A logo with no version for this surface sits on a plate of its own clear space (never recoloured).
-  function plate(box, v, surface) {
-    box.classList.toggle('d-plated', surface === 'dark' && !v.onDark);
-    box.classList.toggle('d-plated-dark', surface !== 'dark' && !v.onLight && box.getAttribute('data-plate') !== 'none');
+  function ratio(a, b) { return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05); }
+  function edgeOf(v) {
+    if (v.edge && v.edge.length) return v.edge;
+    // Older files: an estimate from what was known about them.
+    if (v.onDark && !v.onLight) return [0.9];
+    if (v.onLight && !v.onDark) return [0.06];
+    var l = typeof v.lightness === 'number' ? Math.pow(v.lightness, 2.2) : 0.3;
+    return [l];
+  }
+  // Share of the outline reaching a contrast ratio against the ground (both of its ends).
+  function readShare(v, ground, min) {
+    var e = edgeOf(v), ok = 0;
+    for (var i = 0; i < e.length; i++) if (ratio(e[i], ground.lo) >= min && ratio(e[i], ground.hi) >= min) ok++;
+    return ok / e.length;
+  }
+  function median(a) { return a[Math.floor(a.length / 2)]; }
+  // The ground behind an element from the page's own colours (the sampling pass refines it).
+  function groundOf(el, declared) {
+    for (var c = el; c; c = c.parentElement) {
+      var l = lumOfCss(getComputedStyle(c).backgroundColor);
+      if (l !== null) return { lo: l, hi: l };
+      if (c === poster) break;
+    }
+    var paper = lumOfCss(getComputedStyle(poster).getPropertyValue('--c-paper').trim().replace(/^#(..)(..)(..)$/, function (_, r, g, b) { return 'rgb(' + parseInt(r, 16) + ',' + parseInt(g, 16) + ',' + parseInt(b, 16) + ')'; })) ;
+    if (declared === 'dark') return { lo: 0.02, hi: 0.04 };
+    return { lo: paper === null ? 1 : paper, hi: paper === null ? 1 : paper };
+  }
+  // Reads well at 4.5:1 (what brand guides ask for: the white version on colour), acceptable at
+  // 3:1 (WCAG's floor for graphics) when no version does better; below that, a plate.
+  function pickVersion(variants, ground) {
+    var best = null, bestScore = -1;
+    variants.forEach(function (v) {
+      var well = readShare(v, ground, 4.5);
+      var ok = readShare(v, ground, 3);
+      var score = (well >= 0.8 ? 20 : ok >= 0.8 ? 10 : 0) + (v.derived ? 0 : 3) + ok * 2 + (v.variant === 'color' ? 0.5 : 0);
+      if (score > bestScore) { bestScore = score; best = { v: v, share: ok }; }
+    });
+    if (!best) return null;
+    if (best.share >= 0.8) return { v: best.v, plate: null };
+    // Nothing reads: the supplied colour version on the plate it reads on.
+    var sup = variants.filter(function (v) { return !v.derived; });
+    var v0 = sup.filter(function (v) { return v.variant === 'color'; })[0] || sup[0] || best.v;
+    return { v: v0, plate: median(edgeOf(v0)) < 0.35 ? 'light' : 'dark' };
+  }
+  function applyPlate(box, plate) {
+    box.classList.toggle('d-plate-light', plate === 'light');
+    box.classList.toggle('d-plate-dark', plate === 'dark');
+    if (plate) box.setAttribute('data-plated', plate);
+    else box.removeAttribute('data-plated');
+  }
+  function useVersion(box, img, choice) {
+    var v = choice.v;
+    if (img.getAttribute('src') !== v.src) img.src = v.src;
+    img.style.aspectRatio = v.width + ' / ' + v.height;
+    box.setAttribute('data-variant', v.variant + (v.derived ? '-derived' : ''));
+    applyPlate(box, box.getAttribute('data-plate') === 'none' ? null : choice.plate);
   }
   $all('[data-logo]').forEach(function (box) {
     var role = box.getAttribute('data-logo');
     var logo = logoFor(role);
-    if (!logo) {
-      remove(box);
-      return;
-    }
-    var surface = box.getAttribute('data-surface') || 'light';
-    var v = variantFor(logo, surface === 'auto' ? 'light' : surface);
-    if (!v) {
+    if (!logo || !(logo.variants || []).length) {
       remove(box);
       return;
     }
     box.classList.add('d-logo');
-    plate(box, v, surface === 'auto' ? 'light' : surface);
     box.setAttribute('data-check', 'logo');
     box.setAttribute('data-logo-id', logo.id);
-    box.setAttribute('data-variant', v.variant);
-    var img = addImg(box, v.src, 'd-logo-img');
-    img.style.aspectRatio = v.width + ' / ' + v.height;
+    var choice = pickVersion(logo.variants, groundOf(box.parentElement, box.getAttribute('data-surface')));
+    var img = addImg(box, choice.v.src, 'd-logo-img');
+    useVersion(box, img, choice);
   });
 
   $all('[data-sponsors]').forEach(function (box) {
@@ -287,6 +329,7 @@
       img.style.aspectRatio = s.width + ' / ' + s.height;
       item.__meta = s;
       row.appendChild(item);
+      useVersion(item, img, pickVersion(s.variants || [s], groundOf(row, 'light')));
     });
   });
 
@@ -860,6 +903,11 @@
         if (ci) m.box = rect(ci);
       }
       if (why && why.length) m.why = why.join('; ');
+      if (kind === 'logo' || kind === 'sponsor') {
+        // Which version is shown, and whether it needed a plate.
+        m.variant = el.getAttribute('data-variant') || undefined;
+        if (el.getAttribute('data-plated')) m.plated = el.getAttribute('data-plated');
+      }
       if (kind === 'logo') {
         var img = el.querySelector('img');
         var logo = logoFor(el.getAttribute('data-logo'));
@@ -902,23 +950,25 @@
         return { key: el.getAttribute('data-key') || el.getAttribute('data-field'), box: rect(el) };
       });
     },
-    // Logos on data-surface="auto": choose the variant that reads on what's behind.
-    autoLogos: function () {
-      return $all('.d-logo[data-surface="auto"]').map(function (el) {
-        return { role: el.getAttribute('data-logo'), box: rect(el) };
+    // Every logo and partner logo, to photograph what's behind it.
+    logoGrounds: function () {
+      return $all('.d-logo, .d-sponsor').map(function (el, i) {
+        el.setAttribute('data-ground-key', 'g' + i);
+        return { key: 'g' + i, box: rect(el) };
       });
     },
-    setLogoSurface: function (role, surface) {
-      $all('.d-logo[data-logo="' + role + '"]').forEach(function (el) {
-        var logo = logoFor(role);
-        var v = variantFor(logo, surface);
-        if (!v) return;
+    // What's behind each (luminance low, high): its version is chosen again for that ground.
+    setLogoGrounds: function (map) {
+      $all('[data-ground-key]').forEach(function (el) {
+        var g = map[el.getAttribute('data-ground-key')];
+        if (!g) return;
         var img = el.querySelector('img');
-        img.src = v.src;
-        img.style.aspectRatio = v.width + ' / ' + v.height;
-        el.setAttribute('data-variant', v.variant);
-        el.setAttribute('data-surface-set', surface);
-        plate(el, v, surface);
+        if (el.classList.contains('d-logo')) {
+          var logo = logoFor(el.getAttribute('data-logo'));
+          if (logo) useVersion(el, img, pickVersion(logo.variants, g));
+        } else if (el.__meta) {
+          useVersion(el, img, pickVersion(el.__meta.variants || [el.__meta], g));
+        }
       });
     }
   };

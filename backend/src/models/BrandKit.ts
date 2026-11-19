@@ -18,6 +18,10 @@ export interface BrandKitLogoVariant {
   /** The file as uploaded (kept so a better preparation can be redone). */
   originalUrl?: string;
   lowRes?: boolean;
+  /** Luminance of the outline (16 quantiles): decides where this version reads. */
+  edge?: number[];
+  /** Made by the app from an uploaded one-colour logo (its white or dark version). */
+  derived?: boolean;
 }
 
 export interface BrandKitLogo {
@@ -36,6 +40,8 @@ export interface BrandKitPartner {
   id: string;
   name: string;
   logo: BrandKitLogoVariant;
+  /** The partner logo's one-colour white or dark version, made from the upload. */
+  alts?: BrandKitLogoVariant[];
 }
 
 export interface IBrandKit extends Document {
@@ -74,7 +80,9 @@ const variantSchema = new Schema<BrandKitLogoVariant>(
     onLight: { type: Boolean, default: true },
     onDark: { type: Boolean, default: false },
     originalUrl: { type: String },
-    lowRes: { type: Boolean }
+    lowRes: { type: Boolean },
+    edge: { type: [Number], default: undefined },
+    derived: { type: Boolean }
   },
   { _id: false }
 );
@@ -113,7 +121,7 @@ const brandKitSchema = new Schema<IBrandKit>(
         { _id: false }
       )
     ],
-    partners: [new Schema<BrandKitPartner>({ id: { type: String, required: true }, name: { type: String, required: true, maxlength: 80 }, logo: { type: variantSchema, required: true } }, { _id: false })],
+    partners: [new Schema<BrandKitPartner>({ id: { type: String, required: true }, name: { type: String, required: true, maxlength: 80 }, logo: { type: variantSchema, required: true }, alts: { type: [variantSchema], default: [] } }, { _id: false })],
     rules: [new Schema({ id: { type: String, required: true }, text: { type: String, required: true, maxlength: 400 }, hard: { type: Boolean, default: false } }, { _id: false })],
     notes: { type: String, maxlength: 3000 },
     contact: { social: { type: String, maxlength: 60 }, web: { type: String, maxlength: 60 } },

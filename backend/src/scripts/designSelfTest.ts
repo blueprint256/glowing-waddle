@@ -14,7 +14,7 @@ import sharp from 'sharp';
 import { BUILTIN_DESIGNS } from '../design/library';
 import { renderDesign, closeRenderer } from '../design/renderer';
 import { roomierSettings, validateTemplate } from '../design/template';
-import { buildTestKit, testBackground, testDoc, testPhoto, SAMPLE_TEXT } from '../design/testKit';
+import { buildTestKit, preparedWithVersions, testBackground, testDoc, testPhoto, SAMPLE_TEXT } from '../design/testKit';
 import type { DesignTemplate, DesignText, FormatId, PhotoSlot } from '../design/types';
 import { checkScore, hasErrors } from '../design/checks';
 import { plannedDocs, planWithoutAI, cleanCopy, type DirectorInput, type DirectorPlan } from '../design/director';
@@ -117,6 +117,32 @@ async function main() {
       console.log(`${caught ? '✓' : '✗'} check catches ${name}`);
       if (!caught) failures++;
     }
+  }
+
+  // Logo versions: a one-colour cranberry club logo on a cranberry ground shows its white version; a
+  // white-only partner logo on the white partner band shows its dark version; a two-colour logo that
+  // can't read on a ground sits on a plate.
+  if (!only || only.includes('bold-event')) {
+    const be = BUILTIN_DESIGNS.find((d) => d.id === 'bold-event')!;
+    const svgBuf = (w: number, h: number, body: string) => Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${body}</svg>`);
+    const png = (b: Buffer) => sharp(b, { density: 144 }).png().toBuffer();
+    const clubMono = await preparedWithVersions(files, 'mono-club', await png(svgBuf(900, 300, `<circle cx="760" cy="150" r="120" fill="none" stroke="#d22163" stroke-width="40"/><text x="20" y="200" font-family="DejaVu Sans" font-weight="700" font-size="150" fill="#d22163">Club</text>`)));
+    const whitePartner = await preparedWithVersions(files, 'white-partner', await png(svgBuf(900, 300, `<text x="20" y="200" font-family="DejaVu Sans" font-weight="700" font-size="150" fill="#ffffff">HOTEL</text>`)));
+    const kit2 = JSON.parse(JSON.stringify(kit)) as typeof kit;
+    kit2.colors.secondary = { name: 'Cranberry', hex: '#d22163' };
+    kit2.logos = kit2.logos.filter((l) => l.role !== 'campaign').map((l) => (l.role === 'primary' ? { ...l, variants: [clubMono.main, ...clubMono.derived] } : l));
+    const sponsorsWhite = [{ name: 'Hotel', logo: whitePartner.main, alts: whitePartner.derived }, ...sponsors.slice(0, 2)];
+    const doc = testDoc(be.id, 'portrait', withinLimits(SAMPLE_TEXT.typical, be), [photos[0]], sponsorsWhite, false);
+    const r = await renderDesign(be, doc, kit2, loader, { scale: 1 });
+    fs.writeFileSync(path.join(out, 'logo-versions.png'), r.file);
+    const club = r.report.elements.find((e) => e.kind === 'logo');
+    const hotel = r.report.elements.find((e) => e.kind === 'sponsor' && e.key === 'sponsor-1');
+    const ok1 = club?.variant === 'mono-light-derived' && !club.plated;
+    const ok2 = hotel?.variant === 'mono-dark-derived' && !hotel.plated;
+    console.log(`${ok1 ? '✓' : '✗'} one-colour club logo on its own colour shows the white version (${club?.variant}${club?.plated ? ', plated' : ''})`);
+    console.log(`${ok2 ? '✓' : '✗'} white-only partner on the white band shows the dark version (${hotel?.variant}${hotel?.plated ? ', plated' : ''})`);
+    if (!ok1) failures++;
+    if (!ok2) failures++;
   }
 
   // The pipeline's pure steps: a plan as the art director would send it, then typed edits.

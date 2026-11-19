@@ -25,6 +25,57 @@ export interface PreparedLogo {
   removedBox: boolean;
   /** True when the file is small for print (under 600 px on its long side). */
   lowRes: boolean;
+  /** Luminance (WCAG) of the ink along the logo's outline, where it meets the background: 16
+   *  quantiles, darkest first. What decides whether it reads on a given ground. */
+  edge: number[];
+  /** A one-colour logo: that colour (hex). Its white or dark version is the same logo. */
+  mono: string | null;
+}
+
+/** How far a pixel is from the tints of colour c (the line from c to white), and where on it. */
+function tintOf(p: number[], c: number[]): { off: number; t: number } {
+  // White + t·(c − white): t = 1 is the colour itself, 0 is white.
+  const d = [c[0] - 255, c[1] - 255, c[2] - 255];
+  const len2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+  if (len2 < 1) return { off: Math.hypot(p[0] - c[0], p[1] - c[1], p[2] - c[2]), t: 1 };
+  const t = Math.max(0, Math.min(1, ((p[0] - 255) * d[0] + (p[1] - 255) * d[1] + (p[2] - 255) * d[2]) / len2));
+  return { off: Math.hypot(p[0] - (255 + t * d[0]), p[1] - (255 + t * d[1]), p[2] - (255 + t * d[2])), t };
+}
+const offTint = (p: number[], c: number[]) => tintOf(p, c).off;
+
+/** WCAG relative luminance of an sRGB colour (0..255 channels). */
+export function relLum(r: number, g: number, b: number): number {
+  const f = (c: number) => {
+    const v = c / 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+}
+
+/** One-colour versions of a one-colour logo: white for dark or coloured grounds, near-black for
+ *  light ones (only those it doesn't already read as). The same artwork, as brand centres supply it. */
+export async function monoVersions(p: PreparedLogo): Promise<{ variant: 'mono-light' | 'mono-dark'; png: Buffer; edge: number[] }[]> {
+  if (!p.mono) return [];
+  const hex = p.mono.replace('#', '');
+  const L = relLum(parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16));
+  const out: { variant: 'mono-light' | 'mono-dark'; png: Buffer; edge: number[] }[] = [];
+  const recolour = async (rgb: [number, number, number]) => {
+    const { data, info } = await sharp(p.png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const c = [parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16)];
+    for (let i = 0; i < data.length; i += 4) {
+      // Pale edges (the colour smoothed into white) become partly see-through, so the new version's
+      // edges stay as fine as the original's.
+      const t = tintOf([data[i], data[i + 1], data[i + 2]], c).t;
+      data[i + 3] = Math.round(data[i + 3] * t);
+      data[i] = rgb[0];
+      data[i + 1] = rgb[1];
+      data[i + 2] = rgb[2];
+    }
+    return sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } }).png({ compressionLevel: 9 }).toBuffer();
+  };
+  if (L < 0.6) out.push({ variant: 'mono-light', png: await recolour([255, 255, 255]), edge: new Array(16).fill(1) });
+  if (L > 0.12) out.push({ variant: 'mono-dark', png: await recolour([29, 29, 27]), edge: new Array(16).fill(relLum(29, 29, 27)) });
+  return out;
 }
 
 const MAX_LOGO = 1600;
@@ -173,6 +224,34 @@ export async function prepareLogo(input: Buffer): Promise<PreparedLogo> {
       }
     }
   }
+  // The outline: opaque ink with a see-through neighbour (within 2 px). Its luminance decides where
+  // the logo reads; its colours tell whether the logo is one colour.
+  const edgeLums: number[] = [];
+  const solid: number[] = [];
+  const opaque = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H && data[px(x, y) + 3] > 127;
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      if (!opaque(x, y)) continue;
+      const i = px(x, y);
+      solid.push(i);
+      let border = false;
+      for (let d = 1; d <= 2 && !border; d++) border = !opaque(x + d, y) || !opaque(x - d, y) || !opaque(x, y + d) || !opaque(x, y - d);
+      if (border) edgeLums.push(relLum(data[i], data[i + 1], data[i + 2]));
+    }
+  }
+  edgeLums.sort((a2, b2) => a2 - b2);
+  const edge = Array.from({ length: 16 }, (_, q) => (edgeLums.length ? Math.round(edgeLums[Math.min(edgeLums.length - 1, Math.floor(((q + 0.5) / 16) * edgeLums.length))] * 10000) / 10000 : 0.5));
+  // One colour: the ink's colour is the mean of its darkest 40%; nearly every solid pixel lies on the
+  // line from that colour to white (smoothing against a white page leaves pale edges of it).
+  let mono: string | null = null;
+  if (solid.length > 50) {
+    const byLum = solid.map((i) => ({ i, l: relLum(data[i], data[i + 1], data[i + 2]) })).sort((a2, b2) => a2.l - b2.l);
+    const dark = byLum.slice(0, Math.max(1, Math.floor(byLum.length * 0.4)));
+    const c = [0, 1, 2].map((ch) => dark.reduce((sum, d) => sum + data[d.i + ch], 0) / dark.length);
+    let near = 0;
+    for (const i of solid) if (offTint([data[i], data[i + 1], data[i + 2]], c) < 40) near++;
+    if (near / solid.length >= 0.94) mono = '#' + c.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('');
+  }
   const png = await sharp(data, { raw: { width: W, height: H, channels: C as 4 } })
     .extract({ left: x0, top: y0, width: tw, height: th })
     .png({ compressionLevel: 9 })
@@ -187,7 +266,9 @@ export async function prepareLogo(input: Buffer): Promise<PreparedLogo> {
     onLight: darkInk / Math.max(1, inkCount) >= 0.06 || whiteInk / Math.max(1, inkCount) < 0.25,
     onDark: darkInk / Math.max(1, inkCount) < 0.06,
     removedBox,
-    lowRes: Math.max(meta.width || 0, meta.height || 0) < 600
+    lowRes: Math.max(meta.width || 0, meta.height || 0) < 600,
+    edge,
+    mono
   };
 }
 
@@ -197,8 +278,8 @@ export function guessVariant(p: Pick<PreparedLogo, 'onLight' | 'onDark'>): LogoV
   return 'color';
 }
 
-export function logoAsset(id: string, url: string, p: Pick<PreparedLogo, 'width' | 'height' | 'ink' | 'lightness' | 'onLight' | 'onDark'>, variant?: LogoVariant): LogoAsset {
-  return { id, url, variant: variant || guessVariant(p), width: p.width, height: p.height, ink: p.ink, lightness: p.lightness, onLight: p.onLight, onDark: p.onDark };
+export function logoAsset(id: string, url: string, p: Pick<PreparedLogo, 'width' | 'height' | 'ink' | 'lightness' | 'onLight' | 'onDark'> & { edge?: number[] }, variant?: LogoVariant, derived?: boolean): LogoAsset {
+  return { id, url, variant: variant || guessVariant(p), width: p.width, height: p.height, ink: p.ink, lightness: p.lightness, onLight: p.onLight, onDark: p.onDark, edge: p.edge, ...(derived ? { derived: true } : {}) };
 }
 
 /**

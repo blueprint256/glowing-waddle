@@ -164,7 +164,8 @@ export const boldEvent: DesignTemplate = {
 .be-contact-line { display: flex; align-items: center; gap: 0.8cqmin; font-family: var(--f-display); font-weight: 600; font-size: 1.8cqmin; }
 .be-contact-line .d-icon { color: var(--p-accent); }
 /* With a person standing on the band, the handle moves to the left, under the venue. */
-#poster:has(.be-person) .be-contact { right: auto; left: var(--m); justify-content: flex-start; max-width: var(--info-w); }
+#poster:has(.be-person) .be-contact,
+#poster[data-format="square"]:has(.be-circle-wrap) .be-contact { right: auto; left: var(--m); justify-content: flex-start; max-width: var(--info-w); }
 
 .be-band { position: absolute; z-index: 7; left: 0; right: 0; bottom: 0; height: var(--band-h); background: var(--c-paper);
   display: flex; align-items: center; padding: 1.8cqmin var(--m); }
