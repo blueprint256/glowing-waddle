@@ -168,7 +168,12 @@ export const SAMPLE_TEXT: Record<'typical' | 'short' | 'long', DesignText> = {
     ],
     cta: 'Volunteer with us',
     badge: { top: 'Sat', main: '14', bottom: 'Dec' },
-    sponsorsTitle: 'In partnership with'
+    sponsorsTitle: 'In partnership with',
+    stats: [
+      { value: '312', label: 'children vaccinated' },
+      { value: '48', label: 'volunteers' },
+      { value: '5', label: 'health centres' }
+    ]
   },
   short: {
     headline: 'End polio now',

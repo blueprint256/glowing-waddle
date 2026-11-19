@@ -7,6 +7,7 @@ import {
   TextDecrease as SmallerIcon,
   SwapHoriz as SwapIcon,
   AspectRatio as ShapeIcon,
+  PhotoSizeSelectLarge as SizesIcon,
   ViewQuiltOutlined as LayoutIcon,
   PrintOutlined as PrintIcon,
   AutoAwesome as AIIcon,
@@ -57,7 +58,13 @@ const DETAIL_KINDS: { kind: DetailKind; label: string; icon: typeof DateIcon }[]
 
 const MAX_DETAILS = 4;
 
-type Words = { fields: Partial<Record<PosterField, string>>; details: { kind: DetailKind; text: string }[]; badge: { on: boolean; top: string; main: string; bottom: string } };
+type Words = {
+  fields: Partial<Record<PosterField, string>>;
+  details: { kind: DetailKind; text: string }[];
+  stats: { value: string; label: string }[];
+  badge: { on: boolean; top: string; main: string; bottom: string };
+};
+const MAX_STATS = 3;
 
 function wordsOf(text: PosterText): Words {
   const fields: Partial<Record<PosterField, string>> = {};
@@ -65,6 +72,7 @@ function wordsOf(text: PosterText): Words {
   return {
     fields,
     details: (text.details || []).map((d) => ({ ...d })),
+    stats: (text.stats || []).map((s) => ({ ...s })),
     badge: { on: Boolean(text.badge?.main), top: text.badge?.top || '', main: text.badge?.main || '', bottom: text.badge?.bottom || '' }
   };
 }
@@ -99,18 +107,31 @@ export default function PosterEditor({ taskId, posterRef, design, catalog, focus
   const [reply, setReply] = useState<string | null>(null);
   const [shapeAnchor, setShapeAnchor] = useState<HTMLElement | null>(null);
   const [layoutAnchor, setLayoutAnchor] = useState<HTMLElement | null>(null);
+  const [sizes, setSizes] = useState<{ sizes: { format: string; url: string }[]; skipped: { format: string; reason: string }[] } | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
   // Another poster shown: its words.
   useEffect(() => {
     setWords(original);
     setReply(null);
+    setSizes(null);
   }, [original]);
+
+  const allSizes = async () => {
+    setBusy('sizes');
+    try {
+      setSizes(await designAPI.sizes(taskId, posterRef));
+    } catch (e) {
+      notify(errorMessage(e, 'The other sizes couldn’t be made.'), { tone: 'error' });
+    } finally {
+      setBusy(null);
+    }
+  };
 
   // A line tapped on the picture.
   useEffect(() => {
     if (!focus) return;
-    const id = focus.field === 'details' ? 'poster-detail-0' : focus.field === 'badge' ? 'poster-badge-main' : `poster-field-${focus.field}`;
+    const id = focus.field === 'details' ? 'poster-detail-0' : focus.field === 'stats' ? 'poster-stat-0' : focus.field === 'badge' ? 'poster-badge-main' : `poster-field-${focus.field}`;
     const el = document.getElementById(id) as HTMLInputElement | null;
     if (el) {
       el.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -131,6 +152,8 @@ export default function PosterEditor({ taskId, posterRef, design, catalog, focus
     }
     const details = words.details.filter((d) => d.text.trim()).map((d) => ({ kind: d.kind, text: d.text.trim() }));
     if (JSON.stringify(details) !== JSON.stringify(original.details.map((d) => ({ kind: d.kind, text: d.text.trim() })))) out.details = details;
+    const stats = words.stats.filter((s) => s.value.trim()).map((s) => ({ value: s.value.trim(), label: s.label.trim() }));
+    if (JSON.stringify(stats) !== JSON.stringify(original.stats.map((s) => ({ value: s.value.trim(), label: s.label.trim() })))) out.stats = stats;
     const b = words.badge;
     const ob = original.badge;
     if (b.on !== ob.on || (b.on && (b.top !== ob.top || b.main !== ob.main || b.bottom !== ob.bottom))) {
@@ -216,6 +239,9 @@ export default function PosterEditor({ taskId, posterRef, design, catalog, focus
             Another layout
           </QuickButton>
         )}
+        <QuickButton icon={<SizesIcon />} busy={busy === 'sizes'} disabled={Boolean(busy)} onClick={allSizes}>
+          All sizes
+        </QuickButton>
         {printable && (
           <QuickButton icon={<PrintIcon />} busy={busy === 'print:a4'} disabled={Boolean(busy)} onClick={() => print('a4')}>
             Print file (A4)
@@ -255,6 +281,31 @@ export default function PosterEditor({ taskId, posterRef, design, catalog, focus
           ))}
         </Menu>
       </Box>
+
+      {sizes && (
+        <Box role="status" sx={{ p: 1.25, borderRadius: 'var(--r-ctl)', bgcolor: 'var(--bg-subtle)', display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+          <Typography sx={{ fontSize: 13, fontWeight: 600, color: 'var(--text-strong)' }}>
+            {sizes.sizes.length ? 'The same poster in other sizes (open to download):' : 'No other sizes could be made.'}
+          </Typography>
+          {sizes.sizes.length > 0 && (
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+              {sizes.sizes.map((s) => {
+                const f = POSTER_FORMATS.find((x) => x.value === s.format);
+                return (
+                  <Button key={s.format} size="small" variant="outlined" component="a" href={s.url} target="_blank" rel="noopener" sx={{ textTransform: 'none' }}>
+                    {f ? `${f.label} · ${f.hint}` : s.format}
+                  </Button>
+                );
+              })}
+            </Box>
+          )}
+          {sizes.skipped.map((s) => (
+            <Typography key={s.format} sx={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
+              {POSTER_FORMATS.find((x) => x.value === s.format)?.label || s.format}: not made ({s.reason.replace(/\.$/, '')}). Try fewer words.
+            </Typography>
+          ))}
+        </Box>
+      )}
 
       {/* The words */}
       <Box
@@ -321,6 +372,43 @@ export default function PosterEditor({ taskId, posterRef, design, catalog, focus
               {words.details.length < MAX_DETAILS && (
                 <Button size="small" startIcon={<AddIcon />} onClick={() => setWords((w) => ({ ...w, details: [...w.details, { kind: w.details.some((x) => x.kind === 'date') ? (w.details.some((x) => x.kind === 'time') ? 'place' : 'time') : 'date', text: '' }] }))} sx={{ alignSelf: 'flex-start' }}>
                   Add a detail
+                </Button>
+              )}
+            </Box>
+          </Box>
+        )}
+
+        {shown.has('stats') && (
+          <Box>
+            <Typography sx={{ fontSize: 12.5, color: 'var(--text-muted)', mb: 0.75 }}>Figures (only real numbers: what was achieved)</Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+              {words.stats.map((st, i) => (
+                <Box key={i} sx={{ display: 'flex', gap: 0.75, alignItems: 'center' }}>
+                  <TextField
+                    id={i === 0 ? 'poster-stat-0' : undefined}
+                    size="small"
+                    value={st.value}
+                    placeholder="312"
+                    onChange={(e) => setWords((w) => ({ ...w, stats: w.stats.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)) }))}
+                    inputProps={{ maxLength: 12, 'aria-label': `Figure ${i + 1}` }}
+                    sx={{ width: 110, flexShrink: 0 }}
+                  />
+                  <TextField
+                    size="small"
+                    fullWidth
+                    value={st.label}
+                    placeholder="children vaccinated"
+                    onChange={(e) => setWords((w) => ({ ...w, stats: w.stats.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) }))}
+                    inputProps={{ maxLength: 40, 'aria-label': `What figure ${i + 1} counts` }}
+                  />
+                  <IconButton size="small" aria-label={`Remove figure ${i + 1}`} onClick={() => setWords((w) => ({ ...w, stats: w.stats.filter((_, j) => j !== i) }))}>
+                    <RemoveIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              ))}
+              {words.stats.length < MAX_STATS && (
+                <Button size="small" startIcon={<AddIcon />} onClick={() => setWords((w) => ({ ...w, stats: [...w.stats, { value: '', label: '' }] }))} sx={{ alignSelf: 'flex-start' }}>
+                  Add a figure
                 </Button>
               )}
             </Box>

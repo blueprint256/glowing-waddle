@@ -45,6 +45,7 @@ export interface PlanCopy {
   personLabel?: string;
   personName?: string;
   personRole?: string;
+  stats?: { value: string; label: string }[];
 }
 
 export interface PlanOption {
@@ -130,7 +131,13 @@ export const DIRECTOR_TOOL = {
           sponsorsTitle: { type: 'string', description: 'Words above the partner logos.' },
           personLabel: { type: 'string', description: 'When one person is featured: their part, 1–3 words, e.g. "Guest speaker", "Chief guest", "Keynote".' },
           personName: { type: 'string', description: 'The featured person’s name with title as given, e.g. "Rtr. Jane Namuli" or "PDG Sam Okello".' },
-          personRole: { type: 'string', description: 'Their role, one or two short lines, e.g. "District Foundation Chair".' }
+          personRole: { type: 'string', description: 'Their role, one or two short lines, e.g. "District Foundation Chair".' },
+          stats: {
+            type: 'array',
+            maxItems: 3,
+            description: 'Impact figures for a report-back or thank-you poster, ONLY numbers stated in the request (e.g. value "312", label "children vaccinated"). Leave out when none are given.',
+            items: { type: 'object', required: ['value', 'label'], properties: { value: { type: 'string' }, label: { type: 'string' } } }
+          }
         }
       },
       options: {
@@ -167,12 +174,14 @@ How you work:
    - Details: only facts given in the request or post (dates, times, places, phone numbers, websites). Never invent a date, time, place, number, price, name or offer. Format dates like "Sat 14 December" when the weekday is certain.
    - Badge: only for one specific date (top: weekday, main: day number, bottom: month), else leave it out.
    - Call to action: 2–5 words that say what to do.
+   - Figures (stats): for a report-back or thank-you poster, up to three impact figures, each a number and a 2–4 word label ("312" / "children vaccinated"). Only figures stated in the request; never estimate, round up or invent one. No figures given, no stats.
    - Featured person (speaker, chief guest, honoree, new president): put them in personLabel / personName / personRole exactly as given (titles like Rtr., PDG, DG, PP, Dr. kept), never in the headline. The headline is the event, not the name.
    - Emphasis: in the headline you may wrap one or two words in *stars* to set them in the design's accent (e.g. "World Polio *Day*"). Use it for rhythm, not decoration; not every time.
    - Never use exclamation marks unless the request does. No emoji. No hashtags unless asked.
 3. Choose the options: up to the number asked for, each one a real alternative a designer would show a client.
    - Only use designs whose limits fit (photos, sponsors, formats). Prefer different designs; when only one fits, vary its settings meaningfully (colours, proportions, focus) instead.
    - Designs with a cut-out person need a photo of one person; they work best for speakers and guests.
+   - Photo sizes are given: a photo under about 1,000 px on its long side looks soft when it fills a poster, so show it smaller (a band, a circle, a panel). Wide group photos (many people across) suit designs that show the whole width, never a tall crop through the group.
    - Photo-led designs need a strong photo of people in action; their subject should sit where the design shows it (set focus settings from the photo's description and focal point).
    - Use the illustration (background) only in designs that take one, mainly when there is no strong photo.
    - Put the best option first.
@@ -286,8 +295,19 @@ export function cleanCopy(c: any): DesignText {
     personName: clean(c?.personName, 70),
     personRole: clean(c?.personRole, 120),
     social: clean(c?.social, 60),
-    web: clean(c?.web, 60)
+    web: clean(c?.web, 60),
+    stats: cleanStats(c?.stats)
   };
+}
+
+function cleanStats(v: unknown): DesignText['stats'] {
+  if (!Array.isArray(v)) return undefined;
+  const out = v
+    .map((s: any) => ({ value: clean(s?.value, 12) || '', label: clean(s?.label, 40) || '' }))
+    // A figure is a number: "312", "1,200", "UGX 4.5M", "3", "100%".
+    .filter((s) => s.value && /\d/.test(s.value))
+    .slice(0, 3);
+  return out.length ? out : undefined;
 }
 
 export interface PlannedOption {
@@ -339,7 +359,7 @@ export function plannedDocs(plan: DirectorPlan, input: DirectorInput, background
     const text: DesignText = { ...base };
     for (const [k, v] of Object.entries(o.copy_changes || {})) {
       const value = clean(v, 260);
-      if (value && k in base && k !== 'details' && k !== 'badge') (text as any)[k] = value;
+      if (value && k in base && k !== 'details' && k !== 'badge' && k !== 'stats') (text as any)[k] = value;
     }
     const doc: DesignDoc = {
       version: 1,

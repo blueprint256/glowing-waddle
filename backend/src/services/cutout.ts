@@ -211,7 +211,7 @@ interface ICutoutCache {
   edges?: CutEdges;
   createdAt: Date;
 }
-const CutoutCache =
+export const CutoutCache =
   (mongoose.models.CutoutCache as mongoose.Model<ICutoutCache>) ||
   mongoose.model<ICutoutCache>(
     'CutoutCache',

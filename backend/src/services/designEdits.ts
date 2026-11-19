@@ -12,7 +12,8 @@ import { renderDesign } from '../design/renderer';
 import { applyEdits, applyTextEdits, editPrompt, EDIT_SYSTEM, EDIT_TOOL, type EditOp, type TextEdits } from '../design/edits';
 import { callClaudeTool, DESIGN_MODELS } from '../design/claude';
 import { editableAreas, hasErrors } from '../design/checks';
-import type { DesignDoc, TextField } from '../design/types';
+import type { DesignDoc, FormatId, TextField } from '../design/types';
+import { roomierSettings } from '../design/template';
 
 /**
  * Changing a designed poster: typing on the poster itself (no AI), or describing the change in
@@ -142,4 +143,42 @@ export async function printDesign(task: ITask, ref: string, size: 'a4' | 'a3'): 
   const result = await renderDesign(template, doc, kit, loader, { type: 'pdf' });
   if (hasErrors(result.report.issues)) throw new DesignError(422, 'The poster doesn’t fit the print size as it is. Try fewer words.');
   return uploadBufferToS3(result.file, 'application/pdf', 'post-prints');
+}
+
+/** The same poster in every other social shape its design has (feed, story, landscape), each
+ *  checked; shapes the words don't fit are skipped with the reason. Not drafts: files to download. */
+export async function exportSizes(task: ITask, ref: string): Promise<{ sizes: { format: FormatId; url: string }[]; skipped: { format: FormatId; reason: string }[] }> {
+  const { design } = findDesign(task, ref);
+  const template = await designById(design.doc.designId, { includeDrafts: true });
+  if (!template) throw new DesignError(400, 'This poster’s design is no longer in the library.');
+  const kit = engineKit(await loadBrandKit(task.ownerId));
+  const cached: Record<string, string> = (design as any).sizes || {};
+  const sizes: { format: FormatId; url: string }[] = [];
+  const skipped: { format: FormatId; reason: string }[] = [];
+  for (const format of (['square', 'portrait', 'story', 'landscape'] as FormatId[]).filter((f) => template.formats.includes(f))) {
+    if (format === design.doc.format) continue;
+    if (cached[format]) {
+      sizes.push({ format, url: cached[format] });
+      continue;
+    }
+    let doc: DesignDoc = { ...JSON.parse(JSON.stringify(design.doc)), format };
+    let result = await renderDesign(template, doc, kit, loader, { type: 'jpeg' });
+    if (hasErrors(result.report.issues)) {
+      const params = roomierSettings(template, doc.params);
+      if (params) {
+        doc = { ...doc, params };
+        result = await renderDesign(template, doc, kit, loader, { type: 'jpeg' });
+      }
+    }
+    const errors = result.report.issues.filter((i) => i.level === 'error');
+    if (errors.length) {
+      skipped.push({ format, reason: errors[0].message });
+      continue;
+    }
+    const url = await uploadBufferToS3(result.file, 'image/jpeg', 'post-prints');
+    cached[format] = url;
+    sizes.push({ format, url });
+  }
+  (design as any).sizes = cached;
+  return { sizes, skipped };
 }

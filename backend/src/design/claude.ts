@@ -50,6 +50,8 @@ export interface ClaudeToolRequest {
   images?: ClaudeImage[];
   tool: { name: string; description: string; schema: Record<string, unknown> };
   maxTokens?: number;
+  /** Long answers (a whole design) take minutes. */
+  timeoutMs?: number;
   fetchImpl?: FetchLike;
 }
 
@@ -85,7 +87,8 @@ export async function callClaudeTool<T>(req: ClaudeToolRequest): Promise<ClaudeT
     'https://api.anthropic.com/v1/messages',
     { 'x-api-key': req.apiKey, 'anthropic-version': '2023-06-01' },
     buildToolRequest(req),
-    'Anthropic'
+    'Anthropic',
+    req.timeoutMs
   );
   const block = (Array.isArray(json?.content) ? json.content : []).find((b: any) => b.type === 'tool_use' && b.name === req.tool.name);
   if (!block || typeof block.input !== 'object') throw new Error('The design AI didn’t return a plan. Try again.');

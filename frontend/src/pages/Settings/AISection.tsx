@@ -391,8 +391,9 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
 
 /** The monthly AI allowance every client account gets (each account can have its own in Admin › Users). */
 function AllowanceDefaults() {
-  const [saved, setSaved] = useState<{ aiImagesPerMonth: number; blueMessagesPerMonth: number } | null>(null);
+  const [saved, setSaved] = useState<{ aiImagesPerMonth: number; aiDesignsPerMonth?: number; blueMessagesPerMonth: number } | null>(null);
   const [images, setImages] = useState('');
+  const [designs, setDesigns] = useState('');
   const [blue, setBlue] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -402,19 +403,20 @@ function AllowanceDefaults() {
       .then((d) => {
         setSaved(d);
         setImages(String(d.aiImagesPerMonth));
+        setDesigns(String(d.aiDesignsPerMonth ?? 12));
         setBlue(String(d.blueMessagesPerMonth));
       })
       .catch(() => setSaved(null));
   }, []);
 
   const valid = (v: string) => /^\d{1,6}$/.test(v.trim());
-  const dirty = saved && (images !== String(saved.aiImagesPerMonth) || blue !== String(saved.blueMessagesPerMonth));
+  const dirty = saved && (images !== String(saved.aiImagesPerMonth) || designs !== String(saved.aiDesignsPerMonth ?? 12) || blue !== String(saved.blueMessagesPerMonth));
 
   const save = async () => {
-    if (!valid(images) || !valid(blue) || saving) return;
+    if (!valid(images) || !valid(designs) || !valid(blue) || saving) return;
     setSaving(true);
     try {
-      const d = await userAPI.saveAllowanceDefaults({ aiImagesPerMonth: Number(images), blueMessagesPerMonth: Number(blue) });
+      const d = await userAPI.saveAllowanceDefaults({ aiImagesPerMonth: Number(images), aiDesignsPerMonth: Number(designs), blueMessagesPerMonth: Number(blue) });
       setSaved(d);
       notify('Allowance saved');
     } catch (e) {
@@ -438,8 +440,9 @@ function AllowanceDefaults() {
           sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'flex-start' }}
         >
           <TextField label="AI images" value={images} onChange={(e) => setImages(e.target.value)} error={!valid(images)} inputProps={{ inputMode: 'numeric' }} sx={{ width: 160 }} />
+          <TextField label="Designed posters" value={designs} onChange={(e) => setDesigns(e.target.value)} error={!valid(designs)} inputProps={{ inputMode: 'numeric' }} sx={{ width: 160 }} helperText="A set of options counts once" />
           <TextField label="Blue messages" value={blue} onChange={(e) => setBlue(e.target.value)} error={!valid(blue)} inputProps={{ inputMode: 'numeric' }} sx={{ width: 160 }} />
-          <Button type="submit" variant="contained" disabled={!dirty || !valid(images) || !valid(blue) || saving} sx={{ mt: 1 }}>
+          <Button type="submit" variant="contained" disabled={!dirty || !valid(images) || !valid(designs) || !valid(blue) || saving} sx={{ mt: 1 }}>
             {saving ? 'Saving…' : 'Save'}
           </Button>
         </Box>

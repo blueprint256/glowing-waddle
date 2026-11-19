@@ -1,4 +1,4 @@
-import type { DesignDoc, DesignParam, DesignTemplate } from './types';
+import type { DesignDoc, DesignParam, DesignTemplate, DesignText } from './types';
 import { FORMAT_IDS } from './formats';
 
 /**
@@ -106,4 +106,22 @@ export function roomierSettings(design: DesignTemplate, current: Record<string, 
     }
   }
   return changed ? normalizeParams(design.params, p) : null;
+}
+
+/** Cuts each field to the design's limit at a word, the way a copywriter would shorten it. */
+export function withinLimits(text: DesignText, design: DesignTemplate): DesignText {
+  const out: DesignText = { ...text };
+  for (const f of design.fields) {
+    const v = (out as any)[f.name];
+    // The headline stays whole (cutting it mid-phrase reads wrongly); designs shrink it to fit.
+    if (f.name === 'headline' || !f.max || typeof v !== 'string' || v.length <= f.max) continue;
+    const words = v.replace(/\s+/g, ' ').split(' ');
+    let cut = '';
+    for (const w of words) {
+      if ((cut ? cut.length + 1 : 0) + w.length > f.max) break;
+      cut = cut ? `${cut} ${w}` : w;
+    }
+    (out as any)[f.name] = cut.replace(/[,;:–-]+$/, '');
+  }
+  return out;
 }

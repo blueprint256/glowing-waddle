@@ -42,7 +42,7 @@ export class DesignError extends Error {
 
 const loader = async (url: string) => (await loadPicture(url)).buffer;
 
-async function logUsage(userId: Id, promptName: string, model: string, usage: { input: number; output: number; cacheRead?: number; cacheWrite?: number }, cost: number, ms: number, success = true, errorMessage?: string) {
+export async function logUsage(userId: Id, promptName: string, model: string, usage: { input: number; output: number; cacheRead?: number; cacheWrite?: number }, cost: number, ms: number, success = true, errorMessage?: string) {
   try {
     await LLMUsage.create({
       userId,
@@ -246,7 +246,7 @@ export async function runDesignJob(job: IDesignJob): Promise<void> {
   // The subject of each photo cut out, for designs that stand a person beside the words.
   if (designs.some((d) => d.cutout)) {
     for (const p of photos.slice(0, 3)) {
-      const c = await cutout(p.buffer, (png) => uploadBufferToS3(png, 'image/png', 'post-pictures'));
+      const c = await cutout(p.buffer, (png) => uploadBufferToS3(png, 'image/png', 'design-cutouts'));
       if (c) p.slot.cutout = { url: c.url, width: c.width, height: c.height, edges: c.edges };
     }
   }

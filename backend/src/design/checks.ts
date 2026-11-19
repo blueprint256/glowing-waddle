@@ -34,7 +34,9 @@ const MIN_SIZE: Record<string, number> = {
   personName: 0.024,
   personRole: 0.017,
   social: 0.0155,
-  web: 0.0155
+  web: 0.0155,
+  stats: 0.05,
+  statLabel: 0.016
 };
 
 const FIELD_LABEL: Record<string, string> = {
@@ -50,12 +52,24 @@ const FIELD_LABEL: Record<string, string> = {
   personName: 'name',
   personRole: 'role under the name',
   social: 'handle',
-  web: 'website'
+  web: 'website',
+  stats: 'figure',
+  statLabel: 'label under a figure'
 };
+
+/** The kind of words an element holds (detail and figure lines share one kind each). */
+export function fieldOf(el: MeasuredElement): string {
+  const f = el.field || el.key;
+  if (f.startsWith('detail-')) return 'details';
+  if (/^stat-\d+-label$/.test(f)) return 'statLabel';
+  if (/^stat-\d+$/.test(f)) return 'stats';
+  return f;
+}
 
 function label(el: MeasuredElement): string {
   const f = el.field || el.key;
   if (f.startsWith('detail-')) return `“${f.slice(7)}” line`;
+  if (fieldOf(el) !== f) return FIELD_LABEL[fieldOf(el)];
   return FIELD_LABEL[f] || f;
 }
 
@@ -93,7 +107,7 @@ export function runChecks({ template, doc, kit, report, contrasts }: CheckInput)
 
   // Words.
   for (const t of texts) {
-    const field = (t.field || t.key).startsWith('detail-') ? 'details' : t.field || t.key;
+    const field = fieldOf(t);
     if (t.overflow) issues.push({ level: 'error', code: 'text-overflow', key: t.key, message: `The ${label(t)} doesn’t fit its space.` });
     // Words lying on the cut-out person: a little at the very edge is tolerated, more never.
     if (t.overSubject) issues.push({ level: 'error', code: 'text-over-subject', key: t.key, message: `The ${label(t)} covers the photo’s subject.` });
@@ -205,6 +219,7 @@ export function editableAreas(report: RenderReport): { field: string; x: number;
       const f = el.field || el.key;
       if (fields.has(f)) field = f;
       else if (/^detail/.test(f) || /^detail/.test(el.key)) field = 'details';
+      else if (/^stat-/.test(el.key)) field = 'stats';
     }
     if (!field || el.box.w <= 0 || el.box.h <= 0) continue;
     const b = boxes.get(field);

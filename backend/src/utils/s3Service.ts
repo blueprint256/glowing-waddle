@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
@@ -390,4 +390,14 @@ export async function getObjectRange(key: string, start: number, end: number): P
   const chunks: Buffer[] = [];
   for await (const chunk of body as AsyncIterable<Uint8Array>) chunks.push(Buffer.from(chunk));
   return Buffer.concat(chunks);
+}
+
+/** The objects under a folder (e.g. "design-backgrounds/"), page by page. */
+export async function* listObjects(prefix: string): AsyncGenerator<{ key: string; lastModified: Date }> {
+  let token: string | undefined;
+  do {
+    const page: any = await s3Client.send(new ListObjectsV2Command({ Bucket: BUCKET_NAME, Prefix: prefix, ContinuationToken: token, MaxKeys: 1000 }));
+    for (const o of page.Contents || []) if (o.Key) yield { key: o.Key, lastModified: o.LastModified ? new Date(o.LastModified) : new Date() };
+    token = page.IsTruncated ? page.NextContinuationToken : undefined;
+  } while (token);
 }

@@ -6,15 +6,19 @@ import { UserRole } from '../models/User';
 import { DesignJob } from '../models/DesignJob';
 import type { IBrandKit } from '../models/BrandKit';
 import { isAuthenticated } from '../middleware/auth';
-import { canManageTasks } from '../middleware/rbac';
+import { canManageTasks, isSystemAdmin } from '../middleware/rbac';
 import { checkTaskOwnership } from '../middleware/ownership';
 import { validateMongoId } from '../middleware/validation';
 import { assertAllowance } from '../services/aiAllowance';
 import { AIError } from '../lib/aiError';
 import { DesignError } from '../services/designPipeline';
-import { editDesign, findDesign, printDesign } from '../services/designEdits';
+import { editDesign, exportSizes, findDesign, printDesign } from '../services/designEdits';
 import { applyPack, brandId, engineKit, loadBrandKit, mergeVersions, storeLogoFiles } from '../services/designBrand';
 import { allDesigns } from '../services/designLibrary';
+import { approveDesign, builtinTest, deleteDesignRecord, getRecord, retestDesign, retireDesign, reviseDesign, saveEditedDesign, startImport } from '../services/designImport';
+import { DesignTemplateModel, type IDesignTemplate } from '../models/DesignTemplate';
+import { BUILTIN_DESIGNS } from '../design/library';
+import type { DesignTemplate } from '../design/types';
 import { BRAND_PACKS, packById } from '../design/packs';
 import { FONTS, FONT_DIR } from '../design/fonts';
 import { FORMATS, isFormatId } from '../design/formats';
@@ -185,6 +189,22 @@ router.post('/tasks/:id/posters/:ref/print', isAuthenticated, canManageTasks, va
     res.json({ success: true, url });
   } catch (error) {
     fail(res, error, 'Couldn’t make the print file.');
+  }
+});
+
+/** The poster in every other social shape its design has (files to download, not drafts). */
+router.post('/tasks/:id/posters/:ref/sizes', isAuthenticated, canManageTasks, validateMongoId('id'), checkTaskOwnership, async (req: Request, res: Response) => {
+  try {
+    const task = await Task.findById(req.params.id);
+    if (!task) throw new DesignError(404, 'Post not found');
+    const ref = String(req.params.ref);
+    const result = await exportSizes(task, ref);
+    if (ref === 'current') task.markModified('pictureDesign');
+    else task.markModified('aiDrafts');
+    await task.save();
+    res.json({ success: true, ...result });
+  } catch (error) {
+    fail(res, error, 'Couldn’t make the other sizes.');
   }
 });
 
@@ -397,6 +417,156 @@ router.delete('/brand-kit/partners/:partnerId', isAuthenticated, canManageTasks,
     res.json({ success: true, kit: kitView(kit) });
   } catch (error) {
     fail(res, error, 'Couldn’t remove the partner.');
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Design library (system admins): import from a reference, change, test, approve, retire
+// ---------------------------------------------------------------------------
+
+const referenceUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (/^image\/(png|jpe?g|webp)$/i.test(file.mimetype)) cb(null, true);
+    else cb(new Error('Use a PNG, JPG or WebP picture of the poster'));
+  }
+});
+
+function recordView(r: IDesignTemplate) {
+  const t = (r.template || {}) as DesignTemplate;
+  return {
+    id: String(r._id),
+    designId: r.designId,
+    status: r.status,
+    source: 'imported' as const,
+    name: t.name || 'New design',
+    description: t.description || '',
+    formats: t.formats || [],
+    version: t.version || 1,
+    test: r.test || null,
+    previews: r.previews || [],
+    notes: r.notes || '',
+    sourceNote: r.sourceNote || '',
+    message: r.message || null,
+    error: r.error || null,
+    cost: Math.round((r.cost || 0) * 100) / 100,
+    updatedAt: r.updatedAt,
+    createdAt: r.createdAt
+  };
+}
+
+router.get('/admin/designs', isAuthenticated, isSystemAdmin, async (_req: Request, res: Response) => {
+  try {
+    const rows = await DesignTemplateModel.find({}).sort({ updatedAt: -1 });
+    res.json({
+      success: true,
+      builtin: BUILTIN_DESIGNS.map((d) => ({ id: d.id, designId: d.id, status: 'builtin', source: 'builtin', name: d.name, description: d.description, formats: d.formats, version: d.version })),
+      imported: rows.map(recordView)
+    });
+  } catch (error) {
+    fail(res, error, 'Couldn’t load the designs.');
+  }
+});
+
+router.get('/admin/designs/builtin/:designId/test', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
+  try {
+    res.json({ success: true, ...((await builtinTest(String(req.params.designId))) as object) });
+  } catch (error) {
+    fail(res, error, 'Couldn’t test the design.');
+  }
+});
+
+router.post(
+  '/admin/designs/import',
+  isAuthenticated,
+  isSystemAdmin,
+  (req: Request, res: Response, next: express.NextFunction) =>
+    referenceUpload.single('file')(req, res, (err: unknown) =>
+      err ? res.status(400).json({ success: false, message: (err as any)?.code === 'LIMIT_FILE_SIZE' ? 'That picture is over 20 MB.' : (err as Error).message }) : next()
+    ),
+  async (req: Request, res: Response) => {
+    try {
+      if (!req.file) throw new DesignError(400, 'Choose a picture of the reference poster.');
+      if (req.body?.rights !== 'yes') throw new DesignError(400, 'Confirm that the reference is only a layout reference: its artwork, logos, photos and words won’t be copied.');
+      const record = await startImport({ image: req.file.buffer, note: str(req.body?.note, 2000), name: str(req.body?.name, 60) }, req.user!._id as Id);
+      res.status(202).json({ success: true, design: recordView(record), message: 'Designing from the reference: this takes a few minutes' });
+    } catch (error) {
+      fail(res, error, 'Couldn’t start the import.');
+    }
+  }
+);
+
+router.get('/admin/designs/:id', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
+  try {
+    const record = await getRecord(String(req.params.id));
+    res.json({ success: true, design: recordView(record), template: record.template || null });
+  } catch (error) {
+    fail(res, error, 'Couldn’t load the design.');
+  }
+});
+
+/** Edited code or settings (the whole design as JSON): checked and tested now. */
+router.put('/admin/designs/:id', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
+  try {
+    const record = await getRecord(String(req.params.id));
+    if (!req.body?.template || typeof req.body.template !== 'object') throw new DesignError(400, 'Send the whole design.');
+    await saveEditedDesign(record, req.body.template);
+    res.json({ success: true, design: recordView(record), template: record.template, message: record.test?.failed ? 'Saved; some cases still fail' : 'Saved and passing' });
+  } catch (error) {
+    fail(res, error, 'Couldn’t save the design.');
+  }
+});
+
+router.post('/admin/designs/:id/revise', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
+  try {
+    const request = str(req.body?.request, 1500);
+    if (!request) throw new DesignError(400, 'Describe the change.');
+    const record = await getRecord(String(req.params.id));
+    await reviseDesign(record, request, req.user!._id as Id);
+    res.status(202).json({ success: true, design: recordView(record), message: 'Making the change' });
+  } catch (error) {
+    fail(res, error, 'Couldn’t start the change.');
+  }
+});
+
+router.post('/admin/designs/:id/test', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
+  try {
+    const record = await getRecord(String(req.params.id));
+    await retestDesign(record);
+    res.json({ success: true, design: recordView(record) });
+  } catch (error) {
+    fail(res, error, 'Couldn’t test the design.');
+  }
+});
+
+router.post('/admin/designs/:id/approve', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
+  try {
+    const record = await getRecord(String(req.params.id));
+    await approveDesign(record, req.user!._id as Id);
+    res.json({ success: true, design: recordView(record), message: 'Design approved: posters can use it now' });
+  } catch (error) {
+    fail(res, error, 'Couldn’t approve the design.');
+  }
+});
+
+router.post('/admin/designs/:id/retire', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
+  try {
+    const record = await getRecord(String(req.params.id));
+    await retireDesign(record);
+    res.json({ success: true, design: recordView(record), message: 'Design retired: new posters won’t use it' });
+  } catch (error) {
+    fail(res, error, 'Couldn’t retire the design.');
+  }
+});
+
+router.delete('/admin/designs/:id', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
+  try {
+    const record = await getRecord(String(req.params.id));
+    await deleteDesignRecord(record);
+    res.json({ success: true, message: 'Design deleted' });
+  } catch (error) {
+    fail(res, error, 'Couldn’t delete the design.');
   }
 });
 

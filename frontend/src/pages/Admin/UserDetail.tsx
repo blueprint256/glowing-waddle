@@ -32,8 +32,8 @@ export default function UserDetail() {
   const [busy, setBusy] = useState<string | null>(null);
   const [tags, setTags] = useState<string[] | null>(null);
   const [usage, setUsage] = useState<AIUsage | null>(null);
-  const [allowance, setAllowance] = useState<{ images: string; blueMessages: string }>({ images: '', blueMessages: '' });
-  const [savedAllowance, setSavedAllowance] = useState<{ images: string; blueMessages: string }>({ images: '', blueMessages: '' });
+  const [allowance, setAllowance] = useState<{ images: string; designs: string; blueMessages: string }>({ images: '', designs: '', blueMessages: '' });
+  const [savedAllowance, setSavedAllowance] = useState<{ images: string; designs: string; blueMessages: string }>({ images: '', designs: '', blueMessages: '' });
   const [confirm, confirmDialog] = useConfirm();
 
   const load = useCallback(async () => {
@@ -47,7 +47,8 @@ export default function UserDetail() {
     try {
       const u = await userAPI.aiUsage(id!);
       setUsage(u.usage);
-      const a = { images: u.aiAllowance.images === null ? '' : String(u.aiAllowance.images), blueMessages: u.aiAllowance.blueMessages === null ? '' : String(u.aiAllowance.blueMessages) };
+      const asText = (v: number | null | undefined) => (v === null || v === undefined ? '' : String(v));
+      const a = { images: asText(u.aiAllowance.images), designs: asText(u.aiAllowance.designs), blueMessages: asText(u.aiAllowance.blueMessages) };
       setAllowance(a);
       setSavedAllowance(a);
     } catch {
@@ -93,7 +94,8 @@ export default function UserDetail() {
   const admin = user.role === UserRole.SYSTEM_ADMIN;
   const mode = user.accessMode === AccessMode.PART_TWO ? AccessMode.PART_TWO : AccessMode.PART_ONE;
   const validAllowance = (v: string) => v.trim() === '' || /^\d{1,6}$/.test(v.trim());
-  const allowanceDirty = allowance.images !== savedAllowance.images || allowance.blueMessages !== savedAllowance.blueMessages;
+  const allowanceDirty = allowance.images !== savedAllowance.images || allowance.designs !== savedAllowance.designs || allowance.blueMessages !== savedAllowance.blueMessages;
+  const allowanceValid = validAllowance(allowance.images) && validAllowance(allowance.designs) && validAllowance(allowance.blueMessages);
   const brand = user.companyInfo;
 
   const toggleActive = async () => {
@@ -113,6 +115,7 @@ export default function UserDetail() {
     const body = {
       aiAllowance: {
         images: allowance.images.trim() === '' ? null : Number(allowance.images),
+        designs: allowance.designs.trim() === '' ? null : Number(allowance.designs),
         blueMessages: allowance.blueMessages.trim() === '' ? null : Number(allowance.blueMessages)
       }
     };
@@ -170,7 +173,8 @@ export default function UserDetail() {
           {usage && (
             <Typography sx={{ fontSize: 13.5, mb: admin ? 0 : 1.5 }}>
               {usage.images.used} AI image{usage.images.used === 1 ? '' : 's'}
-              {usage.images.limit ? ` of ${usage.images.limit}` : ''} · {usage.blueMessages.used} Blue message{usage.blueMessages.used === 1 ? '' : 's'}
+              {usage.images.limit ? ` of ${usage.images.limit}` : ''}
+              {usage.designs ? ` · ${usage.designs.used} poster${usage.designs.used === 1 ? '' : 's'}${usage.designs.limit ? ` of ${usage.designs.limit}` : ''}` : ''} · {usage.blueMessages.used} Blue message{usage.blueMessages.used === 1 ? '' : 's'}
               {usage.blueMessages.limit ? ` of ${usage.blueMessages.limit}` : ''}
             </Typography>
           )}
@@ -179,13 +183,14 @@ export default function UserDetail() {
               component="form"
               onSubmit={(e) => {
                 e.preventDefault();
-                if (allowanceDirty && validAllowance(allowance.images) && validAllowance(allowance.blueMessages)) saveAllowance();
+                if (allowanceDirty && allowanceValid) saveAllowance();
               }}
               sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'flex-start' }}
             >
               <TextField size="small" label="AI images" placeholder="Workspace" value={allowance.images} onChange={(e) => setAllowance({ ...allowance, images: e.target.value })} error={!validAllowance(allowance.images)} sx={{ width: 130 }} inputProps={{ inputMode: 'numeric' }} />
+              <TextField size="small" label="Posters" placeholder="Workspace" value={allowance.designs} onChange={(e) => setAllowance({ ...allowance, designs: e.target.value })} error={!validAllowance(allowance.designs)} sx={{ width: 120 }} inputProps={{ inputMode: 'numeric' }} />
               <TextField size="small" label="Blue messages" placeholder="Workspace" value={allowance.blueMessages} onChange={(e) => setAllowance({ ...allowance, blueMessages: e.target.value })} error={!validAllowance(allowance.blueMessages)} sx={{ width: 140 }} inputProps={{ inputMode: 'numeric' }} />
-              <Button type="submit" size="small" variant="contained" disabled={!allowanceDirty || !validAllowance(allowance.images) || !validAllowance(allowance.blueMessages) || busy !== null} sx={{ mt: 0.5 }}>
+              <Button type="submit" size="small" variant="contained" disabled={!allowanceDirty || !allowanceValid || busy !== null} sx={{ mt: 0.5 }}>
                 Save
               </Button>
             </Box>

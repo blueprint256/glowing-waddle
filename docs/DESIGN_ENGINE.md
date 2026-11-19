@@ -28,11 +28,16 @@ CSS), `backend/src/services/design*.ts` (pipeline, brand kit, edits, worker),
 
 Built in (`backend/src/design/library/`): **Hero photo**, **Split panel**, **Art led**,
 **Spotlight** (a featured person, cut out when possible), **Observance** (days like World Polio
-Day), **Bold event** (game nights, dinners). Each declares its fields and their lengths, how many
+Day), **Bold event** (game nights, dinners), **Recap** (thank-you and report-back posts: a wide
+group photo at its own proportions and up to three impact figures). Admins add more from reference
+posters (below). Each declares its fields and their lengths, how many
 photos and partners it takes, its shapes (square, portrait, story, landscape, A4, A3) and its
 settings. Designs are HTML and CSS against the runtime's `data-*` attributes; the runtime fits the
 type, places photos on their subject, sizes partner logos by how big they look, and measures
 everything for the checks.
+
+**Impact figures** (`stats`) appear only when the request states them: the art director is told
+never to estimate or invent one, and anything without a digit is dropped.
 
 ## The checks (every option, before anyone sees it)
 
@@ -54,11 +59,39 @@ behind it (3:1 at the least): uploaded versions first; for a one-colour logo the
 white and dark versions (the same artwork brand centres supply) and uses them only where needed.
 If nothing reads, the logo sits on a light or dark plate. Logos are never otherwise recoloured.
 
+## Design library (Admin › Poster designs)
+
+Admins import a design from a picture of a poster they like. Claude Opus reads it and writes an
+**original** design for the runtime: the structure (grid, proportions, hierarchy, how photo and
+words meet), never the reference's artwork, logos, photos or words; colours, fonts and logos always
+come from each club's kit. The admin confirms the picture is only a layout reference; the picture
+itself is never stored.
+
+Every design (built-in or imported) passes the **stress test** before use: each of its shapes with
+ordinary words and three partners, ordinary words and six partners, short words with none
+(placeholder logos, a stand-in photo; the roomier settings get one try, as in the pipeline). Very
+long words are rendered and shown but don't count. When an import fails cases, the renders and the
+problems go back to the importer for up to two repairs. The admin sees every render with its
+problems, can ask for a change in words, or edit the code (settings JSON, HTML, CSS); saving re-runs
+the test. **Approve** needs every case to pass; only approved designs are offered to the art
+director. **Retire** stops new posters using it (existing ones can still be edited).
+
+Code: `design/stressTest.ts`, `design/importer.ts` (the authoring guide, with a built-in design as
+its worked example), `services/designImport.ts`, `frontend/src/pages/Admin/PosterDesignsPage.tsx`.
+
 ## Editing and printing
 
 Typing on the poster (no AI), one-tap changes (headline size, swap colours, another shape or design,
 no AI), or a described change (Claude Haiku turns it into the same operations; changes that break
 a hard brand rule are explained instead). Every change is a new draft. A4 and A3 PDFs on request.
+
+## Cleaning up
+
+A poster's own picture is deleted when its draft goes. Its side files (AI background, cut-out
+person, print PDFs: the `design-backgrounds/`, `design-cutouts/` and `post-prints/` folders) are
+swept once a day: anything older than a week that no poster refers to is deleted. Cut-outs are also
+kept for 30 days after they're made, so the same photo isn't cut out twice. `DESIGN_SWEEP=off`
+skips it on an instance.
 
 ## Allowance
 
@@ -90,6 +123,7 @@ Settings (`backend/.env`):
 | `DESIGN_WORKER=off` | Don't run the poster worker on this instance |
 | `DESIGN_WORKER_CONCURRENCY` | Posters rendered at once per instance (default 1) |
 | `CUTOUT_MODEL`, `CUTOUT_MODEL_KIND`, `CUTOUT_MODEL_SIZE` | Cut-out model file, its kind and input size |
+| `DESIGN_SWEEP=off` | Don't run the daily clean-up of unused poster files on this instance |
 | `DESIGN_DEV=1` | Reload the runtime files on every render (while developing designs) |
 
 ## Checking it
@@ -109,7 +143,7 @@ real logo and partner files) and a contact sheet, for people to look at.
 
 ## Adding a design
 
-Copy a built-in design, change its HTML and CSS, declare its fields, photos, partners, shapes and
+Usually: Admin › Poster designs › Import from a reference. By hand: copy a built-in design, change its HTML and CSS, declare its fields, photos, partners, shapes and
 settings (`roomy` on the settings that give the words more room), add it to
 `library/index.ts`, and run the self-test until every shape passes with ordinary words and six
 partners. The art director reads each design's description to decide when to use it, so write it

@@ -34,8 +34,9 @@ export interface StartPosterBody {
 }
 
 /** Typed straight into the poster: a field's new words (empty removes it), detail lines, badge. */
-export interface PosterTextEdits extends Partial<Record<Exclude<keyof PosterText, 'details' | 'badge'>, string | null>> {
+export interface PosterTextEdits extends Partial<Record<Exclude<keyof PosterText, 'details' | 'badge' | 'stats'>, string | null>> {
   details?: PosterText['details'];
+  stats?: PosterText['stats'];
   badge?: PosterText['badge'] | null;
 }
 
@@ -168,6 +169,11 @@ export const designAPI = {
   latestJob: (taskId: string) => api.get<{ job: PosterJob | null }>(`/design/tasks/${taskId}/jobs/latest`).then((r) => r.data.job),
   /** ref: "current" (the post's picture) or a draft id. */
   edit: (taskId: string, ref: string, body: PosterEditBody) => api.post<PosterEditAnswer>(`/design/tasks/${taskId}/posters/${encodeURIComponent(ref)}/edit`, body).then((r) => r.data),
+  /** The poster in every other social shape its design has (files, not drafts). */
+  sizes: (taskId: string, ref: string) =>
+    api
+      .post<{ sizes: { format: PosterFormat; url: string }[]; skipped: { format: PosterFormat; reason: string }[] }>(`/design/tasks/${taskId}/posters/${encodeURIComponent(ref)}/sizes`)
+      .then((r) => r.data),
   print: (taskId: string, ref: string, size: 'a4' | 'a3') => api.post<{ url: string }>(`/design/tasks/${taskId}/posters/${encodeURIComponent(ref)}/print`, { size }).then((r) => r.data.url),
 
   catalog: (): Promise<DesignCatalog> => {
@@ -244,3 +250,58 @@ export const STAGE_TEXT: Record<PosterJobStage, string> = {
   done: 'Done'
 };
 
+
+// ---- Design library (system admins) --------------------------------------------------------------
+
+export type AdminDesignStatus = 'builtin' | 'importing' | 'failed' | 'draft' | 'live' | 'retired';
+
+export interface DesignPreview {
+  format: PosterFormat;
+  /** typical-3, typical-6, short-0, long-6 */
+  case: string;
+  url: string;
+  passed: boolean;
+  /** Long words are shown but don't count. */
+  counted: boolean;
+  issues: string[];
+}
+
+export interface AdminDesign {
+  /** The record's id (imported) or the design id (built-in). */
+  id: string;
+  designId: string;
+  status: AdminDesignStatus;
+  source: 'builtin' | 'imported';
+  name: string;
+  description: string;
+  formats: PosterFormat[];
+  version: number;
+  test?: { at: string; passed: number; failed: number; problems: string[] } | null;
+  previews?: DesignPreview[];
+  notes?: string;
+  sourceNote?: string;
+  message?: string | null;
+  error?: string | null;
+  cost?: number;
+  updatedAt?: string;
+}
+
+export const adminDesignAPI = {
+  list: () => api.get<{ builtin: AdminDesign[]; imported: AdminDesign[] }>('/design/admin/designs').then((r) => r.data),
+  get: (id: string) => api.get<{ design: AdminDesign; template: Record<string, unknown> | null }>(`/design/admin/designs/${id}`).then((r) => r.data),
+  builtinTest: (designId: string) => api.get<{ test: AdminDesign['test']; previews: DesignPreview[] }>(`/design/admin/designs/builtin/${designId}/test`).then((r) => r.data),
+  import: (file: File, fields: { name?: string; note?: string }) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('rights', 'yes');
+    if (fields.name) form.append('name', fields.name);
+    if (fields.note) form.append('note', fields.note);
+    return api.post<{ design: AdminDesign }>('/design/admin/designs/import', form).then((r) => r.data.design);
+  },
+  save: (id: string, template: Record<string, unknown>) => api.put<{ design: AdminDesign; template: Record<string, unknown>; message: string }>(`/design/admin/designs/${id}`, { template }).then((r) => r.data),
+  revise: (id: string, request: string) => api.post<{ design: AdminDesign }>(`/design/admin/designs/${id}/revise`, { request }).then((r) => r.data.design),
+  test: (id: string) => api.post<{ design: AdminDesign }>(`/design/admin/designs/${id}/test`).then((r) => r.data.design),
+  approve: (id: string) => api.post<{ design: AdminDesign }>(`/design/admin/designs/${id}/approve`).then((r) => r.data.design),
+  retire: (id: string) => api.post<{ design: AdminDesign }>(`/design/admin/designs/${id}/retire`).then((r) => r.data.design),
+  remove: (id: string) => api.delete(`/design/admin/designs/${id}`).then(() => undefined)
+};

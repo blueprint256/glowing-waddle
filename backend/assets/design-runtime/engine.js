@@ -38,11 +38,16 @@
   // Designs adapt to how many sponsors there are: #poster.d-sp-ge-4 means "4 or more".
   for (var spk = 1; spk <= sponsors.length; spk++) poster.classList.add('d-sp-ge-' + spk);
   poster.setAttribute('data-sponsor-count', String(sponsors.length));
+  // Each photo's proportions (--photo-1-ar: width / height), so a design can give a wide group photo
+  // a band as wide as it is, instead of a tall crop through the group.
+  photos.forEach(function (p, i) {
+    if (p && p.width && p.height) poster.style.setProperty('--photo-' + (i + 1) + '-ar', String(Math.round((p.width / p.height) * 1000) / 1000));
+  });
 
   function fieldValue(name) {
     if (hidden.indexOf(name) >= 0) return null;
     var v = text[name];
-    if (name === 'details') return Array.isArray(v) && v.length ? v : null;
+    if (name === 'details' || name === 'stats') return Array.isArray(v) && v.length ? v : null;
     if (name === 'badge') return v && hasText(v.main) ? v : null;
     return hasText(v) ? v : null;
   }
@@ -55,6 +60,7 @@
     if (name === 'photos') return photos.length;
     if (name === 'sponsors') return sponsors.length;
     if (name === 'details') return (fieldValue('details') || []).length;
+    if (name === 'stats') return (fieldValue('stats') || []).length;
     if (name === 'campaign') return (data.logos && data.logos.campaign && data.logos.campaign.length) || 0;
     return 0;
   }
@@ -64,7 +70,7 @@
     if (cond.charAt(0) === '!') return !test(cond.slice(1));
     // "a|b": either (format:… lists use | for its own options).
     if (cond.indexOf('|') > 0 && cond.indexOf('format:') !== 0) return cond.split('|').some(test);
-    var m = /^(photos|sponsors|details|campaign)\s*(>=|<=|==|>|<)\s*(\d+)$/.exec(cond);
+    var m = /^(photos|sponsors|details|stats|campaign)\s*(>=|<=|==|>|<)\s*(\d+)$/.exec(cond);
     if (m) {
       var n = count(m[1]);
       var k = Number(m[3]);
@@ -76,7 +82,7 @@
       return p.length > 1 ? String(v) === p[1] : v === true || v === 'true' || v === 'yes';
     }
     if (cond.indexOf('format:') === 0) return cond.slice(7).split('|').indexOf(data.format) >= 0;
-    if (cond === 'photos' || cond === 'sponsors' || cond === 'campaign' || cond === 'details') return count(cond) > 0;
+    if (cond === 'photos' || cond === 'sponsors' || cond === 'campaign' || cond === 'details' || cond === 'stats') return count(cond) > 0;
     if (cond === 'background') return !!(data.background && data.background.src);
     if (cond === 'cutout') return !!(photos[0] && photos[0].cutout && photos[0].cutout.src);
     if (cond === 'person') return fieldValue('personName') !== null;
@@ -147,6 +153,36 @@
       t.textContent = String(item.text || '');
       node.setAttribute('data-check', 'text');
       node.setAttribute('data-key', 'detail-' + item.kind);
+      box.appendChild(node);
+    });
+    remove(tpl);
+  });
+
+  // Impact figures: <div data-stats><template><div><b data-stat-value></b><span data-stat-label></span></div></template></div>
+  $all('[data-stats]').forEach(function (box) {
+    var items = (fieldValue('stats') || []).filter(function (s) { return s && hasText(s.value); }).slice(0, 3);
+    var tpl = box.querySelector('template');
+    if (!tpl || !items.length) {
+      remove(box);
+      return;
+    }
+    poster.setAttribute('data-stat-count', String(items.length));
+    items.forEach(function (item, i) {
+      var node = tpl.content.firstElementChild.cloneNode(true);
+      var v = node.querySelector('[data-stat-value]');
+      var l = node.querySelector('[data-stat-label]');
+      if (v) {
+        v.textContent = String(item.value);
+        v.setAttribute('data-check', 'text');
+        v.setAttribute('data-key', 'stat-' + (i + 1));
+      }
+      if (l) {
+        if (hasText(item.label)) {
+          l.textContent = String(item.label);
+          l.setAttribute('data-check', 'text');
+          l.setAttribute('data-key', 'stat-' + (i + 1) + '-label');
+        } else remove(l);
+      }
       box.appendChild(node);
     });
     remove(tpl);
@@ -590,6 +626,7 @@
   }
   function fitTexts() {
     var scale = (data.tweaks && data.tweaks.headlineScale) || 1;
+    var fittedGroups = {};
     var els = $all('[data-fit]').filter(function (el) {
       return poster.contains(el);
     });
@@ -602,21 +639,36 @@
         return Number(a.getAttribute('data-fit-order') || 5) - Number(b.getAttribute('data-fit-order') || 5);
       })
       .forEach(function (el) {
+        // data-fit-group="name": the members share one size (figures in a row), the largest that
+        // fits all of them; fitted together when the first is reached.
+        var group = el.getAttribute('data-fit-group');
+        if (group && fittedGroups[group]) return;
+        var members = group ? els.filter(function (x) { return x.getAttribute('data-fit-group') === group; }) : [el];
+        if (group) fittedGroups[group] = true;
         var box = fitBox(el);
         var isHeadline = el.getAttribute('data-field') === 'headline';
         var min = (Number(el.getAttribute('data-min') || 3) * MIN) / 100;
         var max = (Number(el.getAttribute('data-max') || 8) * MIN) / 100 * (isHeadline ? scale : 1);
         var maxLines = Number(el.getAttribute('data-lines') || 99);
+        var setAll = function (px) { members.forEach(function (m) { m.style.fontSize = px + 'px'; }); };
+        var fits = function () {
+          if (overflows(box)) return false;
+          for (var i = 0; i < members.length; i++) {
+            if (wordTooWide(members[i]) || lineCount(members[i]) > maxLines) return false;
+            if (members[i] !== el && overflows(fitBox(members[i]))) return false;
+          }
+          return true;
+        };
         var lo = min;
         var hi = Math.max(min, max);
         for (var k = 0; k < 16; k++) {
           var mid = (lo + hi) / 2;
-          el.style.fontSize = mid + 'px';
-          if (!overflows(box) && !wordTooWide(el) && lineCount(el) <= maxLines) lo = mid;
+          setAll(mid);
+          if (fits()) lo = mid;
           else hi = mid;
         }
-        el.style.fontSize = lo + 'px';
-        el.setAttribute('data-fitted', String(Math.round(lo * 10) / 10));
+        setAll(lo);
+        members.forEach(function (m) { m.setAttribute('data-fitted', String(Math.round(lo * 10) / 10)); });
       });
   }
 

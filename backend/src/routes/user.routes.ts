@@ -406,7 +406,7 @@ router.get('/:id/ai-usage', isAuthenticated, canManageUsers, validateMongoId('id
   try {
     const user = await User.findById(req.params.id).select('role aiAllowance');
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-    res.json({ success: true, usage: await aiUsage(user), aiAllowance: { images: user.aiAllowance?.images ?? null, blueMessages: user.aiAllowance?.blueMessages ?? null } });
+    res.json({ success: true, usage: await aiUsage(user), aiAllowance: { images: user.aiAllowance?.images ?? null, designs: user.aiAllowance?.designs ?? null, blueMessages: user.aiAllowance?.blueMessages ?? null } });
   } catch (error) {
     console.error('Error loading AI usage:', error);
     res.status(500).json({ success: false, message: 'Couldn’t load AI use.' });

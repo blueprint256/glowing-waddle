@@ -35,6 +35,8 @@ export interface PostDesign {
   /** Print versions, made on request. */
   pdf_a4?: string;
   pdf_a3?: string;
+  /** The poster in its other social shapes (made on request). */
+  sizes?: Record<string, string>;
 }
 
 /** An AI picture that hasn't been chosen yet (deleted after 7 days if it isn't used). */

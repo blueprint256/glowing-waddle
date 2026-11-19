@@ -162,6 +162,8 @@ export interface PosterText extends Partial<Record<PosterField, string>> {
   headline: string;
   details?: { kind: DetailKind; text: string }[];
   badge?: { top?: string; main: string; bottom?: string };
+  /** Impact figures (report-back posters): only figures the club gave. */
+  stats?: { value: string; label: string }[];
 }
 
 /** A designed poster's document (only what the app reads; the server keeps the rest). */
@@ -185,9 +187,11 @@ export interface PostDesign {
   why?: string;
   jobId?: string;
   /** Where each editable line sits on the picture (0..1). */
-  areas?: { field: PosterField | 'details' | 'badge'; x: number; y: number; w: number; h: number }[];
+  areas?: { field: PosterField | 'details' | 'stats' | 'badge'; x: number; y: number; w: number; h: number }[];
   pdf_a4?: string;
   pdf_a3?: string;
+  /** The poster in its other social shapes, once made. */
+  sizes?: Partial<Record<PosterFormat, string>>;
 }
 
 /** An AI picture not chosen yet (deleted after 7 days). */

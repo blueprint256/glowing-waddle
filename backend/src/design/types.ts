@@ -53,6 +53,14 @@ export interface DesignText {
   /** The account's handle line, e.g. "Rotaract D9213", and website. */
   social?: string;
   web?: string;
+  /** Impact figures for a report-back poster, e.g. { value: "312", label: "children vaccinated" }.
+   *  Only ever figures the club gave: never invented. */
+  stats?: StatLine[];
+}
+
+export interface StatLine {
+  value: string;
+  label: string;
 }
 
 /** Where to keep a photo's subject in view (0..1 from the left/top), and its face area if known. */

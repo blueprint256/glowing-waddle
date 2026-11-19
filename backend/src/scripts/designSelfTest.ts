@@ -13,7 +13,10 @@ import path from 'path';
 import sharp from 'sharp';
 import { BUILTIN_DESIGNS } from '../design/library';
 import { renderDesign, closeRenderer } from '../design/renderer';
-import { roomierSettings, validateTemplate } from '../design/template';
+import { roomierSettings, validateTemplate, withinLimits } from '../design/template';
+import { stressTest } from '../design/stressTest';
+import { designFromImport, IMPORT_SYSTEM } from '../design/importer';
+import { designFileUrls } from '../design/files';
 import { buildTestKit, preparedWithVersions, testBackground, testDoc, testPhoto, SAMPLE_TEXT } from '../design/testKit';
 import type { DesignTemplate, DesignText, FormatId, PhotoSlot } from '../design/types';
 import { checkScore, hasErrors } from '../design/checks';
@@ -149,6 +152,29 @@ async function main() {
     if (!ok2) failures++;
   }
 
+  // The design library's import path, without the AI: a design as the importer would send it goes
+  // through the parser and the stress test; a broken one is refused before anything renders.
+  if (!only || only.includes('import')) {
+    const asImported = designFromImport(JSON.parse(JSON.stringify({ ...BUILTIN_DESIGNS.find((d) => d.id === 'recap')!, id: 'Imported Recap!', notes: 'test' })));
+    const st = await stressTest(asImported, { formats: ['portrait', 'square'] });
+    const okImport = asImported.id === 'imported-recap' && !st.invalid.length && st.failed === 0 && st.passed === 6 && st.cases.length === 8 && st.cases.every((c) => c.preview.length > 1000);
+    console.log(`${okImport ? '✓' : '✗'} imported design: parsed, ${st.passed} passed, ${st.failed} failed${st.problems.length ? ' (' + st.problems[0] + ')' : ''}`);
+    if (!okImport) failures++;
+    const broken = designFromImport({ id: 'broken', name: 'Broken', formats: ['portrait'], fields: [{ name: 'headline' }], photos: { min: 0, max: 0 }, sponsors: { max: 0 }, background: 'none', params: [], html: '<div><script>alert(1)</script></div>', css: '' });
+    const sb = await stressTest(broken);
+    const okBroken = sb.invalid.length > 0 && !sb.cases.length;
+    console.log(`${okBroken ? '✓' : '✗'} broken design refused: ${sb.invalid.slice(0, 2).join(' ')}`);
+    if (!okBroken) failures++;
+    // The sweep keeps every file a poster refers to.
+    const keys = new Set<string>();
+    const base = 'https://bucket.s3.amazonaws.com/';
+    designFileUrls({ doc: { background: { url: base + 'design-backgrounds/a.jpeg' }, photos: [{ cutout: { url: base + 'design-cutouts/b.png' } }, {}] }, pdf_a4: base + 'post-prints/c.pdf' }, keys);
+    console.log(`${keys.size === 3 ? '✓' : '✗'} sweep sees a poster’s background, cut-out and print file (${[...keys].join(', ')})`);
+    if (keys.size !== 3) failures++;
+    const sys = IMPORT_SYSTEM.length;
+    console.log(`${sys > 5000 && sys < 60000 ? '✓' : '✗'} importer guide (${sys} characters, with the worked example)`);
+  }
+
   // The pipeline's pure steps: a plan as the art director would send it, then typed edits.
   if (!only) {
     const input: DirectorInput = {
@@ -227,7 +253,8 @@ async function main() {
     console.log(`${refused.refused && !refused.changed.length ? '✓' : '✗'} hard-rule refusal`);
     if (!refused.refused) failures++;
     const copy = cleanCopy({ headline: '  **Every**  child  ', details: [{ kind: 'nonsense', text: 'x' }], badge: { main: '' } });
-    const copyOk = copy.headline === 'Every child' && copy.details?.[0].kind === 'info' && !copy.badge;
+    const stats = cleanCopy({ headline: 'x', stats: [{ value: '312', label: 'children vaccinated' }, { value: 'many', label: 'smiles' }] }).stats || [];
+    const copyOk = copy.headline === 'Every child' && copy.details?.[0].kind === 'info' && !copy.badge && stats.length === 1 && stats[0].value === '312';
     console.log(`${copyOk ? '✓' : '✗'} copy cleaning`);
     if (!copyOk) failures++;
     const req = buildToolRequest({ apiKey: 'x', model: 'claude-sonnet-5-5', system: 'S', context: 'C', prompt: 'P', images: [{ mediaType: 'image/jpeg', base64: 'AA', label: 'Photo 1:' }], tool: DIRECTOR_TOOL });
@@ -248,20 +275,3 @@ main().catch(async (e) => {
   process.exit(1);
 });
 
-/** Cuts each field to the design's limit at a word, the way a copywriter would shorten it. */
-function withinLimits(text: DesignText, design: DesignTemplate): DesignText {
-  const out: DesignText = { ...text };
-  for (const f of design.fields) {
-    const v = (out as any)[f.name];
-    // The headline stays whole (cutting it mid-phrase reads wrongly); designs shrink it to fit.
-    if (f.name === 'headline' || !f.max || typeof v !== 'string' || v.length <= f.max) continue;
-    const words = v.replace(/\s+/g, ' ').split(' ');
-    let cut = '';
-    for (const w of words) {
-      if ((cut ? cut.length + 1 : 0) + w.length > f.max) break;
-      cut = cut ? `${cut} ${w}` : w;
-    }
-    (out as any)[f.name] = cut.replace(/[,;:–-]+$/, '');
-  }
-  return out;
-}

@@ -62,8 +62,20 @@ export function startDesignWorker(): void {
   const recover = () =>
     DesignJob.updateMany({ status: 'running', lockedAt: { $lt: new Date(Date.now() - 10 * 60_000) } }, { $set: { status: 'queued', stage: 'queued' } }).catch(() => undefined);
   setTimeout(recover, 5000);
+  // Design imports that were running when the server stopped are marked failed.
+  setTimeout(() => import('./designImport').then((m) => m.markStaleImports()).catch(() => undefined), 5000);
   setInterval(() => {
     tick().catch((e) => console.error('[design] Worker error:', e));
   }, POLL_MS);
   setInterval(recover, 15 * 60_000);
+  // Backgrounds, cut-outs and print files no poster uses any more: swept daily (DESIGN_SWEEP=off to skip).
+  if (process.env.DESIGN_SWEEP !== 'off') {
+    const sweep = () =>
+      import('./designSweep')
+        .then((m) => m.sweepDesignFiles())
+        .then((r) => r.deleted && console.log(`[design] Swept ${r.deleted} unused poster file(s).`))
+        .catch((e) => console.error('[design] Sweep failed:', e?.message || e));
+    setTimeout(sweep, 10 * 60_000);
+    setInterval(sweep, 24 * 3600_000);
+  }
 }
