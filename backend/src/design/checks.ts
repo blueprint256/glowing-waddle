@@ -1,3 +1,4 @@
+import { FORMATS } from './formats';
 import type { BrandKit, DesignDoc, DesignIssue, DesignTemplate, MeasuredElement, RenderReport } from './types';
 
 /**
@@ -75,6 +76,15 @@ export function runChecks({ template, doc, kit, report, contrasts }: CheckInput)
   const logos = els.filter((e) => e.kind === 'logo');
   const sponsors = els.filter((e) => e.kind === 'sponsor');
   const badges = els.filter((e) => e.kind === 'badge');
+
+  // Photos too small for the space they fill: enlarged more than about 1.6× they look soft, more
+  // than 2.4× blurry (print sizes count their extra resolution).
+  const printScale = FORMATS[doc.format]?.scale || 1;
+  for (const p of els.filter((e) => e.kind === 'photo' && e.upscale)) {
+    const eff = (p.upscale || 0) * printScale;
+    if (eff > 2.4) issues.push({ level: 'error', code: 'photo-small', key: p.key, message: 'The photo is too small for this layout; it would look blurry. A design that shows it smaller, or a larger file, will look sharp.' });
+    else if (eff > 1.6) issues.push({ level: 'warning', code: 'photo-soft', key: p.key, message: 'The photo is enlarged a lot here and may look a little soft.' });
+  }
 
   // Words.
   for (const t of texts) {

@@ -352,6 +352,8 @@
     var ih = p.height || img.naturalHeight;
     var zoom = attrNumber(box, 'data-zoom', 1);
     var s = Math.max(bw / iw, bh / ih) * Math.max(1, zoom);
+    // How much the photo is enlarged (poster pixels per photo pixel): a small file blown up looks soft.
+    if (!isBg) img.setAttribute('data-upscale', String(Math.round(s * 100) / 100));
     var dw = iw * s;
     var dh = ih * s;
     var tweakFocus = !isBg && data.tweaks && data.tweaks.focus ? data.tweaks.focus[img.getAttribute('data-photo-index')] : null;
@@ -903,6 +905,11 @@
         if (ci) m.box = rect(ci);
       }
       if (why && why.length) m.why = why.join('; ');
+      if (kind === 'photo') {
+        var up = 0;
+        $all('img[data-upscale]', el).forEach(function (im) { up = Math.max(up, Number(im.getAttribute('data-upscale')) || 0); });
+        if (up) m.upscale = up;
+      }
       if (kind === 'logo' || kind === 'sponsor') {
         // Which version is shown, and whether it needed a plate.
         m.variant = el.getAttribute('data-variant') || undefined;

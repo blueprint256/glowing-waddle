@@ -280,6 +280,8 @@ export interface MeasuredElement {
   overPerson?: number;
   /** Text on its own coloured shape: the shape's inner area, where contrast is judged. */
   inner?: { x: number; y: number; w: number; h: number };
+  /** Photos: how much the file is enlarged on the poster (poster px per photo px, before print scale). */
+  upscale?: number;
   /** Logos: the version shown (e.g. "color", "mono-light-derived"), and its plate if it needed one. */
   variant?: string;
   plated?: 'light' | 'dark';
