@@ -166,8 +166,12 @@ export const designAPI = {
 
   catalog: (): Promise<DesignCatalog> => {
     if (!catalogCache) {
-      catalogCache = api.get<DesignCatalog & { success: boolean }>('/design/catalog').then((r) => r.data);
-      catalogCache.catch(() => (catalogCache = null));
+      const loading = api.get<DesignCatalog & { success: boolean }>('/design/catalog').then((r) => r.data);
+      catalogCache = loading;
+      loading.catch(() => {
+        catalogCache = null;
+      });
+      return loading;
     }
     return catalogCache;
   },
