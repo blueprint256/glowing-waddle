@@ -1,13 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type ReactNode } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
 import {
   Box,
   Button,
-  Checkbox,
   CircularProgress,
-  FormControlLabel,
   IconButton,
-  LinearProgress,
   ListItemIcon,
   ListItemText,
   Menu,
@@ -23,7 +19,6 @@ import {
   CloudUploadOutlined as UploadIcon,
   PhotoLibraryOutlined as LibraryIcon,
   MoreHoriz as MoreIcon,
-  Close as CloseIcon,
   DeleteOutline as DeleteIcon,
   Add as AddIcon,
   ImageOutlined as ImageIcon,
@@ -31,19 +26,17 @@ import {
   History as EarlierIcon,
   ExpandMore as OpenIcon,
   ExpandLess as CloseSectionIcon,
-  DashboardCustomizeOutlined as PosterIcon,
   EditOutlined as EditIcon
 } from '@mui/icons-material';
 import { taskAPI, userAPI, type AIUsage } from '../../services/api';
 import { errorMessage, notify } from '../../store/toastStore';
 import { announcePostChanged, isRunning, useAIJobsStore } from '../../store/aiJobsStore';
 import { formatAgo } from '../../lib/dates';
-import { paths } from '../../lib/paths';
-import type { LogoCorner, PictureFormat, PostAIDraft, PostReference, ReferenceRole, Task } from '../../types';
+import type { PostAIDraft, PostReference, ReferenceRole, Task } from '../../types';
 import LibraryImagePicker from './LibraryImagePicker';
 import ImageViewer from '../ui/ImageViewer';
 import EditInCanvaButton from '../Canva/EditInCanvaButton';
-import PosterMaker from './PosterMaker';
+import CreateWithAI, { type CreateMode } from './CreateWithAI';
 import PosterEditor from './PosterEditor';
 import { designAPI, type DesignCatalog } from '../../services/design';
 import { posterRunning, usePosterJobsStore } from '../../store/posterJobsStore';
@@ -53,9 +46,11 @@ import { posterRunning, usePosterJobsStore } from '../../store/posterJobsStore';
  * - the current picture, AI drafts not chosen yet (kept 7 days) and up to 3 earlier pictures,
  *   all in one strip; click one to look at it, then use, change or discard it
  * - Upload, From the Library, Edit in Canva
- * - Create with AI: from "What's this post about?", the brand, the campaign and the reference
- *   pictures (Include this / Copy this style), in a chosen shape, with the real logo stamped on
- * - Change image: a sentence that edits the picture you're looking at, keeping the rest
+ * - Create with AI (CreateWithAI.tsx): a poster (the design engine: real words, logo files and
+ *   partners, checked, every line editable) or a photo with no words, from "What's this post
+ *   about?", the brand and the pictures given
+ * - Changing what you're looking at: a poster opens the poster editor (type on it, or describe a
+ *   change); a photo takes a sentence that edits it, keeping the rest
  * Nothing replaces the picture until you choose "Use this picture".
  */
 
@@ -64,19 +59,6 @@ const DRAFT_DAYS = 7;
 const MAX_UPLOAD = 15 * 1024 * 1024;
 
 type Viewing = { kind: 'current' } | { kind: 'draft'; id: string } | { kind: 'earlier'; url: string };
-
-const FORMATS: { value: PictureFormat; label: string; hint: string; ratio: string }[] = [
-  { value: 'square', label: 'Square', hint: '1:1 · every platform', ratio: '1 / 1' },
-  { value: 'portrait', label: 'Portrait', hint: '4:5 · Instagram, Facebook', ratio: '4 / 5' },
-  { value: 'landscape', label: 'Landscape', hint: '3:2 · LinkedIn, X', ratio: '3 / 2' }
-];
-
-const CORNERS: { value: LogoCorner; label: string }[] = [
-  { value: 'top-left', label: 'Top left' },
-  { value: 'top-right', label: 'Top right' },
-  { value: 'bottom-left', label: 'Bottom left' },
-  { value: 'bottom-right', label: 'Bottom right' }
-];
 
 const ROLE_TEXT: Record<ReferenceRole, { label: string; hint: string }> = {
   include: { label: 'Include this', hint: 'A product, place or person to show as it is' },
@@ -127,17 +109,6 @@ function SectionLabel({ children, right }: { children: ReactNode; right?: ReactN
   );
 }
 
-/** A small square showing which corner the logo goes in. */
-function CornerGlyph({ corner, active }: { corner: LogoCorner; active: boolean }) {
-  const top = corner.startsWith('top');
-  const left = corner.endsWith('left');
-  return (
-    <Box aria-hidden sx={{ width: 22, height: 22, border: '1.5px solid currentColor', borderRadius: '4px', position: 'relative', opacity: active ? 1 : 0.7 }}>
-      <Box sx={{ position: 'absolute', width: 7, height: 5, borderRadius: '1.5px', bgcolor: 'currentColor', [top ? 'top' : 'bottom']: 2.5, [left ? 'left' : 'right']: 2.5 }} />
-    </Box>
-  );
-}
-
 export interface PicturePanelProps {
   /** The saved post, or null while it's a new post not created yet. */
   task: Task | null;
@@ -160,7 +131,6 @@ export interface PicturePanelProps {
 export default function PicturePanel({ task, brief, title, aiEnabled, brandLogo, ensureSaved, onTask, reload, focusBrief }: PicturePanelProps) {
   const taskId = task?._id || null;
   const job = useAIJobsStore((s) => (taskId ? s.images[taskId] : undefined));
-  const createImage = useAIJobsStore((s) => s.createImage);
   const changeImage = useAIJobsStore((s) => s.changeImage);
   const clearJob = useAIJobsStore((s) => s.clear);
   const running = isRunning(job);
@@ -176,10 +146,8 @@ export default function PicturePanel({ task, brief, title, aiEnabled, brandLogo,
 
   const [viewing, setViewing] = useState<Viewing>({ kind: 'current' });
   const [busy, setBusy] = useState<string | null>(null);
-  const [aiOpen, setAiOpen] = useState(false);
-  const [format, setFormat] = useState<PictureFormat>(task?.pictureOptions?.format || 'square');
-  const [logoOn, setLogoOn] = useState<boolean>(Boolean(task?.pictureOptions?.logo));
-  const [corner, setCorner] = useState<LogoCorner>(task?.pictureOptions?.logo || 'bottom-right');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createMode, setCreateMode] = useState<CreateMode>('poster');
   const [instruction, setInstruction] = useState('');
   const [picker, setPicker] = useState<'picture' | 'reference' | null>(null);
   const [refRole, setRefRole] = useState<ReferenceRole>('include');
@@ -189,7 +157,6 @@ export default function PicturePanel({ task, brief, title, aiEnabled, brandLogo,
   const [usage, setUsage] = useState<AIUsage | null>(null);
   const [now, setNow] = useState(Date.now());
   const [dragging, setDragging] = useState(false);
-  const [posterOpen, setPosterOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(true);
   const [editFocus, setEditFocus] = useState<{ field: string; at: number } | null>(null);
   const [catalog, setCatalog] = useState<DesignCatalog | null>(null);
@@ -207,9 +174,6 @@ export default function PicturePanel({ task, brief, title, aiEnabled, brandLogo,
     shownId.current = taskId;
     if (task) optionsLoaded.current = true;
     if (!switched && !firstLoad) return;
-    setFormat(task?.pictureOptions?.format || 'square');
-    setLogoOn(Boolean(task?.pictureOptions?.logo));
-    setCorner(task?.pictureOptions?.logo || 'bottom-right');
     setViewing({ kind: 'current' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId, Boolean(task)]);
@@ -248,7 +212,7 @@ export default function PicturePanel({ task, brief, title, aiEnabled, brandLogo,
     const first = posterJob.draftIds[0];
     if (!first || drafts.some((d) => d.id === first)) {
       if (first) setViewing({ kind: 'draft', id: first });
-      setPosterOpen(false);
+      setCreateOpen(false);
       setEditOpen(true);
       clearPoster(taskId);
     }
@@ -276,8 +240,8 @@ export default function PicturePanel({ task, brief, title, aiEnabled, brandLogo,
       .catch(() => setUsage(null));
   };
   useEffect(() => {
-    if (aiEnabled && (aiOpen || posterOpen)) loadUsage();
-  }, [aiEnabled, aiOpen, posterOpen, job?.state, posterJob?.status]);
+    if (aiEnabled && createOpen) loadUsage();
+  }, [aiEnabled, createOpen, job?.state, posterJob?.status]);
 
   const apply = (res: any, message?: string) => {
     if (res?.data?.task) onTask(res.data.task);
@@ -356,21 +320,11 @@ export default function PicturePanel({ task, brief, title, aiEnabled, brandLogo,
       'Couldn’t remove the picture.'
     );
 
-  const create = async () => {
-    if (!brief.trim()) {
-      notify('Say what the post is about first, so the AI knows what to make.', { tone: 'error' });
-      focusBrief();
-      return;
-    }
-    const id = taskId || (await ensureSaved());
-    if (!id) return;
-    createImage(id, title, { description: brief, format, logo: logoOn && brandLogo ? corner : null });
-  };
-
   const change = async () => {
     const text = instruction.trim();
     if (!text || !viewed || !taskId) return;
-    const res = await changeImage(taskId, title, { instruction: text, from: viewed.url, logo: logoOn && brandLogo ? corner : null });
+    const logo = task?.pictureOptions?.logo || null;
+    const res = await changeImage(taskId, title, { instruction: text, from: viewed.url, logo: logo && brandLogo ? logo : null });
     if (res.state === 'done') setInstruction('');
   };
 
@@ -441,7 +395,7 @@ export default function PicturePanel({ task, brief, title, aiEnabled, brandLogo,
                   <MenuItem
                     onClick={() => {
                       setMoreAnchor(null);
-                      setAiOpen(true);
+                      setCreateOpen(true);
                       addReferenceUrl(current, 'style');
                     }}
                     disabled={references.length >= MAX_REFERENCES || references.some((r) => r.url === current)}
@@ -449,7 +403,7 @@ export default function PicturePanel({ task, brief, title, aiEnabled, brandLogo,
                     <ListItemIcon>
                       <AddIcon fontSize="small" />
                     </ListItemIcon>
-                    <ListItemText primary="Use as a style reference" secondary="For new AI pictures" />
+                    <ListItemText primary="Use as a style reference" secondary="For new AI photos" />
                   </MenuItem>
                 )}
                 <MenuItem
@@ -653,25 +607,13 @@ export default function PicturePanel({ task, brief, title, aiEnabled, brandLogo,
         {aiEnabled && (
           <Button
             size="small"
-            startIcon={posterBusy ? <CircularProgress size={14} /> : <PosterIcon />}
-            endIcon={posterOpen ? <CloseSectionIcon /> : <OpenIcon />}
-            onClick={() => setPosterOpen((o) => !o)}
-            aria-expanded={posterOpen || posterBusy}
-            aria-controls="design-a-poster"
-          >
-            {posterBusy ? `Designing… ${Math.round((posterJob?.progress || 0) * 100)}%` : 'Design a poster'}
-          </Button>
-        )}
-        {aiEnabled && (
-          <Button
-            size="small"
-            startIcon={<AIIcon />}
-            endIcon={aiOpen ? <CloseSectionIcon /> : <OpenIcon />}
-            onClick={() => setAiOpen((o) => !o)}
-            aria-expanded={aiOpen}
+            startIcon={posterBusy || createRunning ? <CircularProgress size={14} /> : <AIIcon />}
+            endIcon={createOpen ? <CloseSectionIcon /> : <OpenIcon />}
+            onClick={() => setCreateOpen((o) => !o)}
+            aria-expanded={createOpen || posterBusy || createRunning}
             aria-controls="create-with-ai"
           >
-            Create with AI
+            {posterBusy ? `Designing… ${Math.round((posterJob?.progress || 0) * 100)}%` : createRunning ? 'Creating photo…' : 'Create with AI'}
           </Button>
         )}
         {taskId && current && (
@@ -691,9 +633,24 @@ export default function PicturePanel({ task, brief, title, aiEnabled, brandLogo,
         <PosterEditor taskId={taskId} posterRef={posterRef} design={viewedDesign} catalog={catalog} focus={editFocus} onDraft={onPosterDraft} />
       )}
 
-      {/* Design a poster */}
-      {aiEnabled && (posterOpen || posterBusy) && (
-        <PosterMaker task={task} title={title} brief={brief} usage={usage} ensureSaved={ensureSaved} focusBrief={focusBrief} onAddPhoto={(anchor) => openAddReference('include', anchor)} />
+      {/* Create with AI: a poster or a photo */}
+      {aiEnabled && (createOpen || posterBusy || createRunning) && (
+        <CreateWithAI
+          task={task}
+          title={title}
+          brief={brief}
+          brandLogo={brandLogo}
+          usage={usage}
+          mode={posterBusy ? 'poster' : createRunning ? 'photo' : createMode}
+          onMode={setCreateMode}
+          busy={busy}
+          ensureSaved={ensureSaved}
+          focusBrief={focusBrief}
+          onAddPicture={(anchor, role) => openAddReference(role, anchor)}
+          onRemovePicture={removeRef}
+          onSetRole={setRole}
+          onView={setViewer}
+        />
       )}
 
       {aiEnabled && viewed && taskId && !viewedDesign && (
@@ -727,171 +684,7 @@ export default function PicturePanel({ task, brief, title, aiEnabled, brandLogo,
         </Box>
       )}
 
-      {/* Create with AI */}
-      {aiEnabled && aiOpen && (
-        <Box id="create-with-ai" sx={{ mt: 1.5, p: 1.75, borderRadius: 'var(--r-card)', border: '1px solid var(--border)', bgcolor: 'var(--bg-raised)', display: 'flex', flexDirection: 'column', gap: 1.75 }}>
-          <Box>
-            <Typography sx={{ fontSize: 14, fontWeight: 650, color: 'var(--text-strong)' }}>Create a picture with AI</Typography>
-            <Typography sx={{ fontSize: 13, color: brief.trim() ? 'var(--text-muted)' : 'var(--warning-text, var(--danger-text))', mt: 0.25 }}>
-              {brief.trim() ? (
-                <>Made from “What’s this post about?”, your brand and the campaign, plus the pictures below.</>
-              ) : (
-                <>
-                  First say what the post is about{' '}
-                  <Box component="button" type="button" onClick={focusBrief} sx={{ all: 'unset', cursor: 'pointer', textDecoration: 'underline', fontWeight: 600 }}>
-                    at the top
-                  </Box>
-                  .
-                </>
-              )}
-            </Typography>
-          </Box>
-
-          {/* Reference pictures */}
-          <Box>
-            <Typography sx={{ fontSize: 13, fontWeight: 600, color: 'var(--text-strong)', mb: 0.75 }}>
-              Pictures to use <Box component="span" sx={{ fontWeight: 400, color: 'var(--text-muted)' }}>(optional, up to {MAX_REFERENCES})</Box>
-            </Typography>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-              {references.map((r) => (
-                <Box key={r.id} sx={{ width: 132, borderRadius: 'var(--r-ctl)', border: '1px solid var(--border)', overflow: 'hidden', bgcolor: 'var(--bg-panel)', position: 'relative', opacity: busy === `ref:${r.id}` ? 0.6 : 1 }}>
-                  <Box component="button" type="button" onClick={() => setViewer(r.url)} aria-label={`See ${r.name || 'reference picture'}`} sx={{ all: 'unset', cursor: 'zoom-in', display: 'block', width: '100%', aspectRatio: '1 / 1' }}>
-                    <img src={r.url} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                  </Box>
-                  <IconButton
-                    size="small"
-                    aria-label={`Remove ${r.name || 'reference picture'}`}
-                    onClick={() => removeRef(r)}
-                    disabled={Boolean(busy)}
-                    sx={{ position: 'absolute', top: 4, right: 4, width: 24, height: 24, bgcolor: 'rgba(0,0,0,.6)', color: '#fff', '&:hover': { bgcolor: 'rgba(0,0,0,.8)' } }}
-                  >
-                    <CloseIcon sx={{ fontSize: 15 }} />
-                  </IconButton>
-                  <Box sx={{ p: 0.5 }}>
-                    <ToggleButtonGroup
-                      size="small"
-                      exclusive
-                      fullWidth
-                      value={r.role}
-                      onChange={(_, v) => v && v !== r.role && setRole(r, v)}
-                      aria-label={`How to use ${r.name || 'this picture'}`}
-                      sx={{ '& .MuiToggleButton-root': { py: 0.25, px: 0.5, fontSize: 11, textTransform: 'none', lineHeight: 1.3 } }}
-                    >
-                      <ToggleButton value="include">
-                        <Tooltip title={ROLE_TEXT.include.hint}>
-                          <span>Include</span>
-                        </Tooltip>
-                      </ToggleButton>
-                      <ToggleButton value="style">
-                        <Tooltip title={ROLE_TEXT.style.hint}>
-                          <span>Style</span>
-                        </Tooltip>
-                      </ToggleButton>
-                    </ToggleButtonGroup>
-                  </Box>
-                </Box>
-              ))}
-              {references.length < MAX_REFERENCES && (
-                <>
-                  <Box
-                    component="button"
-                    type="button"
-                    onClick={(e) => openAddReference('include', e.currentTarget)}
-                    disabled={busy === 'ref:add'}
-                    sx={{
-                      all: 'unset', cursor: 'pointer', width: 132, minHeight: 132, borderRadius: 'var(--r-ctl)', border: '1px dashed var(--border-strong)', display: 'grid', placeItems: 'center', textAlign: 'center',
-                      color: 'var(--text-muted)', fontSize: 12.5, px: 1, '&:hover, &:focus-visible': { color: 'var(--text-strong)', borderColor: 'var(--text-muted)' }
-                    }}
-                  >
-                    {busy === 'ref:add' ? (
-                      <CircularProgress size={18} />
-                    ) : (
-                      <Box>
-                        <AddIcon sx={{ display: 'block', mx: 'auto', mb: 0.25 }} />
-                        Add a picture
-                        <Box component="span" sx={{ display: 'block', fontSize: 11.5, mt: 0.25 }}>
-                          a product, a photo, or a poster whose style you like
-                        </Box>
-                      </Box>
-                    )}
-                  </Box>
-                </>
-              )}
-            </Box>
-          </Box>
-
-          {/* Shape */}
-          <Box>
-            <Typography sx={{ fontSize: 13, fontWeight: 600, color: 'var(--text-strong)', mb: 0.75 }}>Shape</Typography>
-            <ToggleButtonGroup size="small" exclusive value={format} onChange={(_, v) => v && setFormat(v)} aria-label="Shape" sx={{ flexWrap: 'wrap' }}>
-              {FORMATS.map((f) => (
-                <ToggleButton key={f.value} value={f.value} aria-label={`${f.label}, ${f.hint}`} sx={{ textTransform: 'none', gap: 0.75, px: 1.25 }}>
-                  <Box aria-hidden sx={{ width: 14, aspectRatio: f.ratio, border: '1.5px solid currentColor', borderRadius: '2px' }} />
-                  <Box sx={{ textAlign: 'left', lineHeight: 1.2 }}>
-                    <Box sx={{ fontSize: 13 }}>{f.label}</Box>
-                    <Box sx={{ fontSize: 11, opacity: 0.75 }}>{f.hint}</Box>
-                  </Box>
-                </ToggleButton>
-              ))}
-            </ToggleButtonGroup>
-          </Box>
-
-          {/* Logo */}
-          <Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
-              <FormControlLabel
-                control={<Checkbox size="small" checked={logoOn && Boolean(brandLogo)} onChange={(e) => setLogoOn(e.target.checked)} disabled={!brandLogo} />}
-                label={<Typography sx={{ fontSize: 13.5 }}>Add my logo</Typography>}
-                sx={{ mr: 0 }}
-              />
-              {logoOn && brandLogo && (
-                <ToggleButtonGroup size="small" exclusive value={corner} onChange={(_, v) => v && setCorner(v)} aria-label="Logo corner">
-                  {CORNERS.map((c) => (
-                    <ToggleButton key={c.value} value={c.value} aria-label={c.label} sx={{ p: 0.5 }}>
-                      <Tooltip title={c.label}>
-                        <Box sx={{ display: 'flex' }}>
-                          <CornerGlyph corner={c.value} active={corner === c.value} />
-                        </Box>
-                      </Tooltip>
-                    </ToggleButton>
-                  ))}
-                </ToggleButtonGroup>
-              )}
-              {brandLogo && logoOn && <Box component="img" src={brandLogo} alt="Your logo" sx={{ height: 26, maxWidth: 80, objectFit: 'contain' }} />}
-            </Box>
-            <Typography sx={{ fontSize: 12.5, color: 'var(--text-muted)', mt: 0.25 }}>
-              {brandLogo ? (
-                'Your real logo file is placed on top, exactly as it is; the AI leaves that corner clear.'
-              ) : (
-                <>
-                  Add your logo in{' '}
-                  <Box component={RouterLink} to={paths.settings('brand')} sx={{ color: 'inherit', fontWeight: 600 }}>
-                    Settings › Brand
-                  </Box>{' '}
-                  to place it on pictures.
-                </>
-              )}
-            </Typography>
-          </Box>
-
-          {/* Go */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
-            <Button variant="contained" startIcon={createRunning ? <CircularProgress size={14} sx={{ color: 'inherit' }} /> : <AIIcon />} disabled={running || outOfImages || Boolean(busy)} onClick={create}>
-              {createRunning ? `Creating… ${seconds}s` : drafts.length || current ? 'New image' : 'Create image'}
-            </Button>
-            <Typography sx={{ fontSize: 12.5, color: outOfImages ? 'var(--danger-text)' : 'var(--text-muted)' }}>
-              {outOfImages
-                ? `You’ve used this month’s AI pictures. More on ${new Date(usage!.resetsAt).toLocaleDateString(undefined, { day: 'numeric', month: 'long' })}.`
-                : imagesLeft !== null
-                  ? `Uses 1 AI picture · ${imagesLeft} left this month`
-                  : 'Takes 20–60 seconds. You can keep working meanwhile.'}
-            </Typography>
-          </Box>
-          {createRunning && <LinearProgress variant={seconds < 60 ? 'determinate' : 'indeterminate'} value={Math.min(95, (seconds / 60) * 100)} />}
-        </Box>
-      )}
-
-      {/* Adding a reference picture (from Create with AI or Design a poster) */}
+      {/* Adding a picture for Create with AI */}
       <input ref={refFileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={addReferenceFile} />
       <Menu anchorEl={addAnchor} open={Boolean(addAnchor)} onClose={() => setAddAnchor(null)}>
         <Box sx={{ px: 2, pt: 0.5, pb: 1, maxWidth: 300 }}>

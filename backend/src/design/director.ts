@@ -26,6 +26,8 @@ export interface DirectorInput {
   sponsors: SponsorSlot[];
   campaignLogoIds: string[];
   designs: DesignTemplate[];
+  /** How the brand talks (Settings › Brand): what it does, its tone, audience and rules. */
+  voice?: { sector?: string; about?: string; tone?: string; audience?: string; rules?: string; guidelines?: string } | null;
   /** How many options to make (1–4). */
   count: number;
   today: Date;
@@ -163,7 +165,7 @@ export const DIRECTOR_TOOL = {
   }
 };
 
-export const DIRECTOR_SYSTEM = `You are the art director and copywriter of a small, excellent design studio. You prepare posters and social media pictures for clubs, charities and businesses. Code renders your decisions exactly, so you never draw: you choose designs from a catalogue, set their options, and write the words.
+export const DIRECTOR_SYSTEM = `You are the art director and copywriter of a small, excellent design studio. You prepare posters and social media pictures for NGOs, charities, clubs, schools, churches and businesses of every kind. Code renders your decisions exactly, so you never draw: you choose designs from a catalogue, set their options, and write the words.
 
 How you work:
 1. Read the request and everything given about the brand, the campaign and the photos. Work out the one thing the poster must make people feel and do. For every photo, note in "photos" the box around its people (all of them, heads included) and the height of their faces: crops and text placement depend on it.
@@ -176,7 +178,7 @@ How you work:
    - Call to action: 2–5 words that say what to do.
    - Figures (stats): for a report-back or thank-you poster, up to three impact figures, each a number and a 2–4 word label ("312" / "children vaccinated"). Only figures stated in the request; never estimate, round up or invent one. No figures given, no stats.
    - Featured person (speaker, chief guest, honoree, new president): put them in personLabel / personName / personRole exactly as given (titles like Rtr., PDG, DG, PP, Dr. kept), never in the headline. The headline is the event, not the name.
-   - Emphasis: in the headline you may wrap one or two words in *stars* to set them in the design's accent (e.g. "World Polio *Day*"). Use it for rhythm, not decoration; not every time.
+   - Emphasis: in the headline you may wrap one or two words in *stars* to set them in the design's accent (e.g. "World Water *Day*"). Use it for rhythm, not decoration; not every time.
    - Never use exclamation marks unless the request does. No emoji. No hashtags unless asked.
 3. Choose the options: up to the number asked for, each one a real alternative a designer would show a client.
    - Only use designs whose limits fit (photos, sponsors, formats). Prefer different designs; when only one fits, vary its settings meaningfully (colours, proportions, focus) instead.
@@ -230,6 +232,20 @@ export function brandText(kit: BrandKit): string {
   return lines.join('\n');
 }
 
+/** The brand's own words about itself, for the copy (empty when nothing is set). */
+export function voiceText(v: DirectorInput['voice']): string {
+  if (!v) return '';
+  const lines = [
+    v.about && `What the brand does: ${v.about}`,
+    v.sector && `Sector: ${v.sector}`,
+    v.tone && `Tone of voice: ${v.tone}`,
+    v.audience && `Audience: ${v.audience}`,
+    v.rules && `Always and never (follow these in every word): ${v.rules}`,
+    v.guidelines && `Brand guidelines: ${v.guidelines}`
+  ].filter(Boolean);
+  return lines.length ? `\nAbout the brand:\n${lines.join('\n')}` : '';
+}
+
 const day = (d: Date) => d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
 
 export function directorPrompt(input: DirectorInput): string {
@@ -246,6 +262,7 @@ export function directorPrompt(input: DirectorInput): string {
     'The request:',
     input.brief.trim() || '(none)',
     input.caption?.trim() ? `\nThe post's caption (context only):\n${input.caption.trim()}` : '',
+    voiceText(input.voice),
     input.campaign?.name ? `\nCampaign: ${input.campaign.name}${input.campaign.description ? ` – ${input.campaign.description}` : ''}${input.campaign.coreMessages ? `\nKey messages: ${input.campaign.coreMessages}` : ''}` : '',
     '',
     photos,

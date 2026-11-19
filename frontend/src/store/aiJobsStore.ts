@@ -7,7 +7,7 @@ import type { PostAIDraft } from '../types';
  * AI pictures run in the background (15–60 seconds): you can close the post, move on, and get a
  * message with an Open button when the picture is ready. One job per post at a time; opening the
  * post again shows it still working.
- *   create: Create image (a new picture)
+ *   create: an AI photo (Create with AI › Photo)
  *   change: Change image (edits a picture following a sentence)
  */
 export interface ImageJob {

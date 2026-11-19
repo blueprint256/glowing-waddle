@@ -1,5 +1,31 @@
 # Design engine (designed posters)
 
+## One picture system
+
+A post's picture comes from one place, **Create with AI** on the post, with two choices:
+
+- **Poster** (the default): this engine. The post's brief, the brand's real logo files, colours
+  and fonts, chosen partners and photos, laid out and checked. Every line stays editable (type on
+  it, or describe a change; edits are free), and it comes in other sizes and as a print PDF.
+- **Photo**: a picture with **no words** from the image model, for posts where the caption says
+  it all. Its words come from the `generate-photo` command when an admin sets one, else the
+  built-in prompt; every photo prompt ends with a no-words rule. The old `generate-poster` command
+  is no longer used.
+
+Changing a picture follows what it is: a designed poster is changed by this engine (the post's
+`image/change` route hands it over), a photo by the image model. Both share one monthly
+allowance of **AI pictures** (a poster, however many options and edits, counts once).
+
+**Plan with AI** writes each planned post's picture into its brief ("Poster facts: headline idea,
+date, time, place, figures", only facts given) so a poster can be made straight away and people
+can read and correct the facts first. **Blue and the connector** use the same engine:
+`generate_task_poster` (waits up to about 2 minutes, then `poster_status`), `create_task_photo`,
+`change_task_picture` and `poster_files` (other sizes, A4/A3 PDF). `ai_setup_status` and Settings ›
+AI show the engine's health (`GET /api/design/admin/status`): the Claude key, the renderer,
+cut-outs, the model used for each step and the design library.
+
+## How it works
+
 Posters are laid out in code, not painted by an image model. Every poster is a **design document**
 (JSON: the design, its settings, the words, the photos, the logos) rendered by a sealed headless
 Chromium into a PNG, JPEG or print PDF. Because the words, logos and layout are real objects, they
@@ -8,7 +34,8 @@ picture, never for words or logos.
 
 ## How a poster is made
 
-1. **Read**: the post's brief, the chosen photos (focal point, size), the brand kit, partners.
+1. **Read**: the post's brief, the chosen photos (focal point, size), the brand (kit and voice:
+   what it does, tone, audience, always-and-never rules, guidelines), partners.
 2. **Direct**: Claude Sonnet (art director) picks up to four designs from the library, writes the
    words to each design's limits, sets the design's settings, and marks where people and faces are
    in each photo. Without an AI key a fixed plan is used.
@@ -21,14 +48,14 @@ picture, never for words or logos.
 
 Code: `backend/src/design/*` (engine), `backend/assets/design-runtime/*` (the page runtime and base
 CSS), `backend/src/services/design*.ts` (pipeline, brand kit, edits, worker),
-`backend/src/routes/design.routes.ts` (API), `frontend/src/components/posts/Poster*.tsx` and
-`frontend/src/pages/Settings/PostersSection.tsx` (screens).
+`backend/src/routes/design.routes.ts` (API), `frontend/src/components/posts/CreateWithAI.tsx`,
+`PosterEditor.tsx` and `frontend/src/pages/Settings/BrandSection.tsx` (screens).
 
 ## The designs
 
 Built in (`backend/src/design/library/`): **Hero photo**, **Split panel**, **Art led**,
-**Spotlight** (a featured person, cut out when possible), **Observance** (days like World Polio
-Day), **Bold event** (game nights, dinners), **Recap** (thank-you and report-back posts: a wide
+**Spotlight** (a featured person, cut out when possible), **Observance** (international days),
+**Bold event** (game nights, dinners, launches; also without a photo), **Recap** (thank-you and report-back posts: a wide
 group photo at its own proportions and up to three impact figures). Admins add more from reference
 posters (below). Each declares its fields and their lengths, how many
 photos and partners it takes, its shapes (square, portrait, story, landscape, A4, A3) and its
@@ -43,15 +70,29 @@ never to estimate or invent one, and anything without a digit is dropped.
 
 Words: overflow, minimum sizes, contrast (WCAG, against what's actually behind them), overlap,
 covered by something, running across a photo's edge, over a person or a face. Logos: minimum size,
-clear space, cut off, partners outweighing the club's logo, missing partners. Photos: enlarged too
+clear space, cut off, partners outweighing the brand's own logo, missing partners. Photos: enlarged too
 far (on screen past about 2.4×; on paper under 85 dpi). Errors stop an option; warnings lower its
 score.
 
-## Brand kit (Settings → Posters)
+## Brand (Settings → Brand)
 
-One per account: brand pack (Rotary, Rotaract), the logo and its versions, campaign logos (End
-Polio Now), partner logos, colours, fonts, the contact line, rules. A pack fixes the colours to its
-palette and the fonts, and brings its logo rules.
+One page per account, for every kind of organisation (NGOs, businesses, schools, clubs): who you
+are and how you sound (the company information every AI feature reads), then how you look: the
+logo and its versions, other logos (a programme, campaign or event), partner logos, colours,
+fonts (bundled or uploaded), the contact line, guidelines and poster rules. The main logo is kept in
+step with the company information's logo address, so every feature shows the same one; colours
+written in the guidelines ("#4B2E1F") seed the kit.
+
+**Clubs.** One tick box, "We're a Rotary or Rotaract club" (off by default), applies that brand
+pack: colours limited to its palette, its fonts, and its logo rules. Nothing else in the app
+changes, and nobody else sees anything of it.
+
+**Uploaded fonts.** TTF, OTF, WOFF or WOFF2 up to 6 MB (checked by their bytes), up to 10 families
+of up to 12 files; weight and italic are read from the file name ("Kawa-BoldItalic.ttf" → 700
+italic, a variable font → all weights). They're stored in `brand-fonts/` (never swept), given a
+family name of their own (`Brand custom-…`) and served to the renderer like any other file of the
+poster. Screens fetch them signed-in, so they never need to be public. Removing a font puts
+headlines and text back on the defaults; posters already made keep their pictures.
 
 **Logo versions.** At upload each logo is trimmed (a white box is removed), and the luminance of its
 outline is measured. On every poster each logo gets the version that reaches 4.5:1 against what's
@@ -95,12 +136,17 @@ skips it on an instance.
 
 ## Allowance
 
-`designs` is its own monthly allowance (default 12, `aiDesignsPerMonth` in AppConfig, per user in
-Admin). A set of options counts once; edits and prints are free. A poster's own AI steps don't count
-against the images allowance.
+Posters and photos share one monthly allowance of **AI pictures** (`aiImagesPerMonth` in AppConfig,
+default 30; per user in Admin › Users). A poster counts once however many options it has; poster
+edits, other sizes and prints are free, and a poster's own AI steps (its background, its review)
+aren't counted again. An AI photo or a change to a photo counts one. The older `designs` allowance
+(`aiDesignsPerMonth`) is no longer used.
 
 ## Deploying
 
+0. Add an **Anthropic (Claude) key** in Settings › AI. Without it posters still render, but from a
+   fixed plan: no art director, no review and no described edits. Settings › AI › Poster engine
+   says whether everything is ready.
 1. `cd backend && npm install` — adds `playwright-core` (the lockfile on the branch was not
    regenerated; run `npm install` once and commit the lockfile).
 2. A Chromium for the renderer, either `npx playwright install chromium` (as the app's user), or a

@@ -147,8 +147,11 @@ export function formatNote(format: PictureFormat): string {
   return 'Square (1:1).';
 }
 
-/** The built-in words for "Create image" (an admin's "generate-poster" prompt replaces them). */
-export const BUILTIN_CREATE_IMAGE = `Create one finished, high-quality image for a social media post.
+/**
+ * The built-in words for an AI photo ("Create with AI" › Photo; an admin's "generate-photo" prompt
+ * replaces them). Posters with words are made by the design engine, never by the image AI.
+ */
+export const BUILTIN_CREATE_IMAGE = `Create one finished, high-quality photo-style image for a social media post.
 
 What the post is about:
 {brief}
@@ -171,9 +174,14 @@ Logo: {logoNote}
 
 Rules:
 - Make it look professional and on-brand, with one clear focal point.
-- Text on the image is optional. If you add any, keep it to a short headline (at most 6 words), spelled exactly, large and easy to read, in the language of the brief.
-- Do not invent prices, dates, phone numbers, addresses or offers.
-- No other brands' logos, no watermarks, no borders or mock-up frames.`;
+- No words, letters, numbers, signs with writing, logos or watermarks anywhere in the image: the caption carries the message, and the real logo is added afterwards.
+- No borders, frames or mock-ups.`;
+
+/** Every AI photo ends with this, whichever prompt made it. */
+export const PHOTO_RULE = 'Important: this is a photo, not a poster. Put no words, letters, numbers, logos or watermarks anywhere in the image.';
+
+/** The command an admin can point at their own prompt for AI photos. */
+export const PHOTO_COMMAND = 'generate-photo';
 
 /** The built-in words for "Change image" (an admin's "change-image" prompt replaces them). */
 export const BUILTIN_CHANGE_IMAGE = `Edit the attached picture.

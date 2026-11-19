@@ -1,10 +1,12 @@
 /**
- * Monthly AI allowance, the pure rules (decision 20): each client account gets a number of AI images,
- * designed posters and Blue messages per calendar month (UTC). Admins have no limit. A limit of 0
- * means no limit. A designed poster counts once however many options, edits and re-renders it gets.
+ * Monthly AI allowance, the pure rules (decision 20): each client account gets a number of AI
+ * pictures and Blue messages per calendar month (UTC). Admins have no limit. A limit of 0 means no
+ * limit. One AI picture is one designed poster (counted once however many options, edits and
+ * re-renders it gets), one AI photo, or one change to a photo. "designs" is the older separate
+ * poster allowance: it now counts against the same pictures allowance.
  */
 
-export const DEFAULT_ALLOWANCE = { images: 20, designs: 12, blueMessages: 300 };
+export const DEFAULT_ALLOWANCE = { images: 30, designs: 30, blueMessages: 300 };
 
 export type AllowanceKind = 'images' | 'designs' | 'blueMessages';
 
@@ -34,6 +36,6 @@ export function resetLabel(resetsAt: Date): string {
 }
 
 export function limitMessage(kind: AllowanceKind, limit: number, resetsAt: Date): string {
-  const what = kind === 'images' ? `AI image${limit === 1 ? '' : 's'}` : kind === 'designs' ? `designed poster${limit === 1 ? '' : 's'}` : `Blue message${limit === 1 ? '' : 's'}`;
+  const what = kind === 'blueMessages' ? `Blue message${limit === 1 ? '' : 's'}` : `AI picture${limit === 1 ? '' : 's'} (posters and photos)`;
   return `You’ve used all ${limit} ${what} for this month. They renew on ${resetLabel(resetsAt)}. Ask the Blueprint team (Inbox → Message support) if you need more.`;
 }

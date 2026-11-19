@@ -332,6 +332,10 @@ async function main() {
   });
   routes[`POST /api/tasks/${ID(100)}/image/create`] = (r) => ({ body: { success: true, message: 'AI picture ready', draft: { id: 'd2', url: 'https://cdn.example.com/new.jpg', kind: 'create', got: r.body } } });
   routes[`POST /api/tasks/${ID(100)}/image/change`] = () => ({ body: { success: true, message: 'Changed picture ready', draft: { id: 'd3', url: 'https://cdn.example.com/changed.jpg', kind: 'change' } } });
+  routes['GET /api/design/brand-kit'] = () => ({ body: { success: true, kit: { pack: null, colors: {}, fonts: {}, customFonts: [], logos: [], partners: [{ id: 'p1', name: 'Nile Water Co' }, { id: 'p2', name: 'Acacia Bank' }], contact: { social: '', web: '' } } } });
+  routes[`POST /api/design/tasks/${ID(100)}/posters`] = (r) => ({ status: 202, body: { success: true, job: { id: ID(700), status: 'queued', stage: 'queued', progress: 0, got: r.body } } });
+  routes[`GET /api/design/jobs/${ID(700)}`] = () => ({ body: { success: true, job: { id: ID(700), status: 'done', stage: 'done', progress: 1, draftIds: ['d1'], message: '1 poster option ready' } } });
+  routes[`POST /api/design/tasks/${ID(100)}/posters/current/print`] = (r) => ({ body: { success: true, url: `https://cdn.example.com/poster-${r.body.size}.pdf` } });
   routes[`POST /api/tasks/${ID(100)}/image/use`] = (r) => ({ body: { success: true, message: 'Picture updated', task: { designedImage: r.body.url } } });
   routes['GET /api/comments'] = () => ({ body: { success: true, comments: [{ _id: ID(500), content: 'Looks good', authorId: { _id: ID(900), firstName: 'Ada', lastName: 'Lovelace' }, createdAt: '2026-11-02T00:00:00.000Z' }] } });
   routes['POST /api/comments'] = (r) => ({ status: 201, body: { success: true, message: 'Comment created successfully', comment: { _id: ID(501), content: r.body.content, authorId: { _id: ID(900), firstName: 'Ada', lastName: 'Lovelace' } } } });
@@ -434,9 +438,21 @@ async function main() {
     assert.deepEqual(data.task.ai_draft_images[0], { id: 'd1', url: 'https://cdn.example.com/draft.jpg', kind: 'changed', change: 'make it blue', created_at: '2026-11-02T00:00:00.000Z' });
     assert.deepEqual(data.task.reference_images, [{ id: 'r1', url: 'https://cdn.example.com/ref.jpg', role: 'copy_style', name: 'Poster I like' }]);
   });
-  await test('picture tools: create, change and use a draft', async () => {
+  await test('picture tools: design a poster, make a photo, change and use a draft', async () => {
     const ai = makeCtx(port, { canUseAI: true, accessMode: 'part_one' });
-    const made = jsonOf(await call(ai, 'generate_task_poster', { task_id: ID(100), format: 'portrait', logo: null }));
+    // A poster: the poster engine, partners by name, then its options as drafts.
+    const poster = jsonOf(await call(ai, 'generate_task_poster', { task_id: ID(100), format: 'story', partners: ['nile water co', 'p2'] }));
+    const started = recorded.find((r) => r.path === `/api/design/tasks/${ID(100)}/posters`)!;
+    assert.deepEqual(started.body, { partnerIds: ['p1', 'p2'], count: 4, format: 'story' });
+    assert.equal(poster.status, 'done');
+    assert.deepEqual(poster.options.map((o: any) => o.draft_id), ['d1']);
+    const unknown = await call(ai, 'generate_task_poster', { task_id: ID(100), partners: ['Nobody Ltd'] });
+    assert.match(textOf(unknown), /No saved partner called “Nobody Ltd”.*Nile Water Co, Acacia Bank/);
+    const pdf = jsonOf(await call(ai, 'poster_files', { task_id: ID(100), action: 'print_a3' }));
+    assert.deepEqual(lastReq().body, { size: 'a3' });
+    assert.equal(pdf.pdf_url, 'https://cdn.example.com/poster-a3.pdf');
+    // A photo with no words: the image AI.
+    const made = jsonOf(await call(ai, 'create_task_photo', { task_id: ID(100), format: 'portrait', logo: null }));
     assert.deepEqual(lastReq().body, { format: 'portrait', logo: null });
     assert.equal(made.draft_image.url, 'https://cdn.example.com/new.jpg');
     const changed = jsonOf(await call(ai, 'change_task_picture', { task_id: ID(100), instruction: 'Replace the mountain with a waterfall' }));

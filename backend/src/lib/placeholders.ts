@@ -41,10 +41,10 @@ export const PLACEHOLDERS: PlaceholderInfo[] = [
   { name: 'instruction', group: 'Post', description: 'Improve caption or Change image: what to change (e.g. “make it shorter”, “make the sky a sunset”)' },
   { name: 'platform', group: 'Post', description: 'Improve caption: the platform to fit, when one was chosen' },
   // Images
-  { name: 'image', aliasOf: 'baseImage', group: 'Images', description: 'Link to the post’s current picture (empty in Create image, which starts fresh)' },
+  { name: 'image', aliasOf: 'baseImage', group: 'Images', description: 'Link to the post’s current picture (empty in AI photos, which start fresh)' },
   { name: 'referenceImage1', aliasOf: 'attachedImage1', group: 'Images', description: 'Link to reference image 1 (2, 3 … also work)' },
-  { name: 'references', group: 'Images', description: 'Create image: what each reference picture is for (“Include this” or “Copy this style”); the pictures themselves are always sent' },
-  { name: 'format', group: 'Images', description: 'Create image: the shape (square, portrait or landscape)' },
+  { name: 'references', group: 'Images', description: 'AI photos: what each picture given is for (“Include this” or “Copy this style”); the pictures themselves are always sent' },
+  { name: 'format', group: 'Images', description: 'AI photos: the shape (square, portrait or landscape)' },
   { name: 'logoNote', group: 'Images', description: 'Create or Change image: where the real logo will be placed (or that there is none)' },
   // Steps
   { name: 'previousOutput', group: 'Steps', description: 'In a multi-step command: the previous step’s answer' },

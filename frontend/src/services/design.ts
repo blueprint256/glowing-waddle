@@ -109,11 +109,21 @@ export interface KitRule {
   hard: boolean;
 }
 
+/** A font the account uploaded (its id is "custom-…" and can be chosen like any other). */
+export interface CustomFont {
+  id: string;
+  name: string;
+  category: 'sans' | 'serif' | 'display' | 'condensed' | 'script';
+  files: { url: string; style: 'normal' | 'italic'; weight: string; format: string }[];
+}
+
 export interface BrandKit {
   name: string;
+  /** "rotary" or "rotaract" when the account said it is such a club; null for everyone else. */
   pack: string | null;
   colors: KitColors;
   fonts: KitFonts;
+  customFonts: CustomFont[];
   logos: KitLogo[];
   partners: KitPartner[];
   rules: KitRule[];
@@ -200,6 +210,13 @@ export const designAPI = {
   updateLogo: (logoId: string, body: { name?: string; always?: boolean; clearSpace?: number; minHeight?: number; removeVariant?: string; variantId?: string; variant?: LogoVariantKind }, ownerId?: string) =>
     api.patch<{ kit: BrandKit }>(`/design/brand-kit/logos/${logoId}`, body, { params: ownerId ? { ownerId } : undefined }).then((r) => r.data.kit),
   removeLogo: (logoId: string, ownerId?: string) => api.delete<{ kit: BrandKit }>(`/design/brand-kit/logos/${logoId}`, { params: ownerId ? { ownerId } : undefined }).then((r) => r.data.kit),
+  addFont: (file: File, fields: { name?: string; category?: string; fontId?: string }, ownerId?: string) => {
+    const form = new FormData();
+    form.append('file', file);
+    for (const [k, v] of Object.entries(fields)) if (v) form.append(k, v);
+    return api.post<{ kit: BrandKit; fontId: string; message: string }>('/design/brand-kit/fonts', form, { params: ownerId ? { ownerId } : undefined }).then((r) => r.data);
+  },
+  removeFont: (fontId: string, ownerId?: string) => api.delete<{ kit: BrandKit }>(`/design/brand-kit/fonts/${fontId}`, { params: ownerId ? { ownerId } : undefined }).then((r) => r.data.kit),
   addPartner: (file: File, name: string, ownerId?: string) => {
     const form = new FormData();
     form.append('file', file);
@@ -225,6 +242,26 @@ export function loadCatalogFonts(fonts: CatalogFont[]) {
     }
   }
 }
+/** Shows uploaded fonts on screen (fetched signed-in, so they never need to be public). */
+export function loadCustomFonts(fonts: CustomFont[]) {
+  for (const f of fonts) {
+    if (loadedFonts.has(f.id) || typeof FontFace === 'undefined') continue;
+    loadedFonts.add(f.id);
+    f.files.forEach((file, i) => {
+      api
+        .get<ArrayBuffer>(`/design/brand-kit/fonts/${f.id}/files/${i}`, { responseType: 'arraybuffer' })
+        .then((r) => new FontFace(`kit-${f.id}`, r.data, { style: file.style, weight: file.weight }).load())
+        .then((loaded) => document.fonts.add(loaded))
+        .catch(() => undefined);
+    });
+  }
+}
+
+/** The catalogue's fonts plus the account's own, as one list for pickers. */
+export function fontChoices(catalog: CatalogFont[], custom: CustomFont[] = []): CatalogFont[] {
+  return [...custom.map((c) => ({ id: c.id, family: c.name, category: c.category, note: 'Your font', faces: [] }) as CatalogFont), ...catalog];
+}
+
 export const kitFontFamily = (id: string | undefined, fonts: CatalogFont[]) => {
   const f = fonts.find((x) => x.id === id);
   return f ? `"kit-${f.id}", ${f.category === 'serif' ? 'Georgia, serif' : f.category === 'script' ? 'cursive' : 'system-ui, sans-serif'}` : 'inherit';
@@ -286,7 +323,19 @@ export interface AdminDesign {
   updatedAt?: string;
 }
 
+/** The poster engine's health (Settings › AI). */
+export interface PosterEngineStatus {
+  ready: boolean;
+  anthropic: boolean;
+  renderer: { ok: boolean; error?: string };
+  cutouts: boolean;
+  models: { art_director: string; review: string; quick_edits: string; design_import: string };
+  designs: { built_in: number; imported_live: number; waiting_for_approval: number; retired: number };
+  problems: string[];
+}
+
 export const adminDesignAPI = {
+  status: () => api.get<PosterEngineStatus & { success: boolean }>('/design/admin/status').then((r) => r.data),
   list: () => api.get<{ builtin: AdminDesign[]; imported: AdminDesign[] }>('/design/admin/designs').then((r) => r.data),
   get: (id: string) => api.get<{ design: AdminDesign; template: Record<string, unknown> | null }>(`/design/admin/designs/${id}`).then((r) => r.data),
   builtinTest: (designId: string) => api.get<{ test: AdminDesign['test']; previews: DesignPreview[] }>(`/design/admin/designs/builtin/${designId}/test`).then((r) => r.data),

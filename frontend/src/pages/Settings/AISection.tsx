@@ -8,10 +8,13 @@ import { MetaChip } from '../../components/ui/StatusChip';
 import { useConfirm } from '../../components/ui/useConfirm';
 import { errorMessage, notify } from '../../store/toastStore';
 import { LLM_MODELS, PROVIDERS, type ProviderId } from './settingsShared';
+import { Link as RouterLink } from 'react-router-dom';
+import { adminDesignAPI, type PosterEngineStatus } from '../../services/design';
 
 /**
- * Settings → AI (admins): the AI providers' keys, the model used by default, per-prompt models,
- * and the settings of Blue and the Library's AI reading.
+ * Settings → AI (admins): the AI providers' keys, the poster engine's health and which model does
+ * which of its steps, the model used by default, the image model for AI photos, per-prompt models,
+ * the monthly allowance, and the settings of Blue and the Library's AI reading.
  */
 
 const PROVIDER_NAME: Record<string, string> = Object.fromEntries(PROVIDERS.map((p) => [p.id, p.name]));
@@ -106,7 +109,7 @@ export default function AISection() {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-      <Section title="AI providers" hint="Keys are encrypted. OpenAI is needed for AI images.">
+      <Section title="AI providers" hint="Keys are encrypted. Anthropic (Claude) designs posters; OpenAI makes AI photos and posters’ painted backgrounds.">
         {configured === null ? (
           <CircularProgress size={18} sx={{ color: 'var(--text-muted)' }} />
         ) : (
@@ -118,7 +121,9 @@ export default function AISection() {
         )}
       </Section>
 
-      <Section title="Default model" hint="Used by every AI feature unless a prompt below says otherwise.">
+      <PosterEngineCard keysChanged={configured} />
+
+      <Section title="Default model" hint="Used by captions, briefs, Plan with AI and Library reading unless a prompt below says otherwise. A stronger model writes noticeably better plans and captions.">
         <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'flex-start' }}>
           <TextField
             select
@@ -151,7 +156,7 @@ export default function AISection() {
         </Box>
       </Section>
 
-      <Section title="Image model" hint="OpenAI makes every AI picture. GPT-Image-2.5 Flare is the fast default; changes to existing pictures use Sunburst, which edits more precisely.">
+      <Section title="Image model" hint="OpenAI makes AI photos and the painted backgrounds some posters use. GPT-Image-2.5 Flare is the fast default; changes to existing photos use Sunburst, which edits more precisely.">
         <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
           <TextField
             select
@@ -390,10 +395,83 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
 }
 
 /** The monthly AI allowance every client account gets (each account can have its own in Admin › Users). */
+/** Is the poster engine ready, which model does what, and the design library at a glance. */
+function PosterEngineCard({ keysChanged }: { keysChanged: unknown }) {
+  const [status, setStatus] = useState<PosterEngineStatus | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
+  const check = useCallback(() => {
+    setChecking(true);
+    adminDesignAPI
+      .status()
+      .then((s) => {
+        setStatus(s);
+        setFailed(null);
+      })
+      .catch((e) => setFailed(errorMessage(e, 'Couldn’t check the poster engine.')))
+      .finally(() => setChecking(false));
+  }, []);
+  useEffect(() => check(), [check, keysChanged]);
+
+  return (
+    <Section title="Poster engine" hint="Makes the posters in Create with AI › Poster: Claude plans and reviews them, and they’re laid out in code with your real words, fonts and logo files.">
+      {failed ? (
+        <Typography sx={{ fontSize: 13.5, color: 'var(--st-attention-fg)' }}>{failed}</Typography>
+      ) : !status ? (
+        <CircularProgress size={18} sx={{ color: 'var(--text-muted)' }} />
+      ) : (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+            <Box component="span" sx={{ px: 1, height: 22, display: 'inline-flex', alignItems: 'center', borderRadius: 'var(--r-full)', fontSize: 12, fontWeight: 650, bgcolor: status.ready ? 'var(--st-published-bg, #e6f4ea)' : 'var(--st-attention-bg, #fdecea)', color: status.ready ? 'var(--st-published-fg, #1e6b34)' : 'var(--st-attention-fg, #a1271b)' }}>
+              {status.ready ? 'Ready' : 'Needs attention'}
+            </Box>
+            <Typography sx={{ fontSize: 13, color: 'var(--text-muted)' }}>
+              Claude key {status.anthropic ? 'set' : 'missing'} · renderer {status.renderer.ok ? 'running' : 'not running'} · cut-out people {status.cutouts ? 'on' : 'off (designs use the photo as it is)'}
+            </Typography>
+            <Button size="small" onClick={check} disabled={checking} sx={{ ml: 'auto' }}>
+              {checking ? 'Checking…' : 'Check again'}
+            </Button>
+          </Box>
+          {status.problems.map((p) => (
+            <Typography key={p} sx={{ fontSize: 13, color: 'var(--text-strong)', p: 1, borderRadius: 'var(--r-ctl)', bgcolor: 'var(--bg-subtle)' }}>
+              {p}
+            </Typography>
+          ))}
+          <Box component="dl" sx={{ m: 0, display: 'grid', gridTemplateColumns: 'max-content 1fr', columnGap: 2, rowGap: 0.5, fontSize: 13 }}>
+            {(
+              [
+                ['Art director', status.models.art_director],
+                ['Review', status.models.review],
+                ['Typed and quick edits', status.models.quick_edits],
+                ['Importing a design', status.models.design_import]
+              ] as [string, string][]
+            ).map(([k, v]) => (
+              <Box key={k} sx={{ display: 'contents' }}>
+                <Box component="dt" sx={{ color: 'var(--text-muted)' }}>
+                  {k}
+                </Box>
+                <Box component="dd" sx={{ m: 0, fontFamily: 'ui-monospace, monospace', fontSize: 12.5 }}>
+                  {v}
+                </Box>
+              </Box>
+            ))}
+          </Box>
+          <Typography sx={{ fontSize: 13, color: 'var(--text-muted)' }}>
+            {status.designs.built_in} built-in designs, {status.designs.imported_live} imported
+            {status.designs.waiting_for_approval ? `, ${status.designs.waiting_for_approval} waiting for approval` : ''}.{' '}
+            <Box component={RouterLink} to="/admin/designs" sx={{ color: 'inherit', fontWeight: 600 }}>
+              Poster designs
+            </Box>
+          </Typography>
+        </Box>
+      )}
+    </Section>
+  );
+}
+
 function AllowanceDefaults() {
-  const [saved, setSaved] = useState<{ aiImagesPerMonth: number; aiDesignsPerMonth?: number; blueMessagesPerMonth: number } | null>(null);
+  const [saved, setSaved] = useState<{ aiImagesPerMonth: number; blueMessagesPerMonth: number } | null>(null);
   const [images, setImages] = useState('');
-  const [designs, setDesigns] = useState('');
   const [blue, setBlue] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -403,20 +481,19 @@ function AllowanceDefaults() {
       .then((d) => {
         setSaved(d);
         setImages(String(d.aiImagesPerMonth));
-        setDesigns(String(d.aiDesignsPerMonth ?? 12));
         setBlue(String(d.blueMessagesPerMonth));
       })
       .catch(() => setSaved(null));
   }, []);
 
   const valid = (v: string) => /^\d{1,6}$/.test(v.trim());
-  const dirty = saved && (images !== String(saved.aiImagesPerMonth) || designs !== String(saved.aiDesignsPerMonth ?? 12) || blue !== String(saved.blueMessagesPerMonth));
+  const dirty = saved && (images !== String(saved.aiImagesPerMonth) || blue !== String(saved.blueMessagesPerMonth));
 
   const save = async () => {
-    if (!valid(images) || !valid(designs) || !valid(blue) || saving) return;
+    if (!valid(images) || !valid(blue) || saving) return;
     setSaving(true);
     try {
-      const d = await userAPI.saveAllowanceDefaults({ aiImagesPerMonth: Number(images), aiDesignsPerMonth: Number(designs), blueMessagesPerMonth: Number(blue) });
+      const d = await userAPI.saveAllowanceDefaults({ aiImagesPerMonth: Number(images), blueMessagesPerMonth: Number(blue) });
       setSaved(d);
       notify('Allowance saved');
     } catch (e) {
@@ -439,10 +516,9 @@ function AllowanceDefaults() {
           }}
           sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'flex-start' }}
         >
-          <TextField label="AI images" value={images} onChange={(e) => setImages(e.target.value)} error={!valid(images)} inputProps={{ inputMode: 'numeric' }} sx={{ width: 160 }} />
-          <TextField label="Designed posters" value={designs} onChange={(e) => setDesigns(e.target.value)} error={!valid(designs)} inputProps={{ inputMode: 'numeric' }} sx={{ width: 160 }} helperText="A set of options counts once" />
+          <TextField label="AI pictures" value={images} onChange={(e) => setImages(e.target.value)} error={!valid(images)} inputProps={{ inputMode: 'numeric' }} sx={{ width: 200 }} helperText="A poster (all its options and edits) or a photo counts as one" />
           <TextField label="Blue messages" value={blue} onChange={(e) => setBlue(e.target.value)} error={!valid(blue)} inputProps={{ inputMode: 'numeric' }} sx={{ width: 160 }} />
-          <Button type="submit" variant="contained" disabled={!dirty || !valid(images) || !valid(designs) || !valid(blue) || saving} sx={{ mt: 1 }}>
+          <Button type="submit" variant="contained" disabled={!dirty || !valid(images) || !valid(blue) || saving} sx={{ mt: 1 }}>
             {saving ? 'Saving…' : 'Save'}
           </Button>
         </Box>

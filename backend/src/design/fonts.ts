@@ -39,7 +39,7 @@ export const FONTS: FontFamily[] = [
     family: 'Open Sans',
     category: 'sans',
     fallback: 'Arial, sans-serif',
-    note: 'Rotary’s free headline font (instead of Frutiger). Has a condensed width (font-stretch 75%).',
+    note: 'Clear, friendly sans for headlines and text. Has a condensed width.',
     files: [
       { file: 'opensans/OpenSans[wdth,wght].ttf', style: 'normal', weight: '300 800', stretch: '75% 100%' },
       { file: 'opensans/OpenSans-Italic[wdth,wght].ttf', style: 'italic', weight: '300 800', stretch: '75% 100%' }
@@ -50,7 +50,7 @@ export const FONTS: FontFamily[] = [
     family: 'Gelasio',
     category: 'serif',
     fallback: 'Georgia, serif',
-    note: 'Metric twin of Georgia: Rotary’s free body font (instead of Sentinel).',
+    note: 'Warm, readable serif (a twin of Georgia).',
     files: [
       { file: 'gelasio/Gelasio[wght].ttf', style: 'normal', weight: '400 700' },
       { file: 'gelasio/Gelasio-Italic[wght].ttf', style: 'italic', weight: '400 700' }
@@ -139,7 +139,7 @@ export const FONTS: FontFamily[] = [
     family: 'Permanent Marker',
     category: 'script',
     fallback: 'cursive',
-    note: 'Marker lettering (Rotary’s People of Action accent font).',
+    note: 'Hand-drawn marker lettering, for a word or two.',
     files: [{ file: 'permanentmarker/PermanentMarker-Regular.ttf', style: 'normal', weight: '400' }]
   }
 ];
@@ -150,11 +150,59 @@ export function fontById(id: string | undefined | null): FontFamily | undefined 
   return FONTS.find((f) => f.id === id);
 }
 
+/** Uploaded fonts get a family name of their own, so they never clash with a bundled one. */
+export const customFamily = (id: string) => `Brand ${id}`;
+export const isCustomFontId = (id: unknown): id is string => typeof id === 'string' && /^custom-[a-z0-9]{6,32}$/.test(id);
+
+const CATEGORY_FALLBACK: Record<string, string> = {
+  sans: 'Arial, sans-serif',
+  serif: 'Georgia, serif',
+  display: 'Arial, sans-serif',
+  condensed: '"Arial Narrow", Arial, sans-serif',
+  script: 'cursive'
+};
+
+interface CustomLike {
+  id: string;
+  category: string;
+  files: { url: string; style: string; weight: string; format: string }[];
+}
+
 /** The CSS font-family value for a font id (unknown ids fall back to Open Sans). */
-export function fontStack(id: string | undefined | null): string {
+export function fontStack(id: string | undefined | null, custom: CustomLike[] = []): string {
+  const own = custom.find((c) => c.id === id && c.files.length);
+  if (own) return `"${customFamily(own.id)}", ${CATEGORY_FALLBACK[own.category] || CATEGORY_FALLBACK.sans}`;
   const f = fontById(id) || fontById('opensans')!;
   return `"${f.family}", ${f.fallback}`;
 }
+
+/** @font-face rules for uploaded fonts; address() maps each file to the renderer's sealed address. */
+export function customFontFaceCss(ids: string[], custom: CustomLike[], address: (url: string) => string): string {
+  const wanted = new Set(ids.filter(Boolean));
+  const safeWeight = (w: string) => (/^\d{3}( \d{3})?$/.test(w) ? w : '400');
+  return custom
+    .filter((c) => wanted.has(c.id))
+    .flatMap((c) =>
+      c.files.map(
+        (f) =>
+          `@font-face{font-family:"${customFamily(c.id)}";src:url("${address(f.url)}") format("${f.format}");font-style:${f.style === 'italic' ? 'italic' : 'normal'};font-weight:${safeWeight(f.weight)};font-display:block;}`
+      )
+    )
+    .join('\n');
+}
+
+/** What kind of font file this is, from its first bytes (null: not a font). */
+export function fontFormatOf(buf: Buffer): 'truetype' | 'opentype' | 'woff' | 'woff2' | null {
+  if (buf.length < 12) return null;
+  const tag = buf.slice(0, 4);
+  if (tag.equals(Buffer.from([0, 1, 0, 0])) || tag.toString('latin1') === 'true') return 'truetype';
+  if (tag.toString('latin1') === 'OTTO') return 'opentype';
+  if (tag.toString('latin1') === 'wOFF') return 'woff';
+  if (tag.toString('latin1') === 'wOF2') return 'woff2';
+  return null;
+}
+
+export const FONT_CONTENT_TYPE: Record<string, string> = { truetype: 'font/ttf', opentype: 'font/otf', woff: 'font/woff', woff2: 'font/woff2' };
 
 /** Address the renderer serves a font file at (never the internet). */
 export const fontUrl = (file: string) => `https://design.local/fonts/${encodeURI(file)}`;

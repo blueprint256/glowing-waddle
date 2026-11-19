@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+import express, { NextFunction, Request, Response } from 'express';
 import multer from 'multer';
 import mongoose from 'mongoose';
 import { Task } from '../models/Task';
@@ -13,14 +13,15 @@ import { assertAllowance } from '../services/aiAllowance';
 import { AIError } from '../lib/aiError';
 import { DesignError } from '../services/designPipeline';
 import { editDesign, exportSizes, findDesign, printDesign } from '../services/designEdits';
-import { applyPack, brandId, engineKit, loadBrandKit, mergeVersions, storeLogoFiles } from '../services/designBrand';
+import { applyPack, brandId, engineKit, loadBrandKit, mergeVersions, storeLogoFiles, syncCompanyLogo } from '../services/designBrand';
 import { allDesigns } from '../services/designLibrary';
 import { approveDesign, builtinTest, deleteDesignRecord, getRecord, retestDesign, retireDesign, reviseDesign, saveEditedDesign, startImport } from '../services/designImport';
 import { DesignTemplateModel, type IDesignTemplate } from '../models/DesignTemplate';
 import { BUILTIN_DESIGNS } from '../design/library';
 import type { DesignTemplate } from '../design/types';
 import { BRAND_PACKS, packById } from '../design/packs';
-import { FONTS, FONT_DIR } from '../design/fonts';
+import { FONTS, FONT_DIR, FONT_CONTENT_TYPE, fontFormatOf, isCustomFontId } from '../design/fonts';
+import { uploadBufferToS3, deleteFromS3, objectKeyFromUrl } from '../utils/s3Service';
 import { FORMATS, isFormatId } from '../design/formats';
 import { isHex } from '../design/color';
 
@@ -31,7 +32,7 @@ import { isHex } from '../design/color';
  *   GET  /api/design/tasks/:id/jobs/latest       the post's latest job (to pick up progress again)
  *   POST /api/design/tasks/:id/posters/:ref/edit type on the poster, or describe a change
  *   POST /api/design/tasks/:id/posters/:ref/print  A4/A3 PDF
- *   GET/PUT /api/design/brand-kit, logos and partners: the account's brand kit
+ *   GET/PUT /api/design/brand-kit, logos, partners and fonts: the account's brand kit (Settings › Brand)
  *   GET  /api/design/catalog                     designs, packs, fonts and formats (for the screens)
  */
 
@@ -46,12 +47,41 @@ const upload = multer({
     else cb(new Error('Use a PNG, JPG, WebP or SVG file'));
   }
 });
-const uploadFile = (req: Request, res: Response, next: express.NextFunction) =>
+const uploadFile = (req: Request, res: Response, next: NextFunction) =>
   upload.single('file')(req, res, (err: unknown) => {
     if (!err) return next();
     const message = (err as any)?.code === 'LIMIT_FILE_SIZE' ? 'That file is over 15 MB.' : (err as Error)?.message || 'Upload failed';
     res.status(400).json({ success: false, message });
   });
+
+const fontUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 6 * 1024 * 1024 } });
+const uploadFont = (req: Request, res: Response, next: NextFunction) =>
+  fontUpload.single('file')(req, res, (err: unknown) => {
+    if (!err) return next();
+    const message = (err as any)?.code === 'LIMIT_FILE_SIZE' ? 'That font file is over 6 MB.' : (err as Error)?.message || 'Upload failed';
+    res.status(400).json({ success: false, message });
+  });
+
+const FONT_CATEGORIES = ['sans', 'serif', 'display', 'condensed', 'script'] as const;
+
+/** Reads weight and style from a font's file name ("Kawa-BoldItalic.ttf" → 700 italic). */
+function faceFromName(fileName: string): { weight: string; style: 'normal' | 'italic' } {
+  const n = fileName.toLowerCase().replace(/\.(ttf|otf|woff2?)$/, '');
+  const style = /italic|oblique/.test(n) ? 'italic' : 'normal';
+  if (/\[.*wght.*\]|variable|-vf\b/.test(n)) return { weight: '100 900', style };
+  const table: [RegExp, string][] = [
+    [/thin|hairline/, '100'],
+    [/extra-?light|ultra-?light/, '200'],
+    [/light/, '300'],
+    [/medium/, '500'],
+    [/semi-?bold|demi-?bold/, '600'],
+    [/extra-?bold|ultra-?bold/, '800'],
+    [/black|heavy/, '900'],
+    [/bold/, '700']
+  ];
+  const hit = table.find(([re]) => re.test(n));
+  return { weight: hit ? hit[1] : '400', style };
+}
 
 function fail(res: Response, error: unknown, fallback: string) {
   if (error instanceof DesignError || error instanceof AIError) {
@@ -247,6 +277,7 @@ function kitView(kit: IBrandKit) {
     pack: kit.pack || null,
     colors: kit.colors,
     fonts: kit.fonts,
+    customFonts: (kit.customFonts || []).map((f) => ({ id: f.id, name: f.name, category: f.category, files: f.files.map((x) => ({ url: x.url, style: x.style, weight: x.weight, format: x.format })) })),
     logos: kit.logos,
     partners: kit.partners,
     rules: kit.rules,
@@ -289,7 +320,7 @@ router.put('/brand-kit', isAuthenticated, canManageTasks, async (req: Request, r
     }
     // A brand pack's fonts are part of the brand: they change only by leaving the pack.
     if (b.fonts && typeof b.fonts === 'object' && !kit.pack) {
-      const ok = (id: unknown) => typeof id === 'string' && FONTS.some((f) => f.id === id);
+      const ok = (id: unknown) => typeof id === 'string' && (FONTS.some((f) => f.id === id) || (isCustomFontId(id) && (kit.customFonts || []).some((f) => f.id === id && f.files.length)));
       kit.fonts = { display: ok(b.fonts.display) ? b.fonts.display : kit.fonts.display, text: ok(b.fonts.text) ? b.fonts.text : kit.fonts.text, accent: ok(b.fonts.accent) ? b.fonts.accent : b.fonts.accent === null ? undefined : kit.fonts.accent };
     }
     if (typeof b.notes === 'string') kit.notes = b.notes.slice(0, 3000);
@@ -344,6 +375,7 @@ router.post('/brand-kit/logos', isAuthenticated, canManageTasks, uploadFile, asy
     }
     kit.markModified('logos');
     await kit.save();
+    await syncCompanyLogo(kit);
     const warning = variant.lowRes ? 'This file is small: it’s fine on social media but may look soft in print. Upload a larger PNG or an SVG if you have one.' : null;
     res.json({ success: true, kit: kitView(kit), warning, message: 'Logo added' });
   } catch (error) {
@@ -365,12 +397,14 @@ router.patch('/brand-kit/logos/:logoId', isAuthenticated, canManageTasks, async 
       if (typeof b.minHeight === 'number' && b.minHeight >= 0.02 && b.minHeight <= 0.3) logo.minHeight = b.minHeight;
     }
     if (typeof b.removeVariant === 'string') logo.variants = logo.variants.filter((v) => v.id !== b.removeVariant);
+    const syncLogo = logo.role === 'primary' && (typeof b.removeVariant === 'string' || typeof b.variantId === 'string');
     if (typeof b.variantId === 'string' && ['color', 'reverse', 'mono-dark', 'mono-light'].includes(b.variant)) {
       const v = logo.variants.find((x) => x.id === b.variantId);
       if (v) v.variant = b.variant;
     }
     kit.markModified('logos');
     await kit.save();
+    if (syncLogo) await syncCompanyLogo(kit);
     res.json({ success: true, kit: kitView(kit) });
   } catch (error) {
     fail(res, error, 'Couldn’t update the logo.');
@@ -383,6 +417,7 @@ router.delete('/brand-kit/logos/:logoId', isAuthenticated, canManageTasks, async
     kit.logos = kit.logos.filter((l) => l.id !== req.params.logoId);
     kit.markModified('logos');
     await kit.save();
+    await syncCompanyLogo(kit);
     res.json({ success: true, kit: kitView(kit) });
   } catch (error) {
     fail(res, error, 'Couldn’t remove the logo.');
@@ -417,6 +452,91 @@ router.delete('/brand-kit/partners/:partnerId', isAuthenticated, canManageTasks,
     res.json({ success: true, kit: kitView(kit) });
   } catch (error) {
     fail(res, error, 'Couldn’t remove the partner.');
+  }
+});
+
+/**
+ * Upload a font file (TTF, OTF, WOFF or WOFF2) the account has the right to use. Form fields: file,
+ * name (the family, e.g. "Kawa Sans"), category, fontId (adds a weight or italic to that family).
+ * Weight and italic are read from the file name and can be given as weight/style.
+ */
+router.post('/brand-kit/fonts', isAuthenticated, canManageTasks, uploadFont, async (req: Request, res: Response) => {
+  try {
+    if (!req.file) throw new DesignError(400, 'Choose a font file.');
+    const format = fontFormatOf(req.file.buffer);
+    if (!format) throw new DesignError(400, 'That isn’t a font file. Use a TTF, OTF, WOFF or WOFF2 file.');
+    const kit = await loadBrandKit(kitOwner(req));
+    kit.customFonts = kit.customFonts || [];
+    const b = req.body || {};
+    const face = faceFromName(req.file.originalname || '');
+    const weight = /^\d{3}( \d{3})?$/.test(String(b.weight || '')) ? String(b.weight) : face.weight;
+    const style: 'normal' | 'italic' = b.style === 'italic' || b.style === 'normal' ? b.style : face.style;
+    const url = await uploadBufferToS3(req.file.buffer, FONT_CONTENT_TYPE[format], 'brand-fonts');
+    const file = { url, style, weight, format, bytes: req.file.size };
+    const fontId = str(b.fontId, 40);
+    let font = fontId ? kit.customFonts.find((f) => f.id === fontId) : undefined;
+    if (fontId && !font) throw new DesignError(404, 'Font not found');
+    if (font) {
+      if (font.files.length >= 12) throw new DesignError(400, 'A font holds up to 12 files.');
+      font.files = [...font.files.filter((f) => !(f.weight === weight && f.style === style)), file];
+    } else {
+      if (kit.customFonts.length >= 10) throw new DesignError(400, 'You can upload up to 10 fonts. Remove one first.');
+      const name = str(b.name, 60) || (req.file.originalname || 'My font').replace(/\.(ttf|otf|woff2?)$/i, '').replace(/[-_](thin|light|regular|medium|semibold|bold|extrabold|black|italic|variable|vf).*$/i, '').replace(/[-_]+/g, ' ').trim().slice(0, 60) || 'My font';
+      const category = (FONT_CATEGORIES as readonly string[]).includes(b.category) ? b.category : 'sans';
+      font = { id: `custom-${brandId()}`, name, category, files: [file] } as any;
+      kit.customFonts.push(font!);
+    }
+    kit.markModified('customFonts');
+    await kit.save();
+    res.json({ success: true, kit: kitView(kit), fontId: font!.id, message: `${font!.name} added` });
+  } catch (error) {
+    fail(res, error, 'Couldn’t add the font.');
+  }
+});
+
+/** One file of an uploaded font, for showing it on screen (signed-in, the account's own). */
+router.get('/brand-kit/fonts/:fontId/files/:index', isAuthenticated, canManageTasks, async (req: Request, res: Response) => {
+  try {
+    const kit = await loadBrandKit(kitOwner(req));
+    const font = (kit.customFonts || []).find((f) => f.id === req.params.fontId);
+    const file = font?.files[Number(req.params.index)];
+    if (!file) throw new DesignError(404, 'Font not found');
+    const { loadPicture } = await import('../services/postPicture');
+    const { buffer } = await loadPicture(file.url);
+    res.setHeader('Content-Type', FONT_CONTENT_TYPE[file.format] || 'application/octet-stream');
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.send(buffer);
+  } catch (error) {
+    fail(res, error, 'Couldn’t load the font.');
+  }
+});
+
+/** Removes an uploaded font (or one of its files, with ?file=<url>). Posters using it go back to the default. */
+router.delete('/brand-kit/fonts/:fontId', isAuthenticated, canManageTasks, async (req: Request, res: Response) => {
+  try {
+    const kit = await loadBrandKit(kitOwner(req));
+    const font = (kit.customFonts || []).find((f) => f.id === req.params.fontId);
+    if (!font) throw new DesignError(404, 'Font not found');
+    const only = typeof req.query.file === 'string' ? req.query.file : null;
+    const gone = only ? font.files.filter((f) => f.url === only) : font.files;
+    font.files = only ? font.files.filter((f) => f.url !== only) : [];
+    if (!font.files.length) {
+      kit.customFonts = kit.customFonts.filter((f) => f.id !== font.id);
+      for (const k of ['display', 'text', 'accent'] as const) {
+        if (kit.fonts[k] === font.id) (kit.fonts as any)[k] = k === 'accent' ? undefined : k === 'display' ? 'opensans' : 'gelasio';
+      }
+      kit.markModified('fonts');
+    }
+    kit.markModified('customFonts');
+    await kit.save();
+    // Posters already made keep their pictures; the files are only needed for new ones and edits.
+    for (const f of gone) {
+      const key = objectKeyFromUrl(f.url);
+      if (key) await deleteFromS3(key).catch(() => undefined);
+    }
+    res.json({ success: true, kit: kitView(kit) });
+  } catch (error) {
+    fail(res, error, 'Couldn’t remove the font.');
   }
 });
 
@@ -456,6 +576,41 @@ function recordView(r: IDesignTemplate) {
   };
 }
 
+/**
+ * The poster engine's health for admins (Settings › AI and the connector): the Claude key the art
+ * director needs, the renderer, cut-outs, the models used for each step and the design library.
+ */
+router.get('/admin/status', isAuthenticated, isSystemAdmin, async (_req: Request, res: Response) => {
+  try {
+    const { getProviderKey } = await import('../services/llmService');
+    let anthropic = false;
+    try {
+      anthropic = Boolean(await getProviderKey('anthropic'));
+    } catch {
+      anthropic = false;
+    }
+    const [{ rendererStatus }, { cutoutAvailable }, { DESIGN_MODELS }] = await Promise.all([import('../design/renderer'), import('../services/cutout'), import('../design/claude')]);
+    const renderer = await rendererStatus();
+    const records = await DesignTemplateModel.find().select('status').lean();
+    const count = (s: string) => records.filter((r: any) => r.status === s).length;
+    const problems: string[] = [];
+    if (!anthropic) problems.push('No Anthropic (Claude) key: posters are laid out without the art director, the review and described edits. Add the key in Settings › AI.');
+    if (!renderer.ok) problems.push(`The poster renderer can’t start: ${renderer.error || 'unknown error'}`);
+    res.json({
+      success: true,
+      ready: anthropic && renderer.ok,
+      anthropic,
+      renderer,
+      cutouts: cutoutAvailable(),
+      models: { art_director: DESIGN_MODELS.director, review: DESIGN_MODELS.critic, quick_edits: DESIGN_MODELS.quick, design_import: DESIGN_MODELS.importer },
+      designs: { built_in: BUILTIN_DESIGNS.length, imported_live: count('live'), waiting_for_approval: count('draft'), retired: count('retired') },
+      problems
+    });
+  } catch (error) {
+    fail(res, error, 'Couldn’t check the poster engine.');
+  }
+});
+
 router.get('/admin/designs', isAuthenticated, isSystemAdmin, async (_req: Request, res: Response) => {
   try {
     const rows = await DesignTemplateModel.find({}).sort({ updatedAt: -1 });
@@ -481,7 +636,7 @@ router.post(
   '/admin/designs/import',
   isAuthenticated,
   isSystemAdmin,
-  (req: Request, res: Response, next: express.NextFunction) =>
+  (req: Request, res: Response, next: NextFunction) =>
     referenceUpload.single('file')(req, res, (err: unknown) =>
       err ? res.status(400).json({ success: false, message: (err as any)?.code === 'LIMIT_FILE_SIZE' ? 'That picture is over 20 MB.' : (err as Error).message }) : next()
     ),

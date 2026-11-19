@@ -255,10 +255,29 @@ const accountTools: Tool[] = [
   {
     name: 'get_company_info',
     title: 'Get company info',
-    description: 'The user\'s saved company and brand information (company name, sector, about, products/services, USP, brand tone, audience profile, global rules, brand guidelines). Use it to write on-brand content.',
+    description:
+      "The user's brand (Settings › Brand): name, sector, about, products/services, USP, tone, audience, always-and-never rules and guidelines, plus how it looks: colours, fonts, logos, saved partners and the poster rules, and whether it's a Rotary or Rotaract club (club). Use it to write and design on-brand.",
     inputSchema: obj({}),
     annotations: READ,
-    handler: async (_args, ctx) => (await ctx.api.request('GET', '/api/users/me/company-info')).companyInfo || {}
+    handler: async (_args, ctx) => {
+      const [company, kitRes] = await Promise.all([ctx.api.request('GET', '/api/users/me/company-info'), ctx.api.request('GET', '/api/design/brand-kit').catch(() => null)]);
+      const kit = kitRes?.kit;
+      return {
+        ...(company.companyInfo || {}),
+        ...(kit
+          ? {
+              club: kit.pack || null,
+              colours: Object.fromEntries(Object.entries(kit.effective?.colors || kit.colors || {}).map(([k, v]: [string, any]) => [k, v?.hex])),
+              fonts: kit.effective?.fonts || kit.fonts,
+              own_fonts: (kit.customFonts || []).map((f: any) => f.name),
+              logos: (kit.logos || []).map((l: any) => ({ name: l.name, role: l.role === 'primary' ? 'main' : 'other', on_every_poster: l.role === 'campaign' ? Boolean(l.always) : undefined })),
+              partners: (kit.partners || []).map((p: any) => ({ id: p.id, name: p.name })),
+              poster_rules: (kit.effective?.rules || []).map((r: any) => r.text),
+              contact: kit.contact
+            }
+          : {})
+      };
+    }
   },
   {
     name: 'update_company_info',
@@ -1297,11 +1316,17 @@ const inboxTools: Tool[] = [
 
 /** The commands the app's buttons call. Each one is optional: without it the app uses its built-in prompt. */
 const APP_COMMANDS: Record<string, string> = {
-  'generate-campaign': 'Plan with AI: must return a JSON array of posts [{ title, brief, caption, day }] (older answers grouped in themes still work)',
+  'generate-campaign':
+    'Plan with AI: must return a JSON array of posts [{ title, brief, caption, day, picture? }]; picture is optional { kind: "poster"|"photo", facts: { headline?, date?, time?, place?, figures?: [] } } and its facts are added to the brief for the poster (older answers grouped in themes still work). Keep {instruction} in the prompt: it carries the period and these output rules.',
   'improve-caption': 'Write caption / Improve caption on a post: returns the caption as plain text ({instruction} says what to do)',
-  'generate-poster': 'Create image on a post: an image prompt (the image model in Settings › AI); can use {brief}, {references}, {format} and {logoNote}; reference pictures are always sent',
-  'change-image': 'Change image on a post: a single image prompt with {instruction} and {logoNote}',
+  'generate-photo': 'Create with AI › Photo on a post: an image prompt (the image model in Settings › AI) for a picture with no words; can use {brief}, {references}, {format} and {logoNote}; reference pictures are always sent',
+  'change-image': 'Changing an AI photo on a post: a single image prompt with {instruction} and {logoNote} (designed posters are changed by the poster engine instead)',
   'refine-task-description': 'Improve brief (connector only): returns the improved brief as plain text'
+};
+
+/** Commands the app no longer calls. */
+const RETIRED_COMMANDS: Record<string, string> = {
+  'generate-poster': 'No longer used: posters are made by the poster engine (Create with AI › Poster). Point generate-photo at an image prompt for AI photos instead.'
 };
 
 const PROVIDERS = ['openai', 'anthropic', 'grok', 'gemini'];
@@ -1322,11 +1347,44 @@ function shapeMapping(m: any) {
   return clean({
     id: String(m._id),
     command: m.command,
-    used_by: APP_COMMANDS[m.command],
+    used_by: APP_COMMANDS[m.command] || RETIRED_COMMANDS[m.command],
     prompt: m.promptId ? { id: String(m.promptId._id || m.promptId), name: m.promptId.name } : undefined,
     chain: m.chainId ? { id: String(m.chainId._id || m.chainId), name: m.chainId.name, steps: m.chainId.steps?.length } : undefined,
     steps: m.steps?.length ? m.steps.length : undefined
   });
+}
+
+/** Follows a poster job until it's done, failed or the wait is over. */
+async function waitForPoster(ctx: ToolContext, job: any, maxMs: number): Promise<any> {
+  const until = Date.now() + maxMs;
+  let current = job;
+  while ((current?.status === 'queued' || current?.status === 'running') && Date.now() < until) {
+    await new Promise((r) => setTimeout(r, 3000));
+    current = (await ctx.api.request('GET', `/api/design/jobs/${current.id}`)).job;
+  }
+  return current;
+}
+
+const POSTER_STEP: Record<string, string> = {
+  queued: 'waiting to start',
+  reading: 'looking at the photos',
+  directing: 'planning the layouts',
+  background: 'painting a background',
+  rendering: 'setting the type',
+  checking: 'checking every detail',
+  reviewing: 'choosing the best ones',
+  saving: 'saving the options',
+  done: 'done'
+};
+
+async function posterAnswer(ctx: ToolContext, taskId: string, job: any) {
+  const url = absolute(ctx.appUrl, links.post(taskId));
+  if (job?.status === 'failed') return { status: 'failed', message: job.error || 'The poster couldn’t be made. Nothing was used from the allowance.', task_url: url };
+  if (job?.status !== 'done') return { status: 'working', step: POSTER_STEP[job?.stage] || job?.stage, progress: Math.round((job?.progress || 0) * 100), message: 'Still designing. Check again with poster_status in a minute; the options also appear on the post.', task_url: url };
+  const task = (await ctx.api.request('GET', `/api/tasks/${taskId}`)).task;
+  const ids = new Set(job.draftIds || []);
+  const options = (task?.aiDrafts || []).filter((d: any) => ids.has(d.id)).map((d: any, i: number) => ({ option: i + 1, draft_id: d.id, url: d.url, design: d.design?.doc?.designId }));
+  return { status: 'done', message: job.message || `${options.length} poster option${options.length === 1 ? '' : 's'} ready`, options, task_url: url };
 }
 
 const aiAdminTools: Tool[] = [
@@ -1334,23 +1392,26 @@ const aiAdminTools: Tool[] = [
     name: 'ai_setup_status',
     title: 'AI setup status',
     description:
-      "System Admin: which AI providers have API keys, every prompt, every command mapping, and and which of the app's own commands (generate-campaign, improve-caption, generate-poster, change-image, refine-task-description) still use their built-in prompt.",
+      "System Admin: which AI providers have API keys, the poster engine's health (Claude key, renderer, cut-outs, models, design library), every prompt, every command mapping, and which of the app's own commands (generate-campaign, improve-caption, generate-photo, change-image, refine-task-description) still use their built-in prompt.",
     inputSchema: obj({}),
     annotations: READ,
     isAvailable: isAdmin,
     handler: async (_args, ctx) => {
-      const [status, prompts, mappings] = await Promise.all([
+      const [status, prompts, mappings, engine] = await Promise.all([
         ctx.api.request('GET', '/api/integrations/status'),
         ctx.api.request('GET', '/api/prompts'),
-        ctx.api.request('GET', '/api/command-mappings')
+        ctx.api.request('GET', '/api/command-mappings'),
+        ctx.api.request('GET', '/api/design/admin/status').catch((e: any) => ({ ready: false, problems: [`Couldn’t check: ${e?.message || e}`] }))
       ]);
       const i = status.integrations || {};
       const configured = new Set((mappings.mappings || []).map((m: any) => m.command));
       return {
         api_keys: Object.fromEntries(PROVIDERS.map((p) => [p, Boolean(i[p]?.configured)])),
+        poster_engine: clean({ ready: engine.ready, anthropic_key: engine.anthropic, renderer: engine.renderer, cutouts: engine.cutouts, models: engine.models, designs: engine.designs, problems: engine.problems?.length ? engine.problems : undefined }),
         prompts: (prompts.prompts || []).map((p: any) => shapePrompt(p)),
         commands: (mappings.mappings || []).map(shapeMapping),
         app_commands_using_built_in_prompt: Object.keys(APP_COMMANDS).filter((c) => !configured.has(c)).map((c) => ({ command: c, used_by: APP_COMMANDS[c] })),
+        retired_commands_still_mapped: Object.keys(RETIRED_COMMANDS).filter((c) => configured.has(c)).map((c) => ({ command: c, note: RETIRED_COMMANDS[c] })),
         placeholders:
           'Prompts can use {brand} {brandName} {sector} {brandTone} {brandGuidelines} {campaign} {campaignName} {coreMessages} {hashtags} {postTitle} {brief} {caption} {instruction} {platform} {references} {format} {logoNote} {image} {primaryLogo} {previousOutput} (older names like {companyInfo} and {taskDescription} still work); unknown or empty ones are removed before sending.'
       };
@@ -1414,7 +1475,7 @@ const aiAdminTools: Tool[] = [
     name: 'set_command',
     title: 'Point a command at a prompt',
     description:
-      "System Admin: make a command (e.g. generate-campaign, improve-caption, generate-poster, change-image, or your own) run a prompt, by prompt name. Creates the command or re-points it.",
+      "System Admin: make a command (e.g. generate-campaign, improve-caption, generate-photo, change-image, or your own) run a prompt, by prompt name. Creates the command or re-points it.",
     inputSchema: obj(
       {
         command: { type: 'string', minLength: 1, maxLength: 100, pattern: '^[a-z0-9][a-z0-9-]*$', description: 'Command name, lower-case with dashes.' },
@@ -1492,9 +1553,59 @@ const aiAdminTools: Tool[] = [
   },
   {
     name: 'generate_task_poster',
-    title: 'Create a picture for a post (app AI)',
+    title: 'Design a poster for a post (poster engine)',
     description:
-      "Create a picture for a post (task) with the app's AI, from what the post is about (its brief), the brand, its campaign and its reference pictures (\"include\" ones are shown faithfully; \"copy_style\" ones only lend their style). The real logo can be placed in a corner. The result is an AI draft next to the current picture: use it with adopt_task_poster, or change it with change_task_picture. Unchosen drafts are deleted after 7 days. Uses one of the account's monthly AI images; confirm with the user first.",
+      "Design poster options for a post (task) with the app's poster engine: the brief's words (put the facts in the post's brief first: what, when, where), the brand's real logo files, colours and fonts, chosen partners' logos and the post's \"include\" pictures as photos, laid out and checked (spelling kept, contrast, logo rules, nothing cut off). Gives up to 4 options as drafts next to the current picture (adopt one with adopt_task_poster; change one with change_task_picture, free). Takes 1–3 minutes: this waits up to about 2 minutes, then says it's still working (check with poster_status). Uses one of the account's monthly AI pictures; confirm with the user first.",
+    inputSchema: obj(
+      {
+        task_id: id('Post (task) ID.'),
+        format: { type: 'string', enum: ['portrait', 'square', 'story', 'landscape', 'a4'], description: 'Shape: portrait (4:5, default), square (1:1), story (9:16), landscape (3:2) or a4 (print).' },
+        partners: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 80 }, maxItems: 8, description: "Partners or sponsors whose logos go on the poster, by name or id (from get_company_info partners). Leave out for none." },
+        options: { type: 'integer', minimum: 1, maximum: 4, description: 'How many options (default 4).' }
+      },
+      ['task_id']
+    ),
+    annotations: CREATE,
+    isAvailable: canUseAI,
+    handler: async (args, ctx) => {
+      let partnerIds: string[] = [];
+      if (Array.isArray(args.partners) && args.partners.length) {
+        const kit = (await ctx.api.request('GET', '/api/design/brand-kit')).kit;
+        const unknown: string[] = [];
+        for (const want of args.partners as string[]) {
+          const w = want.trim().toLowerCase();
+          const hit = (kit.partners || []).find((p: any) => p.id === want || p.name.toLowerCase() === w) || (kit.partners || []).find((p: any) => p.name.toLowerCase().includes(w));
+          if (hit) partnerIds.push(hit.id);
+          else unknown.push(want);
+        }
+        if (unknown.length) throw new ToolError(`No saved partner called ${unknown.map((u) => `“${u}”`).join(', ')}. Partners are added once in Settings › Brand; saved ones: ${(kit.partners || []).map((p: any) => p.name).join(', ') || 'none'}.`);
+        partnerIds = Array.from(new Set(partnerIds));
+      }
+      const body: Record<string, unknown> = { partnerIds, count: args.options || 4 };
+      if (args.format) body.format = args.format;
+      const started = await ctx.api.request('POST', `/api/design/tasks/${args.task_id}/posters`, { body });
+      const job = await waitForPoster(ctx, started.job, 110000);
+      return posterAnswer(ctx, args.task_id, job);
+    }
+  },
+  {
+    name: 'poster_status',
+    title: 'Check a poster being designed',
+    description: "How the latest poster for a post (task) is going: its step, and when done, the options made (as AI drafts on the post).",
+    inputSchema: obj({ task_id: id('Post (task) ID.') }, ['task_id']),
+    annotations: READ,
+    isAvailable: canUseAI,
+    handler: async (args, ctx) => {
+      const res = await ctx.api.request('GET', `/api/design/tasks/${args.task_id}/jobs/latest`);
+      if (!res.job) return { message: 'No poster has been designed for this post yet.', task_url: absolute(ctx.appUrl, links.post(args.task_id)) };
+      return posterAnswer(ctx, args.task_id, res.job);
+    }
+  },
+  {
+    name: 'create_task_photo',
+    title: 'Create a photo for a post (app AI)',
+    description:
+      "Create a photo-style picture with no words on it for a post (task) with the app's image AI, from its brief, the brand and its reference pictures (\"include\" ones are shown faithfully; \"style\" ones only lend their style). For posters with words, logos or partners use generate_task_poster instead. The real logo can be placed in a corner. The result is an AI draft next to the current picture: adopt it with adopt_task_poster. Uses one of the account's monthly AI pictures; confirm with the user first.",
     inputSchema: obj(
       {
         task_id: id('Post (task) ID.'),
@@ -1514,10 +1625,35 @@ const aiAdminTools: Tool[] = [
     }
   },
   {
+    name: 'poster_files',
+    title: 'Get a poster in other sizes or for print',
+    description:
+      "For a designed poster on a post (its current picture, or a poster draft by draft_id): all_sizes makes the same poster in every other social shape its design has; print_a4 / print_a3 make a print-ready PDF. Free (no AI allowance). Returns file links.",
+    inputSchema: obj(
+      {
+        task_id: id('Post (task) ID.'),
+        action: { type: 'string', enum: ['all_sizes', 'print_a4', 'print_a3'], description: 'What to make.' },
+        draft_id: { type: 'string', maxLength: 40, description: 'A poster draft (from get_task ai_draft_images). Default: the post’s current picture.' }
+      },
+      ['task_id', 'action']
+    ),
+    annotations: CREATE,
+    isAvailable: canUseAI,
+    handler: async (args, ctx) => {
+      const ref = encodeURIComponent(args.draft_id || 'current');
+      if (args.action === 'all_sizes') {
+        const res = await ctx.api.request('POST', `/api/design/tasks/${args.task_id}/posters/${ref}/sizes`, { timeoutMs: 240000 });
+        return { sizes: res.sizes, skipped: res.skipped?.length ? res.skipped : undefined };
+      }
+      const res = await ctx.api.request('POST', `/api/design/tasks/${args.task_id}/posters/${ref}/print`, { body: { size: args.action === 'print_a3' ? 'a3' : 'a4' }, timeoutMs: 180000 });
+      return { pdf_url: res.url };
+    }
+  },
+  {
     name: 'change_task_picture',
     title: "Change a post's picture (app AI)",
     description:
-      "Edit one of a post's pictures with the app's AI following a sentence (e.g. \"replace the mountain with a waterfall\"); everything else is kept. By default it changes the post's current picture; pass from_url to change an AI draft or an earlier picture. The result is a new AI draft: use it with adopt_task_poster. Uses one of the account's monthly AI images; confirm with the user first.",
+      "Change one of a post's pictures following a sentence; everything else is kept. A designed poster is changed by the poster engine (e.g. \"make the headline bigger\", \"change the date to Saturday 14 June\", \"use the square shape\"; free, and its brand rules still apply: a change that breaks one is explained instead). A photo is edited by the image AI (e.g. \"replace the mountain with a waterfall\"; uses one of the account's monthly AI pictures, so confirm with the user first). By default it changes the current picture; pass from_url to change a draft or an earlier picture. The result is a new draft: use it with adopt_task_poster.",
     inputSchema: obj(
       {
         task_id: id('Post (task) ID.'),
@@ -1533,7 +1669,8 @@ const aiAdminTools: Tool[] = [
         body: { instruction: args.instruction, ...(args.from_url ? { from: args.from_url } : {}) },
         timeoutMs: 240000
       });
-      return { message: res.message, draft_image: { id: res.draft?.id, url: res.draft?.url }, task_url: absolute(ctx.appUrl, links.post(args.task_id)) };
+      if (!res.draft) return { message: res.reply || res.message, changed: false, task_url: absolute(ctx.appUrl, links.post(args.task_id)) };
+      return { message: res.message, reply: res.reply || undefined, draft_image: { id: res.draft?.id, url: res.draft?.url }, task_url: absolute(ctx.appUrl, links.post(args.task_id)) };
     }
   },
   {
@@ -1593,7 +1730,7 @@ How to work:
 - Updates only change the fields you pass.
 - archive_campaign, delete_task, delete_comment and deactivate_user remove things: confirm with the user first.
 - Every result includes a "url" the user can open in the app.
-- Pictures can't be uploaded through this connector; tell the user to add them on the post in the app (Upload, From the Library, or Create with AI). With the app's AI on, generate_task_poster creates a picture and change_task_picture edits one; both give a draft the user chooses (adopt_task_poster).
+- Pictures can't be uploaded through this connector; tell the user to add them on the post in the app (Upload, From the Library, or Create with AI). With the app's AI on: generate_task_poster designs posters (real words, logo files and partners, checked; the default for anything with a message, event or date), create_task_photo makes a photo with no words, change_task_picture changes either, poster_files gives a poster in other sizes or as a print PDF. They give drafts the user chooses (adopt_task_poster). For a poster, make sure the post's brief has the facts (what, when, where) first.
 - The Inbox (list_inbox) holds reminders that need the user (posts due by hand, failed posts, accounts to reconnect) and messages from the Blueprint team; inbox_action runs an item's action after the user agrees.
 - Publishing: list_publishing_channels shows connected accounts; schedule_post publishes a post now or later (always confirm accounts, caption and time with the user first); accounts that aren't connected can get "post by hand" reminders.
 - The Library holds the user's past and present work (pictures, captions, logos, files) with full version history. To find something, call library_overview first to see which years, months and events exist, then search_library with a date range and/or words. Never guess item ids.`;

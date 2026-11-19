@@ -9,8 +9,9 @@ import { DEFAULT_ALLOWANCE, effectiveLimit, limitMessage, monthWindow, remaining
 export * from '../lib/aiAllowance';
 
 /**
- * Monthly AI allowance (decision 20), counted from the usage log: AI images (any GPT image model) and Blue
- * messages that succeeded this month. Admins have no limit.
+ * Monthly AI allowance (decision 20), counted from the usage log: AI pictures (designed posters, AI
+ * photos and photo changes; a poster's own steps don't count extra) and Blue messages that succeeded
+ * this month. Admins have no limit. Posters and photos share one allowance.
  */
 
 /** The label Blue records its messages under (routes/blue.routes.ts). */
@@ -31,7 +32,9 @@ export interface AllowanceLine {
 }
 
 export interface AIUsage {
+  /** AI pictures: posters and photos together. */
   images: AllowanceLine;
+  /** The same line as images (older screens read it for posters). */
   designs: AllowanceLine;
   blueMessages: AllowanceLine;
   resetsAt: string;
@@ -42,32 +45,36 @@ async function limits(user: Who) {
   const config = await AppConfig.getConfig();
   return {
     images: effectiveLimit(user.aiAllowance?.images, config.aiImagesPerMonth, DEFAULT_ALLOWANCE.images),
-    designs: effectiveLimit((user.aiAllowance as any)?.designs, (config as any).aiDesignsPerMonth, DEFAULT_ALLOWANCE.designs),
     blueMessages: effectiveLimit(user.aiAllowance?.blueMessages, config.blueMessagesPerMonth, DEFAULT_ALLOWANCE.blueMessages)
   };
 }
 
+/** Posters and photos are one allowance. */
+const lineOf = (kind: AllowanceKind): 'images' | 'blueMessages' => (kind === 'blueMessages' ? 'blueMessages' : 'images');
+
 async function usedThisMonth(userId: mongoose.Types.ObjectId, kind: AllowanceKind, start: Date): Promise<number> {
-  // A poster's own AI steps (its background, its review) are part of the poster, not extra images.
-  const match =
-    kind === 'images' ? { llmModel: IMAGE_MODEL, promptName: { $not: /^Design/ } } : kind === 'designs' ? { promptName: DESIGN_USAGE_LABEL } : { promptName: BLUE_USAGE_LABEL };
-  return LLMUsage.countDocuments({ userId, success: true, createdAt: { $gte: start }, ...match });
+  const base = { userId, success: true, createdAt: { $gte: start } };
+  if (lineOf(kind) === 'blueMessages') return LLMUsage.countDocuments({ ...base, promptName: BLUE_USAGE_LABEL });
+  // AI photos and photo changes (any image model, but not a poster's own background), plus one per
+  // finished poster.
+  return LLMUsage.countDocuments({ ...base, $or: [{ llmModel: IMAGE_MODEL, promptName: { $not: /^Design/ } }, { promptName: DESIGN_USAGE_LABEL }] });
 }
 
 export async function aiUsage(user: Who): Promise<AIUsage> {
   const { start, resetsAt } = monthWindow();
   const id = new mongoose.Types.ObjectId(String(user._id));
-  const [l, images, designs, blueMessages] = await Promise.all([limits(user), usedThisMonth(id, 'images', start), usedThisMonth(id, 'designs', start), usedThisMonth(id, 'blueMessages', start)]);
+  const [l, images, blueMessages] = await Promise.all([limits(user), usedThisMonth(id, 'images', start), usedThisMonth(id, 'blueMessages', start)]);
   const unlimited = user.role === UserRole.SYSTEM_ADMIN;
   const line = (used: number, limit: number): AllowanceLine => (unlimited ? { used, limit: 0, remaining: null } : { used, limit, remaining: remainingOf(limit, used) });
-  return { images: line(images, l.images), designs: line(designs, l.designs), blueMessages: line(blueMessages, l.blueMessages), resetsAt: resetsAt.toISOString(), unlimited };
+  const pictures = line(images, l.images);
+  return { images: pictures, designs: pictures, blueMessages: line(blueMessages, l.blueMessages), resetsAt: resetsAt.toISOString(), unlimited };
 }
 
 /** Throws a 429 with a plain message when the account has used its allowance of this kind. */
 export async function assertAllowance(user: Who, kind: AllowanceKind): Promise<void> {
   if (user.role === UserRole.SYSTEM_ADMIN) return;
   const { start, resetsAt } = monthWindow();
-  const limit = (await limits(user))[kind];
+  const limit = (await limits(user))[lineOf(kind)];
   if (limit === 0) return;
   const used = await usedThisMonth(new mongoose.Types.ObjectId(String(user._id)), kind, start);
   if (used >= limit) throw new AIError(429, limitMessage(kind, limit, resetsAt));

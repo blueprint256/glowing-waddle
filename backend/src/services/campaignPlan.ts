@@ -6,7 +6,7 @@ import { User } from '../models/User';
 import { CommandMapping } from '../models/CommandMapping';
 import { compileSuperPrompt, executeCommandChain, sendToLLM } from './llmService';
 import { AIError } from '../lib/aiError';
-import { BUILTIN_PLAN_CAMPAIGN, PLAN_COMMAND, PLAN_LIMITS, normalizePlan, parsePlanReply, planWindow, type PlanOptions, type PlanPost } from '../lib/campaignPlan';
+import { BUILTIN_PLAN_CAMPAIGN, PICTURE_RULES, PLAN_COMMAND, PLAN_LIMITS, normalizePlan, parsePlanReply, planWindow, type PlanOptions, type PlanPost } from '../lib/campaignPlan';
 
 export * from '../lib/campaignPlan';
 
@@ -38,13 +38,20 @@ export async function draftCampaignPlan(campaign: ICampaign, opts: PlanOptions, 
     .limit(60)
     .lean();
 
+  const command = (opts.command || PLAN_COMMAND).trim();
+  const mapping = await CommandMapping.findOne({ command }).populate('promptId').populate('chainId').populate('steps.promptId');
+  const usable = mapping && (mapping.promptId || mapping.chainId || (mapping.steps && mapping.steps.length > 0));
+  const usableCommand = Boolean(usable);
+
   const instruction = [
     `Plan posts from ${from} to ${to} (dates as YYYY-MM-DD, all within that period).`,
     perWeek ? `About ${perWeek} post${perWeek === 1 ? '' : 's'} a week in total.` : 'A realistic number of posts for the period (usually 2 to 4 a week).',
     planned.length
       ? `Posts already planned (don't repeat them; plan around them): ${planned.map((p) => `${new Date(p.taskDate as Date).toISOString().slice(0, 10)} “${p.name}”`).join('; ')}.`
       : '',
-    notes ? `What the person asked for: ${notes}` : ''
+    notes ? `What the person asked for: ${notes}` : '',
+    // An admin's own prompt gets the picture rules through {instruction}; the built-in one has them.
+    usableCommand ? PICTURE_RULES : ''
   ]
     .filter(Boolean)
     .join('\n');
@@ -63,9 +70,6 @@ export async function draftCampaignPlan(campaign: ICampaign, opts: PlanOptions, 
     instruction
   };
 
-  const command = (opts.command || PLAN_COMMAND).trim();
-  const mapping = await CommandMapping.findOne({ command }).populate('promptId').populate('chainId').populate('steps.promptId');
-  const usable = mapping && (mapping.promptId || mapping.chainId || (mapping.steps && mapping.steps.length > 0));
   if (opts.command && !usable) throw new AIError(404, `The AI command “${command}” isn’t set up.`);
 
   let content: string;

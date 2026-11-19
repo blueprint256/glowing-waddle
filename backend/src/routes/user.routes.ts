@@ -552,8 +552,9 @@ router.post('/me/upload-logo', isAuthenticated, upload.single('logo'), async (re
     if (oldLogoUrl) {
       try {
         // Extract key from URL (format: https://bucket.s3.region.amazonaws.com/folder/file.ext)
+        // Only files this route stored itself: the main logo address may point at the brand kit's files.
         const urlParts = oldLogoUrl.split('.amazonaws.com/');
-        if (urlParts.length === 2) {
+        if (urlParts.length === 2 && urlParts[1].startsWith('company-logos/')) {
           const key = urlParts[1];
           await deleteFromS3(key);
         }
@@ -573,6 +574,25 @@ router.post('/me/upload-logo', isAuthenticated, upload.single('logo'), async (re
     user.companyInfo[logoUrlField] = location;
 
     await user.save();
+
+    // The main logo is also the brand kit's: prepare it there too (one brand, one logo).
+    if (logoType === 'primary') {
+      try {
+        const { BrandKitModel } = await import('../models/BrandKit');
+        const kit = await BrandKitModel.findOne({ ownerId: user._id });
+        if (kit) {
+          const { storeLogoFiles, syncCompanyLogo } = await import('../services/designBrand');
+          const variants = await storeLogoFiles(req.file.buffer, location);
+          const old = kit.logos.find((l) => l.role === 'primary');
+          kit.logos = [{ id: old?.id || String(Date.now()), name: old?.name || 'Main logo', role: 'primary', variants, clearSpace: old?.clearSpace ?? 0.25, minHeight: old?.minHeight ?? 0.05 } as any, ...kit.logos.filter((l) => l.role !== 'primary')];
+          kit.markModified('logos');
+          await kit.save();
+          await syncCompanyLogo(kit);
+        }
+      } catch (error) {
+        console.error('[brand] Couldn’t add the logo to the brand kit:', error);
+      }
+    }
 
     // Log upload
     await logAudit({

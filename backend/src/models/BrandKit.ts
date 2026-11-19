@@ -2,7 +2,9 @@ import mongoose, { Document, Schema } from 'mongoose';
 
 /**
  * An account's brand kit for posters (docs/DESIGN_ENGINE.md): colours, fonts, prepared logo files
- * with their rules, saved partner logos and an optional brand pack (e.g. Rotary). One per account.
+ * with their rules, saved partner logos, uploaded fonts and an optional brand pack (Rotary or Rotaract,
+ * only when the account says it is such a club). One per account; edited in Settings › Brand together
+ * with the company information, which stays the source of the name, voice and main logo address.
  */
 
 export interface BrandKitLogoVariant {
@@ -44,6 +46,25 @@ export interface BrandKitPartner {
   alts?: BrandKitLogoVariant[];
 }
 
+/** A font the account uploaded (its own licence): one family, one or more files. */
+export interface BrandKitFontFile {
+  url: string;
+  style: 'normal' | 'italic';
+  /** CSS weight, e.g. "400" or "100 900" for a variable font. */
+  weight: string;
+  format: 'truetype' | 'opentype' | 'woff' | 'woff2';
+  bytes: number;
+}
+
+export interface BrandKitFont {
+  /** "custom-<id>": what fonts.display/text/accent hold when this font is chosen. */
+  id: string;
+  /** The name shown to people (e.g. "Kawa Sans"). */
+  name: string;
+  category: 'sans' | 'serif' | 'display' | 'condensed' | 'script';
+  files: BrandKitFontFile[];
+}
+
 export interface IBrandKit extends Document {
   ownerId: mongoose.Types.ObjectId;
   name: string;
@@ -56,6 +77,8 @@ export interface IBrandKit extends Document {
     paper: { name: string; hex: string };
   };
   fonts: { display: string; text: string; accent?: string };
+  /** Fonts the account uploaded, usable in fonts.display/text/accent by their id. */
+  customFonts: BrandKitFont[];
   logos: BrandKitLogo[];
   partners: BrandKitPartner[];
   /** The account's own rules on top of the pack's (soft unless marked hard by an admin). */
@@ -106,6 +129,28 @@ const brandKitSchema = new Schema<IBrandKit>(
       text: { type: String, default: 'gelasio' },
       accent: { type: String }
     },
+    customFonts: [
+      new Schema<BrandKitFont>(
+        {
+          id: { type: String, required: true },
+          name: { type: String, required: true, maxlength: 60 },
+          category: { type: String, enum: ['sans', 'serif', 'display', 'condensed', 'script'], default: 'sans' },
+          files: [
+            new Schema<BrandKitFontFile>(
+              {
+                url: { type: String, required: true },
+                style: { type: String, enum: ['normal', 'italic'], default: 'normal' },
+                weight: { type: String, default: '400' },
+                format: { type: String, enum: ['truetype', 'opentype', 'woff', 'woff2'], default: 'truetype' },
+                bytes: { type: Number, default: 0 }
+              },
+              { _id: false }
+            )
+          ]
+        },
+        { _id: false }
+      )
+    ],
     logos: [
       new Schema<BrandKitLogo>(
         {

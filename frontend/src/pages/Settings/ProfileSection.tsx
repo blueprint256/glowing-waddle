@@ -138,7 +138,7 @@ export default function ProfileSection() {
       {usage && !usage.unlimited && (
         <Group title="AI this month" hint={`Renews on ${new Date(usage.resetsAt).toLocaleDateString(undefined, { day: 'numeric', month: 'long', timeZone: 'UTC' })}.`}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-            <UsageBar label="AI images" line={usage.images} />
+            <UsageBar label="AI pictures (posters and photos)" line={usage.images} />
             <UsageBar label="Blue messages" line={usage.blueMessages} />
           </Box>
         </Group>

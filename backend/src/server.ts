@@ -168,6 +168,9 @@ app.post('/api/tasks/improve-caption', requireAI);
 app.patch('/api/tasks/:id/adopt-poster', requireAI);
 app.post('/api/tasks/:id/image/create', requireAI);
 app.post('/api/tasks/:id/image/change', requireAI);
+// Designed posters are an AI feature too (making, editing, other sizes and print).
+app.post('/api/design/tasks/:id/posters', requireAI);
+app.post('/api/design/tasks/:id/posters/:ref/:action', requireAI);
 
 // API Routes
 app.use('/api', connectedAppsRoutes); // /api/oauth/requests/*, /api/connected-apps

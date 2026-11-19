@@ -42,8 +42,9 @@ export interface IAppConfig extends Document {
   libraryModel?: string;
   libraryMonthlyAiLimit: number; // AI-read items per user per month; 0 = unlimited
   // Monthly AI allowance per account (admins have none); 0 = unlimited. Accounts can have their own.
+  /** AI pictures (designed posters and AI photos together) per account per month. */
   aiImagesPerMonth: number;
-  /** Designed posters per account per month (0 = no limit). */
+  /** Older separate poster allowance: no longer used (posters count as AI pictures). */
   aiDesignsPerMonth: number;
   blueMessagesPerMonth: number;
   librarySemanticSearch: boolean; // embeddings (needs an OpenAI key)
@@ -183,7 +184,7 @@ const appConfigSchema = new Schema<IAppConfig>(
     },
     aiImagesPerMonth: {
       type: Number,
-      default: 20,
+      default: 30,
       min: 0
     },
     blueMessagesPerMonth: {

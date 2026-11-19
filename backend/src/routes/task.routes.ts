@@ -36,6 +36,7 @@ import {
 import { changePicture, createPicture, tidyPictures } from '../services/postPicture';
 import { isCorner, isFormat, isRole, type LogoCorner, type PictureFormat } from '../lib/postPicture';
 import { AIError } from '../lib/aiError';
+import { DesignError } from '../services/designPipeline';
 
 /**
  * Posts ("tasks" in the API). Post v2 (docs/POST_V2_PLAN.md): a post belongs to an account
@@ -74,9 +75,9 @@ async function populated(id: unknown) {
 
 /** One error answer for every route here. */
 function fail(res: Response, error: unknown, fallback: string) {
-  if (error instanceof PostError) return res.status(error.status).json({ success: false, message: error.message });
+  if (error instanceof PostError || error instanceof DesignError) return res.status(error.status).json({ success: false, message: error.message });
   if (error instanceof AIError) {
-    const code = error.status === 429 && /image/i.test(error.message) ? { code: 'AI_IMAGE_LIMIT' } : {};
+    const code = error.status === 429 && /picture|image/i.test(error.message) ? { code: 'AI_IMAGE_LIMIT' } : {};
     return res.status(error.status).json({ success: false, message: error.message, ...code });
   }
   console.error(fallback, error);
@@ -463,10 +464,23 @@ router.post('/:id/image/create', isAuthenticated, canManageTasks, validateMongoI
  */
 router.post('/:id/image/change', isAuthenticated, canManageTasks, validateMongoId('id'), checkTaskOwnership, async (req: Request, res: Response) => {
   try {
-    await assertAllowance(req.user!, 'images');
     const task = await loadTask(req);
     const from = textOrUndefined(req.body?.from) || task.designedImage || task.aiDrafts?.[0]?.url;
     if (!from) throw new PostError(400, 'There’s no picture to change yet. Create or add one first.');
+    // A designed poster is changed by the design engine (its words and logos stay real and checked),
+    // never repainted by the image AI. Poster edits are free.
+    const posterRef = from === task.designedImage && task.pictureDesign?.doc ? 'current' : (task.aiDrafts || []).find((d) => d.url === from && d.design?.doc)?.id;
+    if (posterRef) {
+      const instruction = textOrUndefined(req.body?.instruction);
+      if (!instruction) throw new PostError(400, 'Say what to change.');
+      const { editDesign } = await import('../services/designEdits');
+      const answer = await editDesign(task, posterRef, { request: instruction.slice(0, 1500) }, req.user!._id as Id);
+      if (!answer.draft) return res.json({ success: true, draft: null, reply: answer.reply, refused: answer.refused || null, message: answer.reply });
+      task.lastModifiedBy = req.user!._id;
+      await task.save();
+      return pictureAnswer(res, task._id, 'Changed poster ready', { draft: answer.draft, reply: answer.reply });
+    }
+    await assertAllowance(req.user!, 'images');
     const { logo } = pictureChoices(req.body, task);
     const { draft, dropped } = await changePicture(task, { instruction: req.body?.instruction, from, logo, userId: req.user!._id as Id });
     await task.save();
@@ -719,7 +733,7 @@ router.post('/:id/refine-description', isAuthenticated, canManageTasks, validate
 // Older picture endpoints (the connector and older clients)
 // ---------------------------------------------------------------------------
 
-/** @route POST /api/tasks/:id/generate-poster: Create image with the post's saved choices. */
+/** @route POST /api/tasks/:id/generate-poster (older connectors): an AI photo with the post’s saved choices. Posters: /api/design/tasks/:id/posters. */
 router.post('/:id/generate-poster', isAuthenticated, canManageTasks, validateMongoId('id'), checkTaskOwnership, async (req: Request, res: Response) => {
   try {
     await assertAllowance(req.user!, 'images');

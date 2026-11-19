@@ -156,7 +156,7 @@ export const taskAPI = {
   uploadImage: (id: string, formData: FormData) => api.post(`/tasks/${id}/upload-image`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
   /** Removes the picture (it stays among the earlier pictures). */
   removeImage: (id: string) => api.delete(`/tasks/${id}/image`),
-  /** Create image with AI: adds an AI draft. Takes 15–60 seconds. */
+  /** An AI photo (Create with AI › Photo): adds an AI draft. Takes 15–60 seconds. */
   createImage: (id: string, body: CreateImageBody) => api.post(`/tasks/${id}/image/create`, body, { timeout: 240_000 }),
   /** Change image with AI: adds an AI draft with the change. */
   changeImage: (id: string, body: ChangeImageBody) => api.post(`/tasks/${id}/image/change`, body, { timeout: 240_000 }),

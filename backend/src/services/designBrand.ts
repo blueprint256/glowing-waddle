@@ -160,29 +160,68 @@ export async function paletteFromLogo(input: Buffer): Promise<string[]> {
     .map(hex);
 }
 
-/** The account's kit, created from its existing logo the first time a poster is made. */
+/** Logo addresses that couldn't be prepared, so a broken one isn't fetched on every page load. */
+const unusableLogos = new Set<string>();
+
+/** Turns the account's main logo address into the kit's main logo (prepared versions included). */
+async function importCompanyLogo(kit: IBrandKit, url: string, companyName?: string): Promise<boolean> {
+  if (unusableLogos.has(url)) return false;
+  try {
+    const { buffer } = await loadPicture(url);
+    const variants = await storeLogoFiles(buffer, url);
+    kit.logos = [
+      { id: newId(), name: `${companyName || 'Our'} logo`.trim(), role: 'primary', variants, clearSpace: packById(kit.pack)?.logoDefaults.primary.clearSpace ?? 0.25, minHeight: packById(kit.pack)?.logoDefaults.primary.minHeight ?? 0.05 } as any,
+      ...kit.logos.filter((l) => l.role !== 'primary')
+    ];
+    kit.markModified('logos');
+    return true;
+  } catch (error) {
+    unusableLogos.add(url);
+    console.error('[design] Couldn’t prepare the account logo:', error);
+    return false;
+  }
+}
+
+/**
+ * The account's brand kit. One brand per account: the company information (name, voice, main logo
+ * address) and the kit (prepared logos, colours, fonts, partners, rules) are edited together in
+ * Settings › Brand. The kit is created from the company information the first time it's needed, and
+ * picks up a main logo set elsewhere (an older upload, the connector) when it has none of its own.
+ */
 export async function loadBrandKit(ownerId: Id | string): Promise<IBrandKit> {
   const existing = await BrandKitModel.findOne({ ownerId });
-  if (existing) return existing;
   const owner = await User.findById(ownerId).select('companyInfo');
   const info: any = owner?.companyInfo || {};
+  if (existing) {
+    let changed = false;
+    if (!existing.logos.some((l) => l.role === 'primary' && l.variants?.length) && info.primaryLogoUrl) changed = await importCompanyLogo(existing, info.primaryLogoUrl, info.companyName);
+    if (info.companyName && existing.name !== info.companyName) {
+      existing.name = String(info.companyName).slice(0, 120);
+      changed = true;
+    }
+    if (changed) await existing.save().catch(() => undefined);
+    return existing;
+  }
   const colors = JSON.parse(JSON.stringify(NEUTRAL));
-  const logos: any[] = [];
-  if (info.primaryLogoUrl) {
+  const draft = new BrandKitModel({ ownerId, name: info.companyName || '', pack: null, colors, fonts: { display: 'opensans', text: 'gelasio' }, customFonts: [], logos: [], partners: [], rules: [] });
+  if (info.primaryLogoUrl && (await importCompanyLogo(draft, info.primaryLogoUrl, info.companyName))) {
     try {
       const { buffer } = await loadPicture(info.primaryLogoUrl);
-      const variants = await storeLogoFiles(buffer, info.primaryLogoUrl);
-      logos.push({ id: newId(), name: `${info.companyName || 'Our'} logo`.trim(), role: 'primary', variants, clearSpace: 0.25, minHeight: 0.05 });
       const palette = await paletteFromLogo(buffer);
-      if (palette[0]) colors.primary = { name: 'Brand colour', hex: palette[0] };
-      if (palette[1]) colors.accent = { name: 'Brand accent', hex: palette[1] };
-      colors.secondary = { name: 'Brand colour (deep)', hex: mix(colors.primary.hex, colors.ink.hex, 0.35) };
-    } catch (error) {
-      console.error('[design] Couldn’t prepare the account logo:', error);
+      if (palette[0]) draft.colors.primary = { name: 'Brand colour', hex: palette[0] };
+      if (palette[1]) draft.colors.accent = { name: 'Brand accent', hex: palette[1] };
+      draft.colors.secondary = { name: 'Brand colour (deep)', hex: mix(draft.colors.primary.hex, draft.colors.ink.hex, 0.35) };
+    } catch {
+      /* the neutral colours stay */
     }
   }
+  // Colours written in the brand guidelines ("#4B2E1F") are better than ones guessed from the logo.
+  const written = hexesIn(String(info.brandGuidelines || ''));
+  if (written[0]) draft.colors.primary = { name: 'Brand colour', hex: written[0] };
+  if (written[1]) draft.colors.secondary = { name: 'Second colour', hex: written[1] };
+  if (written[2]) draft.colors.accent = { name: 'Accent', hex: written[2] };
   try {
-    return await BrandKitModel.create({ ownerId, name: info.companyName || '', pack: null, colors, fonts: { display: 'opensans', text: 'gelasio' }, logos, partners: [], rules: [] });
+    return await draft.save();
   } catch (error: any) {
     // Two requests at once: the other one created it.
     if (error?.code === 11000) {
@@ -191,6 +230,44 @@ export async function loadBrandKit(ownerId: Id | string): Promise<IBrandKit> {
     }
     throw error;
   }
+}
+
+/** "#4B2E1F" and "#fff" written in free text, in order, without repeats. */
+export function hexesIn(text: string): string[] {
+  const out: string[] = [];
+  for (const m of text.matchAll(/#([0-9a-f]{6}|[0-9a-f]{3})\b/gi)) {
+    const h = m[1].length === 3 ? m[1].split('').map((c) => c + c).join('') : m[1];
+    const hex = `#${h.toLowerCase()}`;
+    if (!out.includes(hex)) out.push(hex);
+  }
+  return out;
+}
+
+/**
+ * Keeps the company information's main logo address in step with the kit's main logo, so every
+ * other feature (AI photos, previews, the connector) shows the same logo.
+ */
+export async function syncCompanyLogo(kit: IBrandKit): Promise<void> {
+  const primary = kit.logos.find((l) => l.role === 'primary' && l.variants?.length);
+  const best = primary ? primary.variants.find((v) => v.variant === 'color' && !v.derived) || primary.variants[0] : null;
+  await User.updateOne({ _id: kit.ownerId }, { $set: { 'companyInfo.primaryLogoUrl': best?.url || '' } });
+}
+
+/** How the brand talks (from the company information), for the art director. */
+export interface BrandVoice {
+  sector?: string;
+  about?: string;
+  tone?: string;
+  audience?: string;
+  rules?: string;
+  guidelines?: string;
+}
+
+export async function brandVoice(ownerId: Id | string): Promise<BrandVoice> {
+  const owner = await User.findById(ownerId).select('companyInfo');
+  const i: any = owner?.companyInfo || {};
+  const t = (v: unknown, max = 1200) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined);
+  return { sector: t(i.sector, 120), about: t(i.about), tone: t(i.brandTone, 400), audience: t(i.audienceProfile, 600), rules: t(i.globalRules), guidelines: t(i.brandGuidelines) };
 }
 
 const toAsset = (v: BrandKitLogoVariant): LogoAsset => ({
@@ -212,7 +289,8 @@ export function engineKit(doc: IBrandKit): BrandKit {
   const pack = packById(doc.pack);
   const colorOr = (c: any, fallback: { name: string; hex: string }) => (c && isHex(c.hex) ? { name: c.name || fallback.name, hex: c.hex } : fallback);
   const base = pack?.colors || NEUTRAL;
-  const font = (id: string | undefined, fallback: string) => (id && FONT_IDS.includes(id) ? id : fallback);
+  const customFonts = (doc.customFonts || []).filter((f) => f.files?.length).map((f) => ({ id: f.id, name: f.name, category: f.category, files: f.files.map((x) => ({ url: x.url, style: x.style, weight: x.weight, format: x.format })) }));
+  const font = (id: string | undefined, fallback: string) => (id && (FONT_IDS.includes(id) || customFonts.some((c) => c.id === id)) ? id : fallback);
   const logos: BrandLogo[] = (doc.logos || [])
     .filter((l) => l.variants?.length)
     .map((l) => ({
@@ -239,6 +317,7 @@ export function engineKit(doc: IBrandKit): BrandKit {
       text: font(doc.fonts?.text, pack?.fonts.text || 'gelasio'),
       accent: font(doc.fonts?.accent, pack?.fonts.accent || '') || undefined
     },
+    customFonts,
     logos,
     rules: [...(pack?.rules || []), ...(doc.rules || []).map((r) => ({ id: r.id, text: r.text, hard: !!r.hard }))],
     notes: [pack?.notes, doc.notes].filter(Boolean).join('\n'),

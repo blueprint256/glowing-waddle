@@ -11,7 +11,7 @@ import { getProviderKey, renderImage } from './llmService';
 import { loadPicture } from './postPicture';
 import { addDraft, deleteUnusedPictures, newId } from './posts';
 import { DESIGN_USAGE_LABEL } from './aiAllowance';
-import { engineKit, loadBrandKit, sponsorFromPartner, upgradeKitLogos } from './designBrand';
+import { brandVoice, engineKit, loadBrandKit, sponsorFromPartner, upgradeKitLogos } from './designBrand';
 import { allDesigns } from './designLibrary';
 import { objectKeyFromUrl, uploadBufferToS3 } from '../utils/s3Service';
 import { renderDesign, type RenderResult } from '../design/renderer';
@@ -262,6 +262,7 @@ export async function runDesignJob(job: IDesignJob): Promise<void> {
     sponsors,
     campaignLogoIds,
     designs,
+    voice: await brandVoice(job.ownerId),
     count: Math.max(1, Math.min(4, job.request.count || 4)),
     today: new Date()
   };

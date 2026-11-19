@@ -701,7 +701,7 @@ export default function PromptsSection() {
             Commands
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Which prompt or chain each AI feature runs: improve-caption, refine-task-description (Improve brief), generate-campaign (Plan with AI), generate-poster (AI images). Without one, a feature uses its built-in prompt (AI images need one).
+            Which prompt or chain each AI feature runs: improve-caption, refine-task-description (Improve brief), generate-campaign (Plan with AI), generate-photo (AI photos, with no words) and change-image (changing a photo). Without one, a feature uses its built-in prompt. Posters are made by the poster engine (Settings › AI), so generate-poster is no longer used.
           </Typography>
         </Box>
         <Button

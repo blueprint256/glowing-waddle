@@ -3,7 +3,7 @@ import path from 'path';
 import crypto from 'crypto';
 import type { BrandKit, BrandLogo, DesignDoc, DesignTemplate, LogoAsset } from './types';
 import { FORMATS } from './formats';
-import { fontFaceCss, fontStack } from './fonts';
+import { customFontFaceCss, fontFaceCss, fontStack } from './fonts';
 import { bestText, contrastHex, mix, rgbTriplet, withLightness, lightness } from './color';
 import { normalizeParams } from './template';
 
@@ -58,9 +58,9 @@ export function brandTokens(kit: BrandKit, swap = false): Record<string, string>
     '--on-secondary': bestText(secondary, ink, paper),
     '--on-accent': bestText(accent, ink, paper),
     '--on-deep': bestText(deep, ink, paper),
-    '--f-display': fontStack(kit.fonts.display),
-    '--f-text': fontStack(kit.fonts.text),
-    '--f-accent': fontStack(kit.fonts.accent || kit.fonts.display),
+    '--f-display': fontStack(kit.fonts.display, kit.customFonts),
+    '--f-text': fontStack(kit.fonts.text, kit.customFonts),
+    '--f-accent': fontStack(kit.fonts.accent || kit.fonts.display, kit.customFonts),
     '--grain-img': `url("data:image/svg+xml,${encodeURIComponent(GRAIN_SVG)}")`
   };
   for (const [k, v] of Object.entries({ primary, secondary, accent, ink, paper, 'primary-deep': deep })) tokens[`--c-${k}-rgb`] = rgbTriplet(v);
@@ -164,7 +164,8 @@ export function buildPage(template: DesignTemplate, doc: DesignDoc, kit: BrandKi
     .map(([k, v]) => `${k}:${v}`)
     .join(';')};${paramVars.join(';')}}`;
 
-  const fonts = fontFaceCss([kit.fonts.display, kit.fonts.text, kit.fonts.accent || '']);
+  const fontIds = [kit.fonts.display, kit.fonts.text, kit.fonts.accent || ''];
+  const fonts = [fontFaceCss(fontIds), customFontFaceCss(fontIds, kit.customFonts || [], address)].filter(Boolean).join('\n');
   const csp = `default-src 'none'; img-src https://design.local data:; font-src https://design.local; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'`;
 
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}">

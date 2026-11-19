@@ -2,7 +2,7 @@ import sharp from 'sharp';
 import type { BrandKit, DesignDoc, DesignTemplate, MeasuredElement, RenderReport } from './types';
 import { FORMATS } from './formats';
 import { buildPage } from './page';
-import { readFontFile } from './fonts';
+import { FONT_CONTENT_TYPE, fontFormatOf, readFontFile } from './fonts';
 import { contrast, luminance, type RGB } from './color';
 import { runChecks } from './checks';
 
@@ -42,6 +42,17 @@ async function getBrowser(): Promise<Browser> {
   return browserPromise;
 }
 
+/** Whether posters can be rendered on this server (opens the browser if it isn't open yet). */
+export async function rendererStatus(): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const b = await getBrowser();
+    return { ok: b.isConnected() };
+  } catch (error: any) {
+    browserPromise = null;
+    return { ok: false, error: String(error?.message || error).split('\n')[0].slice(0, 300) };
+  }
+}
+
 export async function closeRenderer(): Promise<void> {
   if (!browserPromise) return;
   const b = await browserPromise.catch(() => null);
@@ -74,6 +85,8 @@ function contentTypeOf(buf: Buffer): string {
   if (buf[0] === 0xff && buf[1] === 0xd8) return 'image/jpeg';
   if (buf.slice(0, 4).toString() === 'RIFF') return 'image/webp';
   if (buf.slice(0, 5).toString().includes('<svg') || buf.slice(0, 5).toString() === '<?xml') return 'image/svg+xml';
+  const font = fontFormatOf(buf);
+  if (font) return FONT_CONTENT_TYPE[font];
   return 'application/octet-stream';
 }
 

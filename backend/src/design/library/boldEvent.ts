@@ -178,6 +178,8 @@ export const boldEvent: DesignTemplate = {
 #poster:not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-info { width: 100cqw; padding: 0 var(--m); justify-content: center; align-items: center; text-align: center; }
 #poster:not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-date { justify-content: center; }
 #poster:not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-details { align-items: center; }
+#poster:not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-cta { align-self: center; }
+#poster:not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-info { gap: 3.2cqmin; }
 #poster:not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-detail[data-key="detail-place"] { margin-left: 0; padding-left: 2cqmin; border-radius: 99cqmin; }
 
 /* A lot to say (tagline, call to action and two or more detail lines besides the date): the title
@@ -217,5 +219,24 @@ export const boldEvent: DesignTemplate = {
 #poster[data-format="story"] .be-info { gap: 3cqmin; }
 
 #poster[data-format="a4"], #poster[data-format="a3"] { --m: 7.5cqmin; --band-h: 10cqh; }
+
+/* No photo on a tall poster (story, print): the details have the whole width, so the date and details grow to
+   fill the space the photo would have taken (#poster twice: this wins over the dense rules, as a
+   poster without a photo has room for everything). */
+#poster#poster:is([data-format="story"], [data-format="a4"], [data-format="a3"]):not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-info { gap: 2.8cqmin; }
+#poster#poster:is([data-format="story"], [data-format="a4"], [data-format="a3"]):not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-date-icon { font-size: 7cqmin; }
+#poster#poster:is([data-format="story"], [data-format="a4"], [data-format="a3"]):not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-date-main { font-size: 9cqmin; }
+#poster#poster:is([data-format="story"], [data-format="a4"], [data-format="a3"]):not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-date-top { font-size: 7cqmin; }
+#poster#poster:is([data-format="story"], [data-format="a4"], [data-format="a3"]):not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-date-bottom { font-size: 4.2cqmin; }
+#poster#poster:is([data-format="story"], [data-format="a4"], [data-format="a3"]):not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-detail { font-size: 3cqmin; }
+#poster#poster:is([data-format="story"], [data-format="a4"], [data-format="a3"]):not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-cta { font-size: 2.8cqmin; }
+/* Story: much taller, so they grow further. */
+#poster#poster[data-format="story"]:not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-info { gap: 3.6cqmin; }
+#poster#poster[data-format="story"]:not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-date-icon { font-size: 8cqmin; }
+#poster#poster[data-format="story"]:not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-date-main { font-size: 10.5cqmin; }
+#poster#poster[data-format="story"]:not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-date-top { font-size: 8cqmin; }
+#poster#poster[data-format="story"]:not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-date-bottom { font-size: 4.8cqmin; }
+#poster#poster[data-format="story"]:not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-detail { font-size: 3.3cqmin; }
+#poster#poster[data-format="story"]:not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-cta { font-size: 3cqmin; }
 `
 };

@@ -84,7 +84,7 @@ const EXAMPLE = JSON.stringify(
   1
 );
 
-export const IMPORT_SYSTEM = `You are a senior poster designer and front-end engineer. You turn a reference poster into an ORIGINAL, reusable poster design for a rendering engine. Clubs (Rotary, Rotaract, charities, small businesses) will fill it with their own words, photos and logos, in six shapes, with anywhere from no partners to nine.
+export const IMPORT_SYSTEM = `You are a senior poster designer and front-end engineer. You turn a reference poster into an ORIGINAL, reusable poster design for a rendering engine. Any organisation (NGOs, clubs such as Rotary and Rotaract, schools, churches, small businesses) will fill it with their own words, photos and logos, in six shapes, with anywhere from no partners to nine.
 
 What to take from the reference, and what never to take:
 - Take its structure: the grid, the proportions, the hierarchy (what is biggest, what is grouped), how photo and words meet (overlap, cut, fade, frame, band), the rhythm of spacing, the kind of type (condensed, serif, weight contrasts), the role of colour (ground, accent, panels).

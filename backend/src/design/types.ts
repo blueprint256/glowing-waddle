@@ -169,6 +169,14 @@ export interface BrandColors {
   extra?: BrandColor[];
 }
 
+/** An uploaded font family (served to the renderer like any other file of the poster). */
+export interface CustomFont {
+  id: string;
+  name: string;
+  category: 'sans' | 'serif' | 'display' | 'condensed' | 'script';
+  files: { url: string; style: 'normal' | 'italic'; weight: string; format: 'truetype' | 'opentype' | 'woff' | 'woff2' }[];
+}
+
 export interface BrandFonts {
   /** Headlines (a family id from fonts.ts). */
   display: string;
@@ -194,6 +202,8 @@ export interface BrandKit {
   pack?: string | null;
   colors: BrandColors;
   fonts: BrandFonts;
+  /** Fonts the account uploaded; fonts.display/text/accent may name them by id. */
+  customFonts?: CustomFont[];
   logos: BrandLogo[];
   rules: BrandRule[];
   /** Free-text guidance for the art director (tone, photography, do's and don'ts). */

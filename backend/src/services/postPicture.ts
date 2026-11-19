@@ -11,6 +11,8 @@ import {
   BUILTIN_CHANGE_IMAGE,
   BUILTIN_CREATE_IMAGE,
   FORMAT_SIZES,
+  PHOTO_COMMAND,
+  PHOTO_RULE,
   apiSizeFor,
   brandText,
   campaignText,
@@ -28,7 +30,7 @@ import { composePicture } from '../lib/pictureCompose';
 
 /**
  * A post's picture with AI (Post v2, docs/POST_V2_PLAN.md):
- * - Create image: from "What's this post about?", the brand, the campaign and the reference pictures
+ * - AI photo (Create with AI › Photo, no words): from "What’s this post about?", the brand, the campaign and the reference pictures
  * - Change image: edits one picture following a sentence, keeping the rest
  * Both add a draft (shown next to the current picture) and never replace the picture by themselves.
  * The real logo file is stamped on afterwards (never drawn by the AI). Saved as JPEG.
@@ -104,7 +106,11 @@ export interface CreateOptions {
   userId: Id;
 }
 
-/** Create image: adds a new draft to the post (not saved here) and returns it. */
+/**
+ * An AI photo ("Create with AI" › Photo): adds a new draft to the post (not saved here) and returns
+ * it. Uses the admin's "generate-photo" command when it's set up, else the built-in words; either
+ * way the photo carries no words (posters are the design engine's job).
+ */
 export async function createPicture(task: ITask, options: CreateOptions): Promise<{ draft: PostAIDraft; dropped: string[] }> {
   const brief = (options.description ?? task.description ?? '').trim();
   if (!brief && !(task.content || '').trim()) {
@@ -115,10 +121,10 @@ export async function createPicture(task: ITask, options: CreateOptions): Promis
   const [{ companyInfo, campaign }, logo] = await Promise.all([pictureContext(task), logoFor(task, options.logo)]);
 
   const notes = referenceNotes(refs.map((r) => ({ role: r.role, name: r.name }))) || 'None.';
-  const mapping = await commandMapping('generate-poster');
+  const mapping = await commandMapping(PHOTO_COMMAND);
   let raw: Buffer;
   if (mapping) {
-    // The admin's own "generate-poster" prompt or chain. It can use {brief}, {references},
+    // The admin's own "generate-photo" prompt or chain. It can use {brief}, {references},
     // {format} and {logoNote}; the reference pictures are always sent, in order.
     const data: Record<string, unknown> = {
       taskDescription: brief || (task.content || ''),
@@ -127,8 +133,8 @@ export async function createPicture(task: ITask, options: CreateOptions): Promis
       ...(companyInfo ? { companyInfo } : {}),
       ...(campaign ? { campaignDetails: campaign } : {}),
       references: notes,
-      format: formatNote(options.format),
-      logoNote: logoNote(options.logo),
+      format: `${formatNote(options.format)} ${PHOTO_RULE}`,
+      logoNote: `${logoNote(options.logo)} ${PHOTO_RULE}`,
       __extraImages: refs.map((r) => r.url),
       __size: size.api
     };
@@ -150,12 +156,12 @@ export async function createPicture(task: ITask, options: CreateOptions): Promis
     });
     const images = await Promise.all(refs.map((r, i) => forAI(r.url, r.name || `reference-${i + 1}`)));
     raw = await renderImage({
-      prompt,
+      prompt: `${prompt}\n\n${PHOTO_RULE}`,
       images,
       size: size.api,
       fidelity: refs.some((r) => r.role === 'include') ? 'high' : undefined,
       userId: options.userId,
-      promptName: 'Create image'
+      promptName: 'Create photo'
     });
   }
 

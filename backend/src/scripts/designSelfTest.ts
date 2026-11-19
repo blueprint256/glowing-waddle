@@ -23,7 +23,9 @@ import { checkScore, hasErrors } from '../design/checks';
 import { plannedDocs, planWithoutAI, cleanCopy, type DirectorInput, type DirectorPlan } from '../design/director';
 import { applyEdits, applyTextEdits } from '../design/edits';
 import { buildToolRequest } from '../design/claude';
-import { DIRECTOR_TOOL } from '../design/director';
+import { DIRECTOR_TOOL, voiceText } from '../design/director';
+import { FONT_DIR, fontFormatOf, fontStack, customFontFaceCss } from '../design/fonts';
+import { buildPage } from '../design/page';
 
 async function main() {
   const out = process.env.DESIGN_OUT || '/tmp/design-out';
@@ -69,11 +71,13 @@ async function main() {
         // Many partners with ordinary words: clubs often list six to nine.
         ['typical-6', 'typical', 6],
         ['short-0', 'short', 0],
-        ['long-6', 'long', 6]
+        ['long-6', 'long', 6],
+        // Designs that work without a photo are also made without one ("no photo chosen").
+        ...(design.photos.min === 0 ? ([['nophoto-3', 'typical', 3]] as [string, keyof typeof SAMPLE_TEXT, number][]) : [])
       ];
       for (const [name, textKey, sponsorCount] of cases) {
         const photo = photos[(name.length + format.length) % photos.length];
-        const usePhotos = (name === 'long-6' && design.photos.max >= 2 ? [photo, photos[(photos.indexOf(photo) + 1) % photos.length]] : [photo]).slice(0, design.photos.max);
+        const usePhotos = name.startsWith('nophoto') ? [] : (name === 'long-6' && design.photos.max >= 2 ? [photo, photos[(photos.indexOf(photo) + 1) % photos.length]] : [photo]).slice(0, design.photos.max);
         // Typical and short words are written to the design's limits, as the art director writes
         // them; the long words are the stress test and stay as they are.
         const words = textKey === 'long' ? SAMPLE_TEXT[textKey] : withinLimits(SAMPLE_TEXT[textKey], design);
@@ -261,6 +265,39 @@ async function main() {
     const reqOk = req.tool_choice.name === DIRECTOR_TOOL.name && req.system.length === 2 && (req.system[1] as any).cache_control && req.messages[0].content.length === 3;
     console.log(`${reqOk ? '✓' : '✗'} Claude request shape`);
     if (!reqOk) failures++;
+  }
+
+  // Uploaded fonts: recognised from their bytes, given a family of their own and used on the poster.
+  {
+    const marker = fs.readFileSync(path.join(FONT_DIR, 'permanentmarker', 'PermanentMarker-Regular.ttf'));
+    const url = 'https://files.test/brand-fonts/marker.ttf';
+    files.set(url, marker);
+    const custom = [{ id: 'custom-abc12345', name: 'Our Marker', category: 'script' as const, files: [{ url, style: 'normal' as const, weight: '400', format: 'truetype' as const }] }];
+    const formatsOk = fontFormatOf(marker) === 'truetype' && fontFormatOf(Buffer.from('wOF2xxxxxxxxxxxx')) === 'woff2' && fontFormatOf(Buffer.from('<html>not a font')) === null;
+    const stackOk = fontStack('custom-abc12345', custom).startsWith('"Brand custom-abc12345"') && fontStack('custom-gone0000', custom).includes('Open Sans');
+    const css = customFontFaceCss(['custom-abc12345'], custom, () => 'https://design.local/a/9');
+    const cssOk = css.includes('font-family:"Brand custom-abc12345"') && css.includes('url("https://design.local/a/9") format("truetype")');
+    const design = BUILTIN_DESIGNS.find((d) => d.id === 'bold-event') || BUILTIN_DESIGNS[0];
+    const doc = testDoc(design.id, 'portrait', withinLimits(SAMPLE_TEXT.typical, design), design.photos.min ? [photos[0]] : [], []);
+    const ownKit = { ...kit, fonts: { ...kit.fonts, display: 'custom-abc12345' }, customFonts: custom };
+    const page = buildPage(design, doc, ownKit as any, (u: string) => `https://design.local/x/${encodeURIComponent(u)}`);
+    const pageHtml = page.html;
+    const pageOk = pageHtml.includes('Brand custom-abc12345') && pageHtml.includes(encodeURIComponent(url));
+    const plain = await renderDesign(design, doc, kit, loader, { scale: 1 });
+    const own = await renderDesign(design, doc, ownKit as any, loader, { scale: 1 });
+    fs.writeFileSync(path.join(out, 'custom-font.png'), own.file);
+    const differs = Buffer.compare(plain.file, own.file) !== 0;
+    const fontOk = formatsOk && stackOk && cssOk && pageOk && differs && !hasErrors(own.report.issues);
+    console.log(`${fontOk ? '✓' : '✗'} uploaded font: detected ${formatsOk}, stack ${stackOk}, css ${cssOk}, page ${pageOk}, poster changes ${differs}, checks ${own.report.issues.filter((i) => i.level === 'error').map((i) => i.code).join(',') || 'clean'}`);
+    if (!fontOk) failures++;
+  }
+
+  // The brand's own words reach the art director.
+  {
+    const v = voiceText({ about: 'A Kampala café', tone: 'Warm', rules: 'Say “Ugandan coffee”' });
+    const vOk = v.includes('What the brand does: A Kampala café') && v.includes('Tone of voice: Warm') && v.includes('Always and never') && voiceText(null) === '' && voiceText({}) === '';
+    console.log(`${vOk ? '✓' : '✗'} brand voice for the art director`);
+    if (!vOk) failures++;
   }
 
   await closeRenderer();

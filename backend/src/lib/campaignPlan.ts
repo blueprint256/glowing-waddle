@@ -32,6 +32,19 @@ export interface PlanOptions {
   command?: string;
 }
 
+/**
+ * How each planned post's picture is described, so the poster engine can lay it out straight away.
+ * Sent with every plan (the built-in prompt, and an admin's prompt through {instruction}).
+ */
+export const PICTURE_RULES = `Pictures:
+- "picture.kind" is "poster" for posts with a message, an event, a date, figures or partners (most posts), or "photo" for a picture with no words (a mood, a product, behind the scenes).
+- For a poster, "picture.facts" holds only facts given above, copied exactly: a short headline idea (at most 8 words), and when there is one, the date, time and place, and any figures ("2,000 trees planted"). Leave out anything not given; never invent dates, places, names or numbers.
+
+Reply with JSON only, no explanation, in exactly this shape:
+[
+  { "title": "Post title", "brief": "What the post is about", "caption": "Caption", "day": "YYYY-MM-DD", "picture": { "kind": "poster", "facts": { "headline": "…", "date": "…", "time": "…", "place": "…", "figures": ["…"] } } }
+]`;
+
 export const BUILTIN_PLAN_CAMPAIGN = `You are a senior social media strategist planning posts for this brand.
 
 Brand:
@@ -43,16 +56,13 @@ Campaign:
 What to plan:
 {instruction}
 
-For every post give a short title (3 to 6 words), a brief (what the post is about: the goal, the key message and the picture idea, 30 to 70 words) and a finished caption in the brand's tone.
+For every post give a short title (3 to 6 words), a brief (what the post is about: the goal, the key message and the picture idea, 30 to 70 words), a finished caption in the brand's tone, and the picture it needs.
 
 Rules:
 - Follow the brand's tone of voice and its rules.
 - Do not invent prices, discounts, dates of events, names or links that are not given above.
 - Spread the posts sensibly over the period and vary them (announcements, tips, behind the scenes, customer stories…); at most one post a day unless asked.
-- Reply with JSON only, no explanation, in exactly this shape:
-[
-  { "title": "Post title", "brief": "What the post is about", "caption": "Caption", "day": "YYYY-MM-DD" }
-]`;
+${PICTURE_RULES}`;
 
 const ymd = (d: Date) => d.toISOString().slice(0, 10);
 const isDay = (s: unknown): s is string => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`));
@@ -64,6 +74,29 @@ export function planDay(value: unknown): string | null {
   if (isDay(s.slice(0, 10))) return s.slice(0, 10);
   const d = new Date(s);
   return Number.isNaN(d.getTime()) ? null : ymd(d);
+}
+
+/**
+ * The picture a plan gave a post, written into its brief so people can read and edit it, and the
+ * poster engine reads it as the poster's facts.
+ */
+export function pictureLines(picture: unknown): string {
+  if (!picture || typeof picture !== 'object') return '';
+  const p = picture as any;
+  const kind = String(p.kind || p.type || '').toLowerCase();
+  if (kind === 'photo') return 'Picture: a photo with no words.';
+  const f = p.facts && typeof p.facts === 'object' ? p.facts : p;
+  const one = (v: unknown, max = 160) => (typeof v === 'string' || typeof v === 'number' ? String(v).trim().slice(0, max) : '');
+  const figures = Array.isArray(f.figures) ? f.figures.map((x: unknown) => one(x, 80)).filter(Boolean).slice(0, 3) : [];
+  const lines = [
+    one(f.headline) && `Headline idea: ${one(f.headline)}`,
+    one(f.date) && `Date: ${one(f.date)}`,
+    one(f.time) && `Time: ${one(f.time)}`,
+    one(f.place ?? f.venue) && `Place: ${one(f.place ?? f.venue)}`,
+    figures.length ? `Figures: ${figures.join('; ')}` : ''
+  ].filter(Boolean);
+  if (kind !== 'poster' && !lines.length) return '';
+  return ['Poster facts:', ...lines.map((l) => `- ${l}`)].join('\n');
 }
 
 const text = (v: unknown, max: number): string => {
@@ -123,7 +156,9 @@ export function normalizePlan(raw: any[]): PlanPost[] {
     if (!p || typeof p !== 'object' || posts.length >= PLAN_LIMITS.posts) continue;
     const title = text(p.title ?? p.taskName ?? p.postTitle ?? p.name, 200);
     const caption = text(p.caption ?? p.content, 5000);
-    const brief = text(p.brief ?? p.taskDescription ?? p.description, 4000);
+    const facts = pictureLines(p.picture ?? p.visual ?? p.poster);
+    const said = text(p.brief ?? p.taskDescription ?? p.description, 4000);
+    const brief = facts && !said.includes(facts) ? `${said}\n\n${facts}`.trim().slice(0, 4000) : said;
     if (!title && !caption && !brief) continue;
     const s = normalizePostStatus(p.status);
     posts.push({

@@ -14,7 +14,7 @@ import {
 import { links, absolute } from '../lib/links';
 import { applyPlaceholderAliases, checkPlaceholders, knownPlaceholderRegex, isKnownPlaceholder } from '../lib/placeholders';
 import { effectiveLimit, limitMessage, monthWindow, remainingOf } from '../lib/aiAllowance';
-import { normalizePlan, parsePlanReply, planDay, planWindow, validatePlan, PLAN_LIMITS } from '../lib/campaignPlan';
+import { normalizePlan, parsePlanReply, pictureLines, planDay, planWindow, validatePlan, PLAN_LIMITS } from '../lib/campaignPlan';
 import { titleFrom } from '../lib/postTitle';
 import sharp from 'sharp';
 import { composePicture } from '../lib/pictureCompose';
@@ -162,6 +162,28 @@ async function main() {
     assert.throws(() => parsePlanReply('[{"projectName": "A", "tasks": [{"taskName": "cut off'));
   });
 
+  await test('plan with AI: each post’s picture facts go into its brief for the poster', () => {
+    const [p] = normalizePlan([
+      {
+        title: 'Clean-up day',
+        brief: 'Invite members to the beach clean-up.',
+        caption: 'Join us!',
+        day: '2026-12-05',
+        picture: { kind: 'poster', facts: { headline: 'Clean beaches, together', date: 'Saturday 5 December', time: '8:00 am', place: 'Ggaba landing site', figures: ['300 kg collected last year', '', 7] } }
+      }
+    ]);
+    assert.match(p.brief, /^Invite members to the beach clean-up\.\n\nPoster facts:\n- Headline idea: Clean beaches, together\n- Date: Saturday 5 December\n- Time: 8:00 am\n- Place: Ggaba landing site\n- Figures: 300 kg collected last year; 7$/);
+    assert.equal(pictureLines({ kind: 'photo', facts: { headline: 'x' } }), 'Picture: a photo with no words.');
+    assert.equal(pictureLines({ kind: 'poster' }), 'Poster facts:');
+    assert.equal(pictureLines(null), '');
+    assert.equal(pictureLines('poster'), '');
+    // A plan without pictures (older prompts) keeps its brief as it is.
+    assert.equal(normalizePlan([{ title: 'A', brief: 'Just this' }])[0].brief, 'Just this');
+    // Facts already in the brief aren't added twice (the plan is reviewed and sent back).
+    const again = normalizePlan([{ title: 'B', brief: p.brief, picture: { kind: 'poster', facts: { headline: 'Clean beaches, together', date: 'Saturday 5 December', time: '8:00 am', place: 'Ggaba landing site', figures: ['300 kg collected last year', '', 7] } } }]);
+    assert.equal(again[0].brief, p.brief);
+  });
+
   await test('plan with AI: posts are cleaned, sorted by day and limited', () => {
     const posts = normalizePlan([
       { title: ' Teaser ', brief: 'Brief', caption: 'Caption', day: '2026-11-22', status: 'Completed' },
@@ -291,7 +313,9 @@ async function main() {
     assert.equal(remainingOf(20, 7), 13);
     assert.equal(remainingOf(20, 25), 0);
     assert.equal(remainingOf(0, 25), null);
-    assert.match(limitMessage('images', 20, w.resetsAt), /all 20 AI images .* 1 December/);
+    assert.match(limitMessage('images', 20, w.resetsAt), /all 20 AI pictures \(posters and photos\) .* 1 December/);
+    // Posters count against the same allowance as photos.
+    assert.equal(limitMessage('designs', 20, w.resetsAt), limitMessage('images', 20, w.resetsAt));
     assert.match(limitMessage('blueMessages', 1, w.resetsAt), /all 1 Blue message for/);
   });
 

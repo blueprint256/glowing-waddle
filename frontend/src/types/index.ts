@@ -211,7 +211,7 @@ export interface PostAIDraft {
 
 export type ReferenceRole = 'include' | 'style';
 
-/** A picture Create image should include, or whose style it should follow. */
+/** A picture Create with AI should include, or whose style it should follow. */
 export interface PostReference {
   id: string;
   url: string;
@@ -250,9 +250,9 @@ export interface Task {
   imageHistory?: PostImageHistory[];
   /** AI pictures not chosen yet, newest first. */
   aiDrafts?: PostAIDraft[];
-  /** Pictures for Create image (up to 6). */
+  /** Pictures for Create with AI (up to 6). */
   references?: PostReference[];
-  /** The choices last used for Create image. */
+  /** The choices last used for an AI photo. */
   pictureOptions?: { format?: PictureFormat; logo?: LogoCorner | null };
   /** The newest AI draft (older clients). */
   pendingGeneratedImage?: string;
