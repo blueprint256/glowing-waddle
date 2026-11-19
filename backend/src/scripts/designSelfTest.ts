@@ -26,6 +26,7 @@ async function main() {
   const out = process.env.DESIGN_OUT || '/tmp/design-out';
   fs.mkdirSync(out, { recursive: true });
   const { files, kit, sponsors } = await buildTestKit();
+  let smallPhoto = 0;
 
   // Photos: a folder of real ones, or generated stand-ins.
   const photos: PhotoSlot[] = [];
@@ -91,7 +92,10 @@ async function main() {
             }
           }
           fs.writeFileSync(path.join(out, file), r.file);
-          const errors = r.report.issues.filter((i) => i.level === 'error');
+          // A photo too small for the paper says something about the test photo, not the layout:
+          // reported, not counted.
+          const errors = r.report.issues.filter((i) => i.level === 'error' && i.code !== 'photo-small');
+          if (r.report.issues.some((i) => i.code === 'photo-small')) smallPhoto++;
           if (errors.length && name !== 'long-6') failures++;
           console.log(
             `${errors.length ? '✗' : '✓'} ${file}${roomier ? ' (roomier settings)' : ''} score ${checkScore(r.report.issues)} contrast ${r.report.minContrast ?? '-'} ${r.report.ms}ms` +
@@ -233,6 +237,7 @@ async function main() {
   }
 
   await closeRenderer();
+  if (smallPhoto) console.log(`\n(${smallPhoto} render(s) where the test photo is too small for the paper: expected with small test photos.)`);
   console.log(failures ? `\n${failures} problem(s).` : '\nAll designs rendered cleanly.');
   process.exit(failures ? 1 : 0);
 }

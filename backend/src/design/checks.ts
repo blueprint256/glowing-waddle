@@ -77,13 +77,18 @@ export function runChecks({ template, doc, kit, report, contrasts }: CheckInput)
   const sponsors = els.filter((e) => e.kind === 'sponsor');
   const badges = els.filter((e) => e.kind === 'badge');
 
-  // Photos too small for the space they fill: enlarged more than about 1.6× they look soft, more
-  // than 2.4× blurry (print sizes count their extra resolution).
-  const printScale = FORMATS[doc.format]?.scale || 1;
+  // Photos too small for the space they fill. On screen (posts are seen at their design size, not
+  // the double-size file) enlarged past about 1.6× looks soft, past 2.4× blurry. In print, the
+  // photo's resolution on paper: under 150 dpi soft, under 85 dpi blurry.
+  const PAPER_INCHES: Partial<Record<string, number>> = { a4: 8.27, a3: 11.69 };
+  const fmt = FORMATS[doc.format];
   for (const p of els.filter((e) => e.kind === 'photo' && e.upscale)) {
-    const eff = (p.upscale || 0) * printScale;
-    if (eff > 2.4) issues.push({ level: 'error', code: 'photo-small', key: p.key, message: 'The photo is too small for this layout; it would look blurry. A design that shows it smaller, or a larger file, will look sharp.' });
-    else if (eff > 1.6) issues.push({ level: 'warning', code: 'photo-soft', key: p.key, message: 'The photo is enlarged a lot here and may look a little soft.' });
+    const up = p.upscale || 1;
+    const inches = fmt?.print ? PAPER_INCHES[doc.format] : undefined;
+    const blurry = inches ? fmt.width / inches / up < 85 : up > 2.4;
+    const soft = inches ? fmt.width / inches / up < 150 : up > 1.6;
+    if (blurry) issues.push({ level: 'error', code: 'photo-small', key: p.key, message: 'The photo is too small for this layout; it would look blurry. A design that shows it smaller, or a larger file, will look sharp.' });
+    else if (soft) issues.push({ level: 'warning', code: 'photo-soft', key: p.key, message: 'The photo is enlarged a lot here and may look a little soft.' });
   }
 
   // Words.
