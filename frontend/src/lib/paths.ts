@@ -21,7 +21,7 @@ const query = (params: Record<string, string | number | boolean | undefined | nu
 export type PlannerView = 'month' | 'week' | 'list';
 export type PublishingTab = 'queue' | 'accounts' | 'history';
 /** Settings sections (Profile, Brand, Integrations; admins also AI and Prompts). */
-export type SettingsSection = 'profile' | 'brand' | 'integrations' | 'ai' | 'prompts';
+export type SettingsSection = 'profile' | 'brand' | 'posters' | 'integrations' | 'ai' | 'prompts';
 
 export interface PlannerParams {
   view?: PlannerView;

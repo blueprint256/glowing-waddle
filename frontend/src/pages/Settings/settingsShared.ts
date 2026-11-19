@@ -22,7 +22,7 @@ export const PROVIDERS: { id: ProviderId; name: string; keyHint: string; placeho
 export const SECTORS = ['Tech', 'Retail', 'Healthcare', 'Finance', 'Education', 'Manufacturing', 'Food and drink', 'Hospitality', 'Beauty', 'Non-profit', 'Other'];
 export const BRAND_TONES = ['Professional', 'Friendly', 'Fun', 'Casual', 'Formal', 'Serious', 'Warm', 'Bold'];
 
-export type SettingsSectionId = 'profile' | 'brand' | 'integrations' | 'ai' | 'prompts';
+export type SettingsSectionId = 'profile' | 'brand' | 'posters' | 'integrations' | 'ai' | 'prompts';
 
 export interface SectionDef {
   id: SettingsSectionId;

@@ -6,6 +6,7 @@ import { UserRole } from '../../types';
 import { paths } from '../../lib/paths';
 import ProfileSection from './ProfileSection';
 import BrandSection from './BrandSection';
+import PostersSection from './PostersSection';
 import IntegrationsSection from './IntegrationsSection';
 import AISection from './AISection';
 import PromptsSection from './PromptsSection';
@@ -20,6 +21,7 @@ import type { SectionDef, SettingsSectionId } from './settingsShared';
 const SECTIONS: SectionDef[] = [
   { id: 'profile', label: 'Profile', description: 'Your name, password and how the app looks.' },
   { id: 'brand', label: 'Brand', description: 'What AI needs to write and design like you.' },
+  { id: 'posters', label: 'Posters', description: 'Logos, partners, colours and fonts your posters are made from.' },
   { id: 'integrations', label: 'Integrations', description: 'Claude, Canva and other connected apps.' },
   { id: 'ai', label: 'AI', description: 'AI providers, models, Blue and Library reading.', admin: true },
   { id: 'prompts', label: 'Prompts', description: 'The prompts and commands behind the AI features.', admin: true }
@@ -31,6 +33,8 @@ const OLD_TABS: Record<string, SettingsSectionId> = {
   company: 'brand',
   'company-info': 'brand',
   brand: 'brand',
+  posters: 'posters',
+  'brand-kit': 'posters',
   integrations: 'integrations',
   llm: 'ai',
   ai: 'ai',
@@ -105,6 +109,7 @@ export default function SettingsPage() {
         <Box sx={{ minWidth: 0 }}>
           {current.id === 'profile' && <ProfileSection />}
           {current.id === 'brand' && <BrandSection />}
+          {current.id === 'posters' && <PostersSection />}
           {current.id === 'integrations' && <IntegrationsSection />}
           {current.id === 'ai' && <AISection />}
           {current.id === 'prompts' && <PromptsSection />}

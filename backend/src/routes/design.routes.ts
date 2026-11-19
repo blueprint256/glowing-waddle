@@ -255,15 +255,20 @@ router.put('/brand-kit', isAuthenticated, canManageTasks, async (req: Request, r
       applyPack(kit, b.pack || null);
     }
     if (b.colors && typeof b.colors === 'object') {
+      // A brand pack allows only its own palette (Rotary's brand centre colours, for example).
+      const pack = packById(kit.pack);
+      const allowed = pack ? new Set([...pack.palette, ...Object.values(pack.colors)].map((c) => c.hex.toLowerCase())) : null;
       for (const role of ['primary', 'secondary', 'accent', 'ink', 'paper'] as const) {
         const c = b.colors[role];
         if (!c) continue;
         if (!isHex(c.hex)) throw new DesignError(400, `The ${role} colour must be a hex value like #17458f.`);
+        if (allowed && !allowed.has(c.hex.toLowerCase())) throw new DesignError(400, `${pack!.name}’s brand uses its own palette: choose one of its colours.`);
         (kit.colors as any)[role] = { name: str(c.name, 60) || (kit.colors as any)[role]?.name || role, hex: c.hex.toLowerCase() };
       }
       kit.markModified('colors');
     }
-    if (b.fonts && typeof b.fonts === 'object') {
+    // A brand pack's fonts are part of the brand: they change only by leaving the pack.
+    if (b.fonts && typeof b.fonts === 'object' && !kit.pack) {
       const ok = (id: unknown) => typeof id === 'string' && FONTS.some((f) => f.id === id);
       kit.fonts = { display: ok(b.fonts.display) ? b.fonts.display : kit.fonts.display, text: ok(b.fonts.text) ? b.fonts.text : kit.fonts.text, accent: ok(b.fonts.accent) ? b.fonts.accent : b.fonts.accent === null ? undefined : kit.fonts.accent };
     }
@@ -271,10 +276,13 @@ router.put('/brand-kit', isAuthenticated, canManageTasks, async (req: Request, r
     if (b.contact && typeof b.contact === 'object') kit.contact = { social: str(b.contact.social, 60), web: str(b.contact.web, 60) };
     if (Array.isArray(b.rules)) {
       const admin = req.user!.role === UserRole.SYSTEM_ADMIN;
-      kit.rules = b.rules
-        .filter((r: any) => r && typeof r.text === 'string' && r.text.trim())
-        .slice(0, 30)
+      // Rules an administrator made mandatory stay as they are unless an administrator changes them.
+      const keptHard = admin ? [] : kit.rules.filter((r) => r.hard);
+      const hardIds = new Set(keptHard.map((r) => r.id));
+      const sent = b.rules
+        .filter((r: any) => r && typeof r.text === 'string' && r.text.trim() && !hardIds.has(r.id))
         .map((r: any) => ({ id: typeof r.id === 'string' && r.id ? r.id : brandId(), text: r.text.trim().slice(0, 400), hard: admin ? !!r.hard : false }));
+      kit.rules = [...keptHard, ...sent].slice(0, 30);
     }
     kit.updatedBy = req.user!._id;
     await kit.save();

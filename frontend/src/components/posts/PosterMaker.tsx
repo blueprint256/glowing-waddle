@@ -117,7 +117,7 @@ export default function PosterMaker({ task, title, brief, usage, ensureSaved, fo
       {kit && !hasMainLogo && (
         <Notice>
           Add your logo to the{' '}
-          <Box component={RouterLink} to={paths.settings('brand')} sx={{ color: 'inherit', fontWeight: 600 }}>
+          <Box component={RouterLink} to={paths.settings('posters')} sx={{ color: 'inherit', fontWeight: 600 }}>
             brand kit
           </Box>{' '}
           so posters carry it.
@@ -202,7 +202,7 @@ export default function PosterMaker({ task, title, brief, usage, ensureSaved, fo
         <Label
           hint="sized so each one looks equally important"
           right={
-            <Box component={RouterLink} to={paths.settings('brand')} sx={{ fontSize: 12.5, color: 'var(--text-muted)', fontWeight: 600 }}>
+            <Box component={RouterLink} to={paths.settings('posters')} sx={{ fontSize: 12.5, color: 'var(--text-muted)', fontWeight: 600 }}>
               {kit?.partners.length ? 'Manage partners' : 'Add partners'}
             </Box>
           }

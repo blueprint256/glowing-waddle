@@ -117,6 +117,8 @@ export interface BrandKit {
   partners: KitPartner[];
   rules: KitRule[];
   notes: string;
+  /** The handle line and website posters show where the design has room. */
+  contact: { social: string; web: string };
   /** What posters actually use, the pack's rules included. */
   effective: { colors: KitColors; fonts: KitFonts; rules: KitRule[] };
 }
@@ -181,7 +183,7 @@ export const designAPI = {
   },
 
   kit: (ownerId?: string) => api.get<{ kit: BrandKit }>('/design/brand-kit', { params: ownerId ? { ownerId } : undefined }).then((r) => r.data.kit),
-  saveKit: (body: Partial<Pick<BrandKit, 'name' | 'colors' | 'fonts' | 'rules' | 'notes'>> & { pack?: string | null }, ownerId?: string) =>
+  saveKit: (body: Partial<Pick<BrandKit, 'name' | 'colors' | 'fonts' | 'rules' | 'notes' | 'contact'>> & { pack?: string | null }, ownerId?: string) =>
     api.put<{ kit: BrandKit }>('/design/brand-kit', body, { params: ownerId ? { ownerId } : undefined }).then((r) => r.data.kit),
   addLogo: (file: File, fields: { role?: 'primary' | 'campaign'; name?: string; logoId?: string }, ownerId?: string) => {
     const form = new FormData();
