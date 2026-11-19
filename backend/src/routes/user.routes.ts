@@ -228,13 +228,13 @@ router.put('/:id', isAuthenticated, canManageUsers, validateMongoId('id'), valid
     }
     // Monthly AI allowance for this account: a whole number (0 = no limit), or null for the default.
     if (req.body.aiAllowance && typeof req.body.aiAllowance === 'object') {
-      const next = { images: user.aiAllowance?.images ?? null, blueMessages: user.aiAllowance?.blueMessages ?? null };
-      for (const key of ['images', 'blueMessages'] as const) {
+      const next = { images: user.aiAllowance?.images ?? null, designs: user.aiAllowance?.designs ?? null, blueMessages: user.aiAllowance?.blueMessages ?? null };
+      for (const key of ['images', 'designs', 'blueMessages'] as const) {
         if (!(key in req.body.aiAllowance)) continue;
         const v = req.body.aiAllowance[key];
         if (v === null || v === '') next[key] = null;
         else if (Number.isInteger(v) && v >= 0 && v <= 100000) next[key] = v;
-        else return res.status(400).json({ success: false, message: `${key === 'images' ? 'AI images' : 'Blue messages'} must be a whole number (0 = no limit)` });
+        else return res.status(400).json({ success: false, message: `${key === 'images' ? 'AI images' : key === 'designs' ? 'Designed posters' : 'Blue messages'} must be a whole number (0 = no limit)` });
       }
       user.aiAllowance = next;
       user.markModified('aiAllowance');
@@ -368,12 +368,12 @@ router.get('/me/ai-usage', isAuthenticated, async (req: Request, res: Response) 
 /**
  * @route   GET /api/users/settings/ai-allowance
  * @desc    The workspace's monthly AI allowance per account (System Admin).
- * @route   PATCH /api/users/settings/ai-allowance  Body: { aiImagesPerMonth?, blueMessagesPerMonth? } (0 = no limit)
+ * @route   PATCH /api/users/settings/ai-allowance  Body: { aiImagesPerMonth?, aiDesignsPerMonth?, blueMessagesPerMonth? } (0 = no limit)
  */
 router.get('/settings/ai-allowance', isAuthenticated, canManageUsers, async (_req: Request, res: Response) => {
   try {
     const config = await AppConfig.getConfig();
-    res.json({ success: true, aiImagesPerMonth: config.aiImagesPerMonth ?? DEFAULT_ALLOWANCE.images, blueMessagesPerMonth: config.blueMessagesPerMonth ?? DEFAULT_ALLOWANCE.blueMessages });
+    res.json({ success: true, aiImagesPerMonth: config.aiImagesPerMonth ?? DEFAULT_ALLOWANCE.images, aiDesignsPerMonth: config.aiDesignsPerMonth ?? DEFAULT_ALLOWANCE.designs, blueMessagesPerMonth: config.blueMessagesPerMonth ?? DEFAULT_ALLOWANCE.blueMessages });
   } catch (error) {
     console.error('Error loading AI allowance:', error);
     res.status(500).json({ success: false, message: 'Couldn’t load the AI allowance.' });
@@ -383,15 +383,15 @@ router.get('/settings/ai-allowance', isAuthenticated, canManageUsers, async (_re
 router.patch('/settings/ai-allowance', isAuthenticated, canManageUsers, async (req: Request, res: Response) => {
   try {
     const config = await AppConfig.getConfig();
-    for (const key of ['aiImagesPerMonth', 'blueMessagesPerMonth'] as const) {
+    for (const key of ['aiImagesPerMonth', 'aiDesignsPerMonth', 'blueMessagesPerMonth'] as const) {
       if (req.body?.[key] === undefined) continue;
       const v = req.body[key];
       if (!Number.isInteger(v) || v < 0 || v > 100000) return res.status(400).json({ success: false, message: 'Use a whole number (0 = no limit).' });
       config[key] = v;
     }
     await config.save();
-    await logAudit({ action: AuditAction.USER_UPDATED, userId: req.user!._id, targetType: 'AppConfig', targetId: config._id as any, metadata: { aiAllowance: { images: config.aiImagesPerMonth, blueMessages: config.blueMessagesPerMonth } }, req });
-    res.json({ success: true, aiImagesPerMonth: config.aiImagesPerMonth, blueMessagesPerMonth: config.blueMessagesPerMonth });
+    await logAudit({ action: AuditAction.USER_UPDATED, userId: req.user!._id, targetType: 'AppConfig', targetId: config._id as any, metadata: { aiAllowance: { images: config.aiImagesPerMonth, designs: config.aiDesignsPerMonth, blueMessages: config.blueMessagesPerMonth } }, req });
+    res.json({ success: true, aiImagesPerMonth: config.aiImagesPerMonth, aiDesignsPerMonth: config.aiDesignsPerMonth, blueMessagesPerMonth: config.blueMessagesPerMonth });
   } catch (error) {
     console.error('Error saving AI allowance:', error);
     res.status(500).json({ success: false, message: 'Couldn’t save the AI allowance.' });

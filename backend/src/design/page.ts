@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import type { BrandKit, BrandLogo, DesignDoc, DesignTemplate, LogoAsset } from './types';
 import { FORMATS } from './formats';
 import { fontFaceCss, fontStack } from './fonts';
-import { bestText, mix, rgbTriplet, withLightness, lightness } from './color';
+import { bestText, contrastHex, mix, rgbTriplet, withLightness, lightness } from './color';
 import { normalizeParams } from './template';
 
 /**
@@ -129,6 +129,23 @@ export function buildPage(template: DesignTemplate, doc: DesignDoc, kit: BrandKi
     else if (p.type === 'color') paramVars.push(`--p-${p.key}:var(--c-${v})`, `--p-${p.key}-on:var(--on-${v === 'ink' || v === 'paper' ? 'primary' : v})`);
     paramAttrs.push(`data-p-${p.key}="${escapeAttr(String(v))}"`);
   }
+  // Readable pairings of the design's colour settings: --p-a-on-b is colour a when it reads on
+  // colour b (4.5:1), otherwise the better of the text colours. Also on paper and on the deep tone.
+  const colorParams = template.params.filter((p) => p.type === 'color');
+  const roleHex = (role: string) => tokens[`--c-${role}`] || tokens['--c-primary'];
+  const grounds: [string, string][] = [
+    ...colorParams.map((p) => [p.key, roleHex(String(params[p.key]))] as [string, string]),
+    ['paper', tokens['--c-paper']],
+    ['deep', tokens['--c-primary-deep']]
+  ];
+  for (const fg of colorParams) {
+    const fgHex = roleHex(String(params[fg.key]));
+    for (const [gKey, gHex] of grounds) {
+      if (gKey === fg.key) continue;
+      tokens[`--p-${fg.key}-on-${gKey}`] = contrastHex(fgHex, gHex) >= 4.5 ? fgHex : bestText(gHex, tokens['--c-ink'], tokens['--c-paper']);
+    }
+  }
+
   // Clear space of the logos as a share of their height, for designs that pad around them.
   tokens['--clear-primary'] = String(primary?.clearSpace ?? 0.25);
   tokens['--clear-campaign'] = String(campaign[0]?.clearSpace ?? 0.2);

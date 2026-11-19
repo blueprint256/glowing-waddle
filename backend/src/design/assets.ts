@@ -37,7 +37,10 @@ function colorDist(d: Buffer, i: number, c: [number, number, number]): number {
 }
 
 export async function prepareLogo(input: Buffer): Promise<PreparedLogo> {
-  const base = sharp(input, { failOn: 'none' }).rotate().ensureAlpha();
+  // Vector logos are drawn at print resolution before anything else.
+  const head = input.slice(0, 256).toString('utf8').trimStart();
+  const isSvg = head.startsWith('<svg') || (head.startsWith('<?xml') && head.includes('<svg'));
+  const base = sharp(input, { failOn: 'none', ...(isSvg ? { density: 300 } : {}) }).rotate().ensureAlpha();
   const meta = await base.metadata();
   const longSide = Math.max(meta.width || 0, meta.height || 0);
   const resized = longSide > MAX_LOGO ? base.resize({ width: MAX_LOGO, height: MAX_LOGO, fit: 'inside' }) : base;

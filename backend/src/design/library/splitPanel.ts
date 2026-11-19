@@ -102,15 +102,15 @@ export const splitPanel: DesignTemplate = {
   display: flex; flex-direction: column; gap: 1.7cqmin;
   color: var(--p-panel-on);
 }
-.sp-eyebrow { font-family: var(--f-display); font-weight: 700; letter-spacing: 0.13em; line-height: 1.15; color: var(--p-accent); }
+.sp-eyebrow { font-family: var(--f-display); font-weight: 700; letter-spacing: 0.13em; line-height: 1.15; color: var(--p-accent-on-panel); }
 .sp-headline { font-family: var(--f-display); font-weight: 800; font-stretch: 80%; line-height: 0.96; letter-spacing: -0.01em; }
 .sp-subhead { font-family: var(--f-text); line-height: 1.33; opacity: 0.94; max-width: 36em; }
 .sp-details { display: grid; grid-template-columns: repeat(2, minmax(0, auto)); justify-content: start; column-gap: 4.5cqmin; row-gap: 1cqmin; margin-top: 0.3cqmin; }
 .sp-detail { font-family: var(--f-display); font-weight: 600; font-stretch: 92%; font-size: 2.4cqmin; line-height: 1.2; }
-.sp-detail svg { color: var(--p-accent); }
+.sp-detail svg { color: var(--p-accent-on-panel); }
 .sp-cta-row { display: flex; align-items: center; gap: 3cqmin; flex-wrap: wrap; margin-top: 0.6cqmin; }
 .sp-cta { font-family: var(--f-display); font-weight: 800; font-stretch: 85%; letter-spacing: 0.02em; text-transform: uppercase; font-size: 2.45cqmin; line-height: 1; color: var(--on-accent); background: var(--p-accent); padding: 1.4cqmin 2.4cqmin; border-radius: 0.6cqmin; }
-.sp-hashtag { font-family: var(--f-display); font-weight: 700; font-size: 2.3cqmin; color: var(--p-accent); letter-spacing: 0.02em; }
+.sp-hashtag { font-family: var(--f-display); font-weight: 700; font-size: 2.3cqmin; color: var(--p-accent-on-panel); letter-spacing: 0.02em; }
 
 /* The accent stripe along the diagonal (follows the measured edge). */
 .sp-stripe {

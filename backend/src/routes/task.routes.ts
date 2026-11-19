@@ -490,7 +490,8 @@ router.post('/:id/image/use', isAuthenticated, canManageTasks, validateMongoId('
     const earlier = (task.imageHistory || []).find((h) => h.url === url);
     if (!draft && !earlier) throw new PostError(400, 'That picture isn’t one of this post’s pictures');
     if (draft) removeDraft(task, draft.id);
-    const dropped = setPicture(task, url);
+    // A designed poster keeps its document, so it can be edited and printed later.
+    const dropped = setPicture(task, url, undefined, draft ? (draft.kind === 'design' ? draft.design || null : null) : undefined);
     task.lastModifiedBy = req.user!._id;
     await task.save();
     tidyPictures(dropped);

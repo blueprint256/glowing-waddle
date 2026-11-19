@@ -81,7 +81,7 @@ export interface IUser extends Document {
    * Monthly AI allowance set by a System Admin for this account. null (or missing) uses the
    * workspace default; 0 means no limit. See services/aiAllowance.ts.
    */
-  aiAllowance?: { images?: number | null; blueMessages?: number | null };
+  aiAllowance?: { images?: number | null; designs?: number | null; blueMessages?: number | null };
   /** Inbox reminder types this user turned off (only optional ones, e.g. "post_upcoming"). */
   inboxMuted: string[];
   isActive: boolean;
@@ -182,6 +182,7 @@ const userSchema = new Schema<IUser>(
     },
     aiAllowance: {
       images: { type: Number, default: null, min: 0 },
+      designs: { type: Number, default: null, min: 0 },
       blueMessages: { type: Number, default: null, min: 0 }
     },
     inboxMuted: {

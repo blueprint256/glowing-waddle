@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import mongoose from 'mongoose';
-import { Task, type ITask } from '../models/Task';
+import { Task, type ITask, type PostDesign } from '../models/Task';
 import { Campaign } from '../models/Campaign';
 import { SocialPost } from '../models/SocialPost';
 import { UserRole, type IUser } from '../models/User';
@@ -169,15 +169,18 @@ export async function deleteUnusedPictures(urls: (string | null | undefined)[]):
  * are kept, newest first); pictures that fall off the end are returned so the caller can delete
  * them once the post is saved.
  */
-export function setPicture(task: ITask, url: string, previousNote?: string): string[] {
+export function setPicture(task: ITask, url: string, previousNote?: string, design?: PostDesign | null): string[] {
   const dropped: string[] = [];
   const previous = task.designedImage;
   if (previous === url) return dropped;
+  // Bringing back an earlier designed poster brings back its document too.
+  const restored = (task.imageHistory || []).find((h) => h.url === url)?.design;
   const history = (task.imageHistory || []).filter((h) => h.url !== url && h.url !== previous);
-  if (previous) history.unshift({ url: previous, source: 'earlier', note: previousNote, at: new Date() } as any);
+  if (previous) history.unshift({ url: previous, source: 'earlier', note: previousNote, ...(task.pictureDesign ? { design: task.pictureDesign } : {}), at: new Date() } as any);
   while (history.length > KEEP_EARLIER_PICTURES) dropped.push(history.pop()!.url);
   task.imageHistory = history as any;
   task.designedImage = url;
+  task.pictureDesign = design !== undefined ? design : restored || null;
   return dropped;
 }
 
@@ -186,11 +189,12 @@ export function clearPicture(task: ITask): string[] {
   const previous = task.designedImage;
   if (!previous) return [];
   const history = (task.imageHistory || []).filter((h) => h.url !== previous);
-  history.unshift({ url: previous, source: 'earlier', note: 'Removed', at: new Date() } as any);
+  history.unshift({ url: previous, source: 'earlier', note: 'Removed', ...(task.pictureDesign ? { design: task.pictureDesign } : {}), at: new Date() } as any);
   const dropped: string[] = [];
   while (history.length > KEEP_EARLIER_PICTURES) dropped.push(history.pop()!.url);
   task.imageHistory = history as any;
   task.designedImage = undefined;
+  task.pictureDesign = null;
   return dropped;
 }
 

@@ -16,7 +16,11 @@ import { renderDesign, closeRenderer } from '../design/renderer';
 import { validateTemplate } from '../design/template';
 import { buildTestKit, testBackground, testDoc, testPhoto, SAMPLE_TEXT } from '../design/testKit';
 import type { FormatId, PhotoSlot } from '../design/types';
-import { checkScore } from '../design/checks';
+import { checkScore, hasErrors } from '../design/checks';
+import { plannedDocs, planWithoutAI, cleanCopy, type DirectorInput, type DirectorPlan } from '../design/director';
+import { applyEdits, applyTextEdits } from '../design/edits';
+import { buildToolRequest } from '../design/claude';
+import { DIRECTOR_TOOL } from '../design/director';
 
 async function main() {
   const out = process.env.DESIGN_OUT || '/tmp/design-out';
@@ -83,6 +87,93 @@ async function main() {
       }
     }
   }
+  // The pipeline's pure steps: a plan as the art director would send it, then typed edits.
+  if (!only) {
+    const input: DirectorInput = {
+      brief: 'Polio vaccination drive this Saturday 14 December at Kawempe Health Centre, 8am to 5pm. We need volunteers.',
+      kit,
+      format: 'portrait',
+      photos: photos.map((p) => ({ slot: p })),
+      sponsors: sponsors.slice(0, 3),
+      campaignLogoIds: ['campaign'],
+      designs: BUILTIN_DESIGNS,
+      count: 4,
+      today: new Date('2026-12-08T09:00:00Z')
+    };
+    const plan: DirectorPlan = {
+      copy: {
+        eyebrow: 'National Immunisation Days',
+        headline: 'Every child.\nEvery dose.',
+        subhead: 'Help health workers reach every child under five with the polio vaccine.',
+        details: [
+          { kind: 'date', text: 'Sat 14 December' },
+          { kind: 'time', text: '8:00 am – 5:00 pm' },
+          { kind: 'place', text: 'Kawempe Health Centre IV' }
+        ],
+        cta: 'Volunteer with us',
+        badge: { top: 'Sat', main: '14', bottom: 'Dec' }
+      },
+      options: [
+        { design: 'hero-photo', params: { shade: 0.9, focusY: 0.4 }, photos: [1], why: 'The photo carries it.' },
+        { design: 'split-panel', params: { slope: 10, panel: 'secondary' }, photos: [1] },
+        { design: 'art-led', background: true },
+        { design: 'no-such-design' }
+      ],
+      background_prompt: 'sunrise over hills'
+    };
+    const options = plannedDocs(plan, input, background);
+    const ok = options.length === 3 && options[0].doc.params.shade === 0.9 && options[1].doc.params.panel === 'secondary' && !!options[2].doc.background && options[0].doc.sponsors.length === 3;
+    console.log(`${ok ? '✓' : '✗'} plan → ${options.length} options (${options.map((o) => o.design.id).join(', ')})`);
+    if (!ok) failures++;
+    for (const o of options) {
+      const r = await renderDesign(o.design, o.doc, kit, loader, { scale: 1 });
+      fs.writeFileSync(path.join(out, `plan--${o.design.id}.png`), r.file);
+      if (hasErrors(r.report.issues)) {
+        failures++;
+        console.log(`✗ plan option ${o.design.id}: ${r.report.issues.map((i) => i.message).join(' ')}`);
+      }
+    }
+    const fallback = plannedDocs(planWithoutAI(input), input, null);
+    console.log(`${fallback.length ? '✓' : '✗'} plan without AI → ${fallback.length} options`);
+    if (!fallback.length) failures++;
+
+    const first = options[0].doc;
+    const edited = applyEdits(
+      first,
+      [
+        { op: 'headline_size', scale: 1.15 },
+        { op: 'swap_colours' },
+        { op: 'set_text', field: 'cta', value: 'Join the drive' },
+        { op: 'remove_sponsor', name: 'acacia' },
+        { op: 'set_param', key: 'shade', value: 5 },
+        { op: 'switch_design', design: 'nope' } as any
+      ],
+      BUILTIN_DESIGNS
+    );
+    const e = edited.doc;
+    const editOk = e.tweaks?.headlineScale === 1.15 && e.tweaks?.colorSwap === true && e.text.cta === 'Join the drive' && e.sponsors.length === 2 && e.params.shade === 0.95 && e.designId === 'hero-photo' && first.text.cta === 'Volunteer with us';
+    console.log(`${editOk ? '✓' : '✗'} edits: ${edited.changed.join(', ')}`);
+    if (!editOk) failures++;
+    const switched = applyEdits(first, [{ op: 'switch_design', design: 'split-panel' }, { op: 'change_format', format: 'square' }], BUILTIN_DESIGNS).doc;
+    const typed = applyTextEdits(switched, { headline: 'Every child counts', eyebrow: '' });
+    const r2 = await renderDesign(BUILTIN_DESIGNS.find((d) => d.id === 'split-panel')!, typed, kit, loader, { scale: 1 });
+    fs.writeFileSync(path.join(out, 'edit--split-square.png'), r2.file);
+    const typedOk = typed.designId === 'split-panel' && typed.format === 'square' && typed.text.headline === 'Every child counts' && !typed.text.eyebrow && !hasErrors(r2.report.issues);
+    console.log(`${typedOk ? '✓' : '✗'} switch design + format + typed text`);
+    if (!typedOk) failures++;
+    const refused = applyEdits(first, [{ op: 'refuse', reason: 'Logos stay in their official colours.' }], BUILTIN_DESIGNS);
+    console.log(`${refused.refused && !refused.changed.length ? '✓' : '✗'} hard-rule refusal`);
+    if (!refused.refused) failures++;
+    const copy = cleanCopy({ headline: '  **Every**  child  ', details: [{ kind: 'nonsense', text: 'x' }], badge: { main: '' } });
+    const copyOk = copy.headline === 'Every child' && copy.details?.[0].kind === 'info' && !copy.badge;
+    console.log(`${copyOk ? '✓' : '✗'} copy cleaning`);
+    if (!copyOk) failures++;
+    const req = buildToolRequest({ apiKey: 'x', model: 'claude-sonnet-5-5', system: 'S', context: 'C', prompt: 'P', images: [{ mediaType: 'image/jpeg', base64: 'AA', label: 'Photo 1:' }], tool: DIRECTOR_TOOL });
+    const reqOk = req.tool_choice.name === DIRECTOR_TOOL.name && req.system.length === 2 && (req.system[1] as any).cache_control && req.messages[0].content.length === 3;
+    console.log(`${reqOk ? '✓' : '✗'} Claude request shape`);
+    if (!reqOk) failures++;
+  }
+
   await closeRenderer();
   console.log(failures ? `\n${failures} problem(s).` : '\nAll designs rendered cleanly.');
   process.exit(failures ? 1 : 0);

@@ -1,0 +1,388 @@
+import express, { Request, Response } from 'express';
+import multer from 'multer';
+import mongoose from 'mongoose';
+import { Task } from '../models/Task';
+import { UserRole } from '../models/User';
+import { DesignJob } from '../models/DesignJob';
+import type { IBrandKit } from '../models/BrandKit';
+import { isAuthenticated } from '../middleware/auth';
+import { canManageTasks } from '../middleware/rbac';
+import { checkTaskOwnership } from '../middleware/ownership';
+import { validateMongoId } from '../middleware/validation';
+import { assertAllowance } from '../services/aiAllowance';
+import { AIError } from '../lib/aiError';
+import { DesignError } from '../services/designPipeline';
+import { editDesign, findDesign, printDesign } from '../services/designEdits';
+import { applyPack, brandId, engineKit, loadBrandKit, storeLogoFile } from '../services/designBrand';
+import { allDesigns } from '../services/designLibrary';
+import { BRAND_PACKS, packById } from '../design/packs';
+import { FONTS } from '../design/fonts';
+import { FORMATS, isFormatId } from '../design/formats';
+import { isHex } from '../design/color';
+
+/**
+ * Designed posters (docs/DESIGN_ENGINE.md):
+ *   POST /api/design/tasks/:id/posters          start making poster options for a post
+ *   GET  /api/design/jobs/:jobId                 progress of one
+ *   GET  /api/design/tasks/:id/jobs/latest       the post's latest job (to pick up progress again)
+ *   POST /api/design/tasks/:id/posters/:ref/edit type on the poster, or describe a change
+ *   POST /api/design/tasks/:id/posters/:ref/print  A4/A3 PDF
+ *   GET/PUT /api/design/brand-kit, logos and partners: the account's brand kit
+ *   GET  /api/design/catalog                     designs, packs, fonts and formats (for the screens)
+ */
+
+const router = express.Router();
+type Id = mongoose.Types.ObjectId;
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (/^image\/(png|jpe?g|webp|svg\+xml)$/i.test(file.mimetype)) cb(null, true);
+    else cb(new Error('Use a PNG, JPG, WebP or SVG file'));
+  }
+});
+const uploadFile = (req: Request, res: Response, next: express.NextFunction) =>
+  upload.single('file')(req, res, (err: unknown) => {
+    if (!err) return next();
+    const message = (err as any)?.code === 'LIMIT_FILE_SIZE' ? 'That file is over 15 MB.' : (err as Error)?.message || 'Upload failed';
+    res.status(400).json({ success: false, message });
+  });
+
+function fail(res: Response, error: unknown, fallback: string) {
+  if (error instanceof DesignError || error instanceof AIError) {
+    const extra = error instanceof AIError && error.status === 429 ? { code: 'AI_DESIGN_LIMIT' } : {};
+    return res.status(error.status).json({ success: false, message: error.message, ...extra });
+  }
+  console.error(fallback, error);
+  return res.status(500).json({ success: false, message: fallback });
+}
+
+const str = (v: unknown, max = 4000) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+const strList = (v: unknown, max = 20) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x.trim()).map((x) => String(x).trim()).slice(0, max) : []);
+
+function jobView(job: any) {
+  return {
+    id: String(job._id),
+    taskId: String(job.taskId),
+    status: job.status,
+    stage: job.stage,
+    progress: job.progress,
+    draftIds: job.draftIds || [],
+    message: job.message || null,
+    error: job.error || null,
+    createdAt: job.createdAt
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Posters
+// ---------------------------------------------------------------------------
+
+router.post('/tasks/:id/posters', isAuthenticated, canManageTasks, validateMongoId('id'), checkTaskOwnership, async (req: Request, res: Response) => {
+  try {
+    await assertAllowance(req.user!, 'designs');
+    const task = await Task.findById(req.params.id);
+    if (!task) throw new DesignError(404, 'Post not found');
+    const running = await DesignJob.findOne({ taskId: task._id, status: { $in: ['queued', 'running'] } });
+    if (running) return res.json({ success: true, job: jobView(running), message: 'Already making posters for this post' });
+    const kit = await loadBrandKit(task.ownerId);
+    const body = req.body || {};
+    const brief = str(body.brief) || task.description || '';
+    if (!brief.trim() && !(task.content || '').trim()) throw new DesignError(400, 'Say what the poster is about first.');
+    const photoUrls = body.photoUrls !== undefined ? strList(body.photoUrls, 6) : (task.references || []).filter((r) => r.role === 'include').map((r) => r.url).slice(0, 6);
+    // Photos must be this post's own pictures or the account's files (never someone else's).
+    const known = new Set([task.designedImage, ...(task.references || []).map((r) => r.url), ...(task.imageHistory || []).map((h) => h.url)].filter(Boolean) as string[]);
+    for (const url of photoUrls) {
+      if (!known.has(url) && !(await isOwnersLibraryFile(url, task.ownerId as Id))) throw new DesignError(400, 'One of the photos isn’t this account’s.');
+    }
+    const partnerIds = strList(body.partnerIds, 8).filter((id) => kit.partners.some((p) => p.id === id));
+    const campaignLogoIds =
+      body.campaignLogoIds !== undefined
+        ? strList(body.campaignLogoIds, 3).filter((id) => kit.logos.some((l) => l.id === id && l.role === 'campaign'))
+        : kit.logos.filter((l) => l.role === 'campaign' && l.always).map((l) => l.id);
+    const job = await DesignJob.create({
+      taskId: task._id,
+      ownerId: task.ownerId,
+      userId: req.user!._id,
+      request: {
+        brief,
+        format: isFormatId(body.format) ? body.format : 'portrait',
+        photoUrls,
+        partnerIds,
+        campaignLogoIds,
+        count: Math.max(1, Math.min(4, Number(body.count) || 4)),
+        designIds: strList(body.designIds, 20)
+      }
+    });
+    res.status(202).json({ success: true, job: jobView(job), message: 'Making your poster options' });
+  } catch (error) {
+    fail(res, error, 'Couldn’t start the poster.');
+  }
+});
+
+async function isOwnersLibraryFile(url: string, ownerId: Id): Promise<boolean> {
+  const { objectKeyFromUrl } = await import('../utils/s3Service');
+  const { LibraryVersion } = await import('../models/LibraryVersion');
+  const key = objectKeyFromUrl(url);
+  if (!key) return false;
+  return !!(await LibraryVersion.exists({ s3Key: key, ownerId }));
+}
+
+router.get('/jobs/:jobId', isAuthenticated, validateMongoId('jobId'), async (req: Request, res: Response) => {
+  try {
+    const job = await DesignJob.findById(req.params.jobId);
+    const mine = job && (req.user!.role === UserRole.SYSTEM_ADMIN || String(job.ownerId) === String(req.user!._id) || String(job.userId) === String(req.user!._id));
+    if (!job || !mine) return res.status(404).json({ success: false, message: 'Not found' });
+    res.json({ success: true, job: jobView(job) });
+  } catch (error) {
+    fail(res, error, 'Couldn’t read the poster’s progress.');
+  }
+});
+
+router.get('/tasks/:id/jobs/latest', isAuthenticated, canManageTasks, validateMongoId('id'), checkTaskOwnership, async (req: Request, res: Response) => {
+  try {
+    const job = await DesignJob.findOne({ taskId: req.params.id }).sort({ createdAt: -1 });
+    res.json({ success: true, job: job ? jobView(job) : null });
+  } catch (error) {
+    fail(res, error, 'Couldn’t read the poster’s progress.');
+  }
+});
+
+router.post('/tasks/:id/posters/:ref/edit', isAuthenticated, canManageTasks, validateMongoId('id'), checkTaskOwnership, async (req: Request, res: Response) => {
+  try {
+    const task = await Task.findById(req.params.id);
+    if (!task) throw new DesignError(404, 'Post not found');
+    const text = req.body?.text && typeof req.body.text === 'object' ? req.body.text : undefined;
+    const request = str(req.body?.request, 1500) || undefined;
+    if (!text && !request) throw new DesignError(400, 'Type on the poster or describe the change.');
+    const answer = await editDesign(task, String(req.params.ref), { text, request }, req.user!._id as Id);
+    if (answer.draft) {
+      task.lastModifiedBy = req.user!._id;
+      await task.save();
+    }
+    res.json({ success: true, draft: answer.draft, reply: answer.reply, refused: answer.refused || null, message: answer.draft ? 'New version ready' : answer.reply });
+  } catch (error) {
+    fail(res, error, 'Couldn’t change the poster.');
+  }
+});
+
+router.post('/tasks/:id/posters/:ref/print', isAuthenticated, canManageTasks, validateMongoId('id'), checkTaskOwnership, async (req: Request, res: Response) => {
+  try {
+    const task = await Task.findById(req.params.id);
+    if (!task) throw new DesignError(404, 'Post not found');
+    const size = req.body?.size === 'a3' ? 'a3' : 'a4';
+    const ref = String(req.params.ref);
+    const { design } = findDesign(task, ref);
+    const cached = (design as any)[`pdf_${size}`];
+    if (cached) return res.json({ success: true, url: cached });
+    const url = await printDesign(task, ref, size);
+    (design as any)[`pdf_${size}`] = url;
+    if (ref === 'current') task.markModified('pictureDesign');
+    else task.markModified('aiDrafts');
+    await task.save();
+    res.json({ success: true, url });
+  } catch (error) {
+    fail(res, error, 'Couldn’t make the print file.');
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Catalogue
+// ---------------------------------------------------------------------------
+
+router.get('/catalog', isAuthenticated, async (_req: Request, res: Response) => {
+  try {
+    const designs = await allDesigns();
+    res.json({
+      success: true,
+      designs: designs.map((d) => ({ id: d.id, name: d.name, description: d.description, tags: d.tags, formats: d.formats, photos: d.photos, sponsors: d.sponsors, background: d.background })),
+      packs: BRAND_PACKS.map((p) => ({ id: p.id, name: p.name, colors: p.colors, fonts: p.fonts, rules: p.rules, palette: p.palette })),
+      fonts: FONTS.map((f) => ({ id: f.id, family: f.family, category: f.category, note: f.note || null })),
+      formats: Object.values(FORMATS).map((f) => ({ id: f.id, label: f.label, width: f.width, height: f.height, print: !!f.print }))
+    });
+  } catch (error) {
+    fail(res, error, 'Couldn’t load the designs.');
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Brand kit (the signed-in account's; admins may pass ?ownerId=)
+// ---------------------------------------------------------------------------
+
+function kitOwner(req: Request): Id {
+  const asked = typeof req.query.ownerId === 'string' ? req.query.ownerId : null;
+  if (asked && req.user!.role === UserRole.SYSTEM_ADMIN && mongoose.isValidObjectId(asked)) return new mongoose.Types.ObjectId(asked);
+  return req.user!._id as Id;
+}
+
+function kitView(kit: IBrandKit) {
+  const engine = engineKit(kit);
+  return {
+    name: kit.name,
+    pack: kit.pack || null,
+    colors: kit.colors,
+    fonts: kit.fonts,
+    logos: kit.logos,
+    partners: kit.partners,
+    rules: kit.rules,
+    notes: kit.notes || '',
+    /** What posters actually use: the pack's rules included. */
+    effective: { colors: engine.colors, fonts: engine.fonts, rules: engine.rules }
+  };
+}
+
+router.get('/brand-kit', isAuthenticated, canManageTasks, async (req: Request, res: Response) => {
+  try {
+    res.json({ success: true, kit: kitView(await loadBrandKit(kitOwner(req))) });
+  } catch (error) {
+    fail(res, error, 'Couldn’t load the brand kit.');
+  }
+});
+
+router.put('/brand-kit', isAuthenticated, canManageTasks, async (req: Request, res: Response) => {
+  try {
+    const kit = await loadBrandKit(kitOwner(req));
+    const b = req.body || {};
+    if (typeof b.name === 'string') kit.name = b.name.trim().slice(0, 120);
+    if (b.pack !== undefined && (b.pack || null) !== (kit.pack || null)) {
+      if (b.pack && !packById(b.pack)) throw new DesignError(400, 'Unknown brand pack.');
+      applyPack(kit, b.pack || null);
+    }
+    if (b.colors && typeof b.colors === 'object') {
+      for (const role of ['primary', 'secondary', 'accent', 'ink', 'paper'] as const) {
+        const c = b.colors[role];
+        if (!c) continue;
+        if (!isHex(c.hex)) throw new DesignError(400, `The ${role} colour must be a hex value like #17458f.`);
+        (kit.colors as any)[role] = { name: str(c.name, 60) || (kit.colors as any)[role]?.name || role, hex: c.hex.toLowerCase() };
+      }
+      kit.markModified('colors');
+    }
+    if (b.fonts && typeof b.fonts === 'object') {
+      const ok = (id: unknown) => typeof id === 'string' && FONTS.some((f) => f.id === id);
+      kit.fonts = { display: ok(b.fonts.display) ? b.fonts.display : kit.fonts.display, text: ok(b.fonts.text) ? b.fonts.text : kit.fonts.text, accent: ok(b.fonts.accent) ? b.fonts.accent : b.fonts.accent === null ? undefined : kit.fonts.accent };
+    }
+    if (typeof b.notes === 'string') kit.notes = b.notes.slice(0, 3000);
+    if (Array.isArray(b.rules)) {
+      const admin = req.user!.role === UserRole.SYSTEM_ADMIN;
+      kit.rules = b.rules
+        .filter((r: any) => r && typeof r.text === 'string' && r.text.trim())
+        .slice(0, 30)
+        .map((r: any) => ({ id: typeof r.id === 'string' && r.id ? r.id : brandId(), text: r.text.trim().slice(0, 400), hard: admin ? !!r.hard : false }));
+    }
+    kit.updatedBy = req.user!._id;
+    await kit.save();
+    res.json({ success: true, kit: kitView(kit), message: 'Brand kit saved' });
+  } catch (error) {
+    fail(res, error, 'Couldn’t save the brand kit.');
+  }
+});
+
+/** Upload a logo file: form fields file, role (primary|campaign), name, logoId (adds a version to it). */
+router.post('/brand-kit/logos', isAuthenticated, canManageTasks, uploadFile, async (req: Request, res: Response) => {
+  try {
+    if (!req.file) throw new DesignError(400, 'Choose a logo file.');
+    const kit = await loadBrandKit(kitOwner(req));
+    const variant = await storeLogoFile(req.file.buffer);
+    const logoId = str(req.body?.logoId, 40);
+    const existing = logoId ? kit.logos.find((l) => l.id === logoId) : null;
+    const pack = packById(kit.pack);
+    if (existing) {
+      existing.variants = [...existing.variants.filter((v) => v.variant !== variant.variant), variant].slice(0, 4);
+    } else {
+      const role = req.body?.role === 'campaign' ? 'campaign' : 'primary';
+      if (role === 'primary' && kit.logos.some((l) => l.role === 'primary')) {
+        // One main logo: a new upload replaces it (its other versions go).
+        kit.logos = kit.logos.filter((l) => l.role !== 'primary');
+      }
+      const d = role === 'primary' ? pack?.logoDefaults.primary : pack?.logoDefaults.campaign;
+      kit.logos.push({
+        id: brandId(),
+        name: str(req.body?.name, 80) || (role === 'primary' ? 'Main logo' : 'Campaign logo'),
+        role,
+        variants: [variant],
+        clearSpace: d?.clearSpace ?? 0.25,
+        minHeight: d?.minHeight ?? 0.05,
+        requiresPrimary: role === 'campaign' ? d?.requiresPrimary ?? true : undefined,
+        always: false
+      } as any);
+    }
+    kit.markModified('logos');
+    await kit.save();
+    const warning = variant.lowRes ? 'This file is small: it’s fine on social media but may look soft in print. Upload a larger PNG or an SVG if you have one.' : null;
+    res.json({ success: true, kit: kitView(kit), warning, message: 'Logo added' });
+  } catch (error) {
+    fail(res, error, 'Couldn’t add the logo.');
+  }
+});
+
+router.patch('/brand-kit/logos/:logoId', isAuthenticated, canManageTasks, async (req: Request, res: Response) => {
+  try {
+    const kit = await loadBrandKit(kitOwner(req));
+    const logo = kit.logos.find((l) => l.id === req.params.logoId);
+    if (!logo) throw new DesignError(404, 'Logo not found');
+    const b = req.body || {};
+    if (typeof b.name === 'string' && b.name.trim()) logo.name = b.name.trim().slice(0, 80);
+    if (typeof b.always === 'boolean') logo.always = b.always;
+    // Pack logos keep the pack's clear space and minimum size.
+    if (!kit.pack) {
+      if (typeof b.clearSpace === 'number' && b.clearSpace >= 0 && b.clearSpace <= 1) logo.clearSpace = b.clearSpace;
+      if (typeof b.minHeight === 'number' && b.minHeight >= 0.02 && b.minHeight <= 0.3) logo.minHeight = b.minHeight;
+    }
+    if (typeof b.removeVariant === 'string') logo.variants = logo.variants.filter((v) => v.id !== b.removeVariant);
+    if (typeof b.variantId === 'string' && ['color', 'reverse', 'mono-dark', 'mono-light'].includes(b.variant)) {
+      const v = logo.variants.find((x) => x.id === b.variantId);
+      if (v) v.variant = b.variant;
+    }
+    kit.markModified('logos');
+    await kit.save();
+    res.json({ success: true, kit: kitView(kit) });
+  } catch (error) {
+    fail(res, error, 'Couldn’t update the logo.');
+  }
+});
+
+router.delete('/brand-kit/logos/:logoId', isAuthenticated, canManageTasks, async (req: Request, res: Response) => {
+  try {
+    const kit = await loadBrandKit(kitOwner(req));
+    kit.logos = kit.logos.filter((l) => l.id !== req.params.logoId);
+    kit.markModified('logos');
+    await kit.save();
+    res.json({ success: true, kit: kitView(kit) });
+  } catch (error) {
+    fail(res, error, 'Couldn’t remove the logo.');
+  }
+});
+
+/** A partner (sponsor) logo kept in the kit for future posters: form fields file, name. */
+router.post('/brand-kit/partners', isAuthenticated, canManageTasks, uploadFile, async (req: Request, res: Response) => {
+  try {
+    if (!req.file) throw new DesignError(400, 'Choose the partner’s logo file.');
+    const name = str(req.body?.name, 80);
+    if (!name) throw new DesignError(400, 'Give the partner’s name.');
+    const kit = await loadBrandKit(kitOwner(req));
+    if (kit.partners.length >= 60) throw new DesignError(400, 'The kit holds up to 60 partners. Remove some first.');
+    const logo = await storeLogoFile(req.file.buffer);
+    kit.partners.push({ id: brandId(), name, logo });
+    kit.markModified('partners');
+    await kit.save();
+    const warning = logo.lowRes ? 'This logo file is small and may look soft in print.' : null;
+    res.json({ success: true, kit: kitView(kit), warning, message: 'Partner added' });
+  } catch (error) {
+    fail(res, error, 'Couldn’t add the partner.');
+  }
+});
+
+router.delete('/brand-kit/partners/:partnerId', isAuthenticated, canManageTasks, async (req: Request, res: Response) => {
+  try {
+    const kit = await loadBrandKit(kitOwner(req));
+    kit.partners = kit.partners.filter((p) => p.id !== req.params.partnerId);
+    kit.markModified('partners');
+    await kit.save();
+    res.json({ success: true, kit: kitView(kit) });
+  } catch (error) {
+    fail(res, error, 'Couldn’t remove the partner.');
+  }
+});
+
+export default router;

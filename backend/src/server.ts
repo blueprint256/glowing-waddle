@@ -38,6 +38,8 @@ import inboxRoutes from './routes/inbox.routes';
 import { startInboxWorker } from './inbox/rules';
 import { startPublishingWorker } from './publishing/worker';
 import { startLibraryWorker } from './library/worker';
+import { startDesignWorker } from './services/designWorker';
+import designRoutes from './routes/design.routes';
 import { migrateTaskStatuses } from './services/postStatus';
 import { migratePostsToV2 } from './services/posts';
 import mcpRouter from './mcp/router';
@@ -178,6 +180,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/tasks', taskRoutes);
+app.use('/api/design', designRoutes); // Designed posters and the brand kit
 app.use('/api/comments', commentRoutes);
 app.use('/api/assets', assetRoutes);
 app.use('/api/integrations/canva', canvaRoutes); // Canva connect + Edit in Canva
@@ -247,6 +250,7 @@ app.listen(PORT, () => {
     .then(() => migrateTaskStatuses())
     .catch((e) => console.error('[posts] status migration failed:', e));
   startLibraryWorker();
+  startDesignWorker();
   startPublishingWorker();
   startInboxWorker();
 });

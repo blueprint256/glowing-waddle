@@ -113,11 +113,11 @@ export const artLed: DesignTemplate = {
 }
 #poster:has(.al-badge) .al-copy { padding-right: calc(var(--m) + var(--badge) * 0.8); }
 .al-eyebrow { font-family: var(--f-display); font-weight: 700; letter-spacing: 0.14em; color: var(--c-accent-deep); line-height: 1.1; white-space: nowrap; }
-.al-headline { font-family: var(--f-display); font-weight: 800; font-stretch: 80%; line-height: 0.96; letter-spacing: -0.01em; color: var(--p-ink); }
+.al-headline { font-family: var(--f-display); font-weight: 800; font-stretch: 80%; line-height: 0.96; letter-spacing: -0.01em; color: var(--p-ink-on-paper); }
 .al-subhead { font-family: var(--f-text); line-height: 1.34; color: rgb(var(--c-ink-rgb) / 0.86); max-width: 36em; }
 .al-details { display: flex; flex-wrap: wrap; column-gap: 4cqmin; row-gap: 0.9cqmin; }
 .al-detail { font-family: var(--f-display); font-weight: 600; font-stretch: 92%; font-size: 2.35cqmin; line-height: 1.2; color: var(--c-ink); }
-.al-detail svg { color: var(--p-ink); }
+.al-detail svg { color: var(--p-ink-on-paper); }
 .al-cta { align-self: flex-start; font-family: var(--f-display); font-weight: 800; font-stretch: 85%; letter-spacing: 0.02em; text-transform: uppercase; font-size: 2.4cqmin; line-height: 1; color: var(--p-ink-on); background: var(--p-ink); padding: 1.4cqmin 2.4cqmin; border-radius: 0.6cqmin; }
 
 .al-foot {

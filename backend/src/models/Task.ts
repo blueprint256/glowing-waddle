@@ -15,14 +15,32 @@ export interface PostImageHistory {
   url: string;
   source: string; // upload | library | ai | canva | restore
   note?: string;
+  /** When the picture was a designed poster: its document, so it can be edited again. */
+  design?: PostDesign;
   at: Date;
+}
+
+/** A poster made by the design engine: everything needed to render it again or edit it. */
+export interface PostDesign {
+  doc: any; // design/types DesignDoc
+  /** Problems the code checks found (warnings only: options with errors aren't kept). */
+  issues?: { level: string; code: string; message: string }[];
+  /** The critic's 0–10 and its one-line note. */
+  score?: number;
+  note?: string;
+  why?: string;
+  jobId?: string;
+  /** Print version, made on request. */
+  pdfUrl?: string;
 }
 
 /** An AI picture that hasn't been chosen yet (deleted after 7 days if it isn't used). */
 export interface PostAIDraft {
   id: string;
   url: string;
-  kind: 'create' | 'change';
+  kind: 'create' | 'change' | 'design';
+  /** kind "design": the poster document behind the picture. */
+  design?: PostDesign;
   prompt: string;
   /** For "change": the picture that was changed. */
   from?: string;
@@ -55,6 +73,8 @@ export interface ITask extends Document {
   taskDate?: Date | null;
   content?: string;
   designedImage?: string; // the post's picture
+  /** When the picture is a designed poster: its document (edit it, download it for print). */
+  pictureDesign?: PostDesign | null;
   imageHistory: PostImageHistory[];
   aiDrafts: PostAIDraft[];
   references: PostReference[];
@@ -75,6 +95,7 @@ const historySchema = new Schema<PostImageHistory>(
     url: { type: String, required: true },
     source: { type: String, default: 'upload' },
     note: { type: String, maxlength: 300 },
+    design: { type: Schema.Types.Mixed },
     at: { type: Date, default: Date.now }
   },
   { _id: false }
@@ -84,7 +105,8 @@ const draftSchema = new Schema<PostAIDraft>(
   {
     id: { type: String, required: true },
     url: { type: String, required: true },
-    kind: { type: String, enum: ['create', 'change'], required: true },
+    kind: { type: String, enum: ['create', 'change', 'design'], required: true },
+    design: { type: Schema.Types.Mixed },
     prompt: { type: String, default: '', maxlength: 4000 },
     from: { type: String },
     size: { type: String },
@@ -151,6 +173,10 @@ const taskSchema = new Schema<ITask>(
     },
     designedImage: {
       type: String
+    },
+    pictureDesign: {
+      type: Schema.Types.Mixed,
+      default: null
     },
     imageHistory: { type: [historySchema], default: [] },
     aiDrafts: { type: [draftSchema], default: [] },
