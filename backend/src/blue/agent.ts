@@ -63,6 +63,9 @@ function resultContent(data: unknown): string {
 }
 
 /** Run one tool call as the user. Never throws. */
+/** Tools that make a new AI picture (and use the allowance). */
+const MAKES_PICTURE = new Set(['generate_task_poster', 'create_task_photo']);
+
 export async function executeCall<Ctx>(
   call: ToolCall,
   tools: ToolDefinition<Ctx>[],
@@ -126,6 +129,8 @@ export async function runAgent<Ctx>(opts: AgentOptions<Ctx>): Promise<AgentResul
   const specs = toolSpecs(opts.tools, opts.ctx);
   let steps = 0;
 
+  let picturesMade = 0;
+
   while (steps < maxSteps) {
     steps++;
     let turn;
@@ -152,6 +157,17 @@ export async function runAgent<Ctx>(opts: AgentOptions<Ctx>): Promise<AgentResul
 
     for (const call of turn.toolCalls) {
       const tool = available.find((t) => t.name === call.name);
+      // One new AI picture per message: a second one (an extra photo after a poster, say) spends
+      // the allowance without being asked, so it waits for the person to ask again.
+      if (MAKES_PICTURE.has(call.name)) {
+        if (picturesMade >= 1) {
+          const error = 'An AI picture was already made for this message. Tell the user what was made and ask before making another.';
+          opts.onEvent({ type: 'tool_result', id: call.id, name: call.name, ok: false, error });
+          results.push({ id: call.id, name: call.name, content: error, isError: true });
+          continue;
+        }
+        picturesMade++;
+      }
       if (tool && isDestructive(tool)) needsConfirmation.push(call);
       else results.push(await executeCall(call, opts.tools, opts.ctx, opts.onEvent, opts.log));
     }

@@ -143,7 +143,19 @@ function shapeTask(t: any, appUrl: string) {
     designed_image_url: t.designedImage || undefined,
     earlier_image_urls: t.imageHistory?.length ? t.imageHistory.map((h: any) => h.url) : undefined,
     ai_draft_images: t.aiDrafts?.length
-      ? t.aiDrafts.map((d: any) => clean({ id: d.id, url: d.url, kind: d.kind === 'change' ? 'changed' : 'created', change: d.kind === 'change' ? d.prompt : undefined, created_at: d.at }))
+      ? t.aiDrafts.map((d: any) =>
+          clean({
+            id: d.id,
+            url: d.url,
+            // A poster (poster engine, editable) or a photo (image AI), made new or changed.
+            type: d.design?.doc ? 'poster' : 'photo',
+            design: d.design?.doc?.designId,
+            shape: d.design?.doc?.format || d.size,
+            kind: d.kind === 'change' ? 'changed' : 'created',
+            change: d.kind === 'change' ? d.prompt : undefined,
+            created_at: d.at
+          })
+        )
       : undefined,
     reference_images: t.references?.length ? t.references.map((r: any) => ({ id: r.id, url: r.url, role: r.role === 'style' ? 'copy_style' : 'include', name: r.name || '' })) : undefined,
     created_by: person(t.createdBy),
@@ -1560,7 +1572,7 @@ const aiAdminTools: Tool[] = [
     inputSchema: obj(
       {
         task_id: id('Post (task) ID.'),
-        format: { type: 'string', enum: ['portrait', 'square', 'story', 'landscape', 'a4'], description: 'Shape: portrait (4:5, default), square (1:1), story (9:16), landscape (3:2) or a4 (print).' },
+        format: { type: 'string', enum: ['portrait', 'square', 'story', 'landscape', 'a4'], description: 'Shape: portrait (4:5, default), square (1:1), story (9:16), landscape (3:2) or a4 (print). Always pass the shape the user asked for.' },
         partners: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 80 }, maxItems: 8, description: "Partners or sponsors whose logos go on the poster, by name or id (from get_company_info partners). Leave out for none." },
         options: { type: 'integer', minimum: 1, maximum: 4, description: 'How many options (default 4).' },
         ai_photo: { type: 'boolean', description: "When the post has no photo to include: make a realistic photo with the image AI first (no words; added to the post's pictures) and design the poster around it. Default false." }

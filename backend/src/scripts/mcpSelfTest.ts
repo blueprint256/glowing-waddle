@@ -435,7 +435,7 @@ async function main() {
     assert.equal(data.task.title_is_automatic, true);
     assert.equal(data.task.old_theme, 'Launch week');
     assert.deepEqual(data.task.earlier_image_urls, ['https://cdn.example.com/before.jpg']);
-    assert.deepEqual(data.task.ai_draft_images[0], { id: 'd1', url: 'https://cdn.example.com/draft.jpg', kind: 'changed', change: 'make it blue', created_at: '2026-11-02T00:00:00.000Z' });
+    assert.deepEqual(data.task.ai_draft_images[0], { id: 'd1', url: 'https://cdn.example.com/draft.jpg', type: 'photo', kind: 'changed', change: 'make it blue', created_at: '2026-11-02T00:00:00.000Z' });
     assert.deepEqual(data.task.reference_images, [{ id: 'r1', url: 'https://cdn.example.com/ref.jpg', role: 'copy_style', name: 'Poster I like' }]);
   });
   await test('picture tools: design a poster, make a photo, change and use a draft', async () => {
