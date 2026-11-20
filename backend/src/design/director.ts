@@ -400,14 +400,57 @@ export function plannedDocs(plan: DirectorPlan, input: DirectorInput, background
  * Without an AI key the app still makes posters: the words come from the request as written and
  * the options rotate through the designs that fit.
  */
+/** The "Poster facts" lines a plan (or a person) wrote in a brief, and the brief without them. */
+export function factsInBrief(brief: string): { text: string; headline?: string; date?: string; time?: string; place?: string; figures: string[] } {
+  const out: { text: string; headline?: string; date?: string; time?: string; place?: string; figures: string[] } = { text: '', figures: [] };
+  const kept: string[] = [];
+  for (const raw of brief.split(/\r?\n/)) {
+    const line = raw.replace(/^\s*[-•*]\s*/, '').trim();
+    if (/^(poster facts|picture)\s*:/i.test(line)) continue;
+    const m = line.match(/^(headline idea|headline|date|when|time|place|where|venue|figures?)\s*:\s*(.+)$/i);
+    if (!m) {
+      kept.push(raw);
+      continue;
+    }
+    const key = m[1].toLowerCase();
+    const value = m[2].trim();
+    if (key.startsWith('headline')) out.headline = value;
+    else if (key === 'date' || key === 'when') out.date = value;
+    else if (key === 'time') out.time = value;
+    else if (key === 'place' || key === 'where' || key === 'venue') out.place = value;
+    else out.figures.push(...value.split(/\s*;\s*/).filter(Boolean));
+  }
+  out.text = kept.join(' ').replace(/\s+/g, ' ').trim();
+  return out;
+}
+
+/** "1,200 families served this year" → { value: "1,200", label: "families served this year" }. */
+function statOf(figure: string): { value: string; label: string } | null {
+  const m = figure.match(/^([~≈]?[\d.,]+\s*(?:%|k|m|kg|km|million|thousand)?\+?)\s+(.{2,60})$/i);
+  return m ? { value: m[1].trim(), label: m[2].trim() } : null;
+}
+
+/** A plain plan from the brief alone, used when the art director can't be reached. */
 export function planWithoutAI(input: DirectorInput): DirectorPlan {
-  const text = input.brief.replace(/\s+/g, ' ').trim();
-  const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
-  let headline = sentences[0] || input.campaign?.name || 'Join us';
+  const facts = factsInBrief(input.brief);
+  const sentences = facts.text.split(/(?<=[.!?])\s+/).filter(Boolean);
+  let headline = facts.headline || sentences[0] || input.campaign?.name || 'Join us';
   if (headline.length > 60) headline = headline.split(' ').slice(0, 7).join(' ');
-  const subhead = sentences.slice(1).join(' ').slice(0, 200) || undefined;
+  const rest = facts.headline ? sentences : sentences.slice(1);
+  const subhead = rest.join(' ').slice(0, 160) || undefined;
+  const details: DetailLine[] = [];
+  if (facts.date) details.push({ kind: 'date', text: facts.date });
+  if (facts.time) details.push({ kind: 'time', text: facts.time });
+  if (facts.place) details.push({ kind: 'place', text: facts.place });
+  const stats = facts.figures.map(statOf).filter((x): x is { value: string; label: string } => !!x).slice(0, 3);
   const fitting = input.designs.filter((d) => d.formats.includes(input.format) && input.photos.length >= d.photos.min && input.sponsors.length <= d.sponsors.max && (d.cutout !== 'required' || !!input.photos[0]?.slot.cutout));
+  // Event facts suit the event designs; figures suit the report-back one.
+  const prefer = details.length ? ['bold-event', 'hero-photo', 'split-panel'] : stats.length ? ['recap'] : [];
+  fitting.sort((a, b) => (prefer.includes(a.id) ? prefer.indexOf(a.id) : 99) - (prefer.includes(b.id) ? prefer.indexOf(b.id) : 99));
   const options: PlanOption[] = [];
   for (let i = 0; i < input.count && fitting.length; i++) options.push({ design: fitting[i % fitting.length].id, photos: [((i % Math.max(1, input.photos.length)) || 0) + 1] });
-  return { copy: { headline: headline.replace(/[.!]+$/, ''), subhead, eyebrow: input.campaign?.name }, options };
+  return {
+    copy: { headline: headline.replace(/[.!]+$/, ''), subhead, eyebrow: input.campaign?.name, details: details.length ? details : undefined, stats: stats.length ? stats : undefined },
+    options
+  };
 }

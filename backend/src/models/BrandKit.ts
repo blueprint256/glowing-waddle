@@ -79,6 +79,8 @@ export interface IBrandKit extends Document {
   fonts: { display: string; text: string; accent?: string };
   /** Fonts the account uploaded, usable in fonts.display/text/accent by their id. */
   customFonts: BrandKitFont[];
+  /** The account's own colours and fonts, kept while a club pack is on, given back when it's off. */
+  ownLook?: { colors: any; fonts: any } | null;
   logos: BrandKitLogo[];
   partners: BrandKitPartner[];
   /** The account's own rules on top of the pack's (soft unless marked hard by an admin). */
@@ -170,6 +172,7 @@ const brandKitSchema = new Schema<IBrandKit>(
     rules: [new Schema({ id: { type: String, required: true }, text: { type: String, required: true, maxlength: 400 }, hard: { type: Boolean, default: false } }, { _id: false })],
     notes: { type: String, maxlength: 3000 },
     contact: { social: { type: String, maxlength: 60 }, web: { type: String, maxlength: 60 } },
+    ownLook: { type: Schema.Types.Mixed, default: null },
     updatedBy: { type: Schema.Types.ObjectId, ref: 'User' }
   },
   { timestamps: true }

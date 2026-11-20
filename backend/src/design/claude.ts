@@ -1,9 +1,13 @@
 import { postJson, type FetchLike } from '../blue/providers';
 
 /**
- * One structured call to Claude for the design steps: the answer is forced through a single tool
- * whose input schema is the shape we need, so it arrives as checked JSON, never as prose to parse.
- * The long, stable part of the prompt (rules, brand, design catalogue) is cached.
+ * One structured call to Claude for the design steps: the answer comes through a single tool whose
+ * input schema is the shape we need, so it arrives as JSON, never as prose to parse. The long,
+ * stable part of the prompt (rules, brand, design catalogue) is cached.
+ *
+ * Current models (Sonnet 5.5, Opus 5.5 and others) refuse forced tool use (tool_choice "tool" or
+ * "any" is a 400 error), so the tool is offered with tool_choice "auto" and the prompt says to
+ * answer only through it; if the model answers in words anyway, it's asked once more to call it.
  */
 
 export const DESIGN_MODELS = {
@@ -65,16 +69,21 @@ export function buildToolRequest(req: ClaudeToolRequest) {
     if (img.label) content.push({ type: 'text', text: img.label });
     content.push({ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.base64 } });
   }
-  content.push({ type: 'text', text: req.prompt });
+  content.push({ type: 'text', text: `${req.prompt}\n\n${answerRule(req.tool.name)}` });
   return {
     model: req.model,
-    max_tokens: req.maxTokens ?? 4096,
+    // Room for a little thinking or a sentence before the tool call.
+    max_tokens: (req.maxTokens ?? 4096) + 1024,
     system,
     messages: [{ role: 'user', content }],
     tools: [{ name: req.tool.name, description: req.tool.description, input_schema: req.tool.schema }],
-    tool_choice: { type: 'tool', name: req.tool.name }
+    tool_choice: { type: 'auto' }
   };
 }
+
+const answerRule = (tool: string) => `Answer only by calling the ${tool} tool, once, with the complete answer. Don't reply in words.`;
+
+const toolBlock = (json: any, name: string) => (Array.isArray(json?.content) ? json.content : []).find((b: any) => b.type === 'tool_use' && b.name === name);
 
 export function costOf(model: string, u: { input: number; output: number; cacheRead: number; cacheWrite: number }): number {
   const p = PRICES[model] || PRICES['claude-sonnet-5-5'];
@@ -82,17 +91,29 @@ export function costOf(model: string, u: { input: number; output: number; cacheR
 }
 
 export async function callClaudeTool<T>(req: ClaudeToolRequest): Promise<ClaudeToolCall<T>> {
-  const json = await postJson(
-    req.fetchImpl || defaultFetch,
-    'https://api.anthropic.com/v1/messages',
-    { 'x-api-key': req.apiKey, 'anthropic-version': '2023-06-01' },
-    buildToolRequest(req),
-    'Anthropic',
-    req.timeoutMs
-  );
-  const block = (Array.isArray(json?.content) ? json.content : []).find((b: any) => b.type === 'tool_use' && b.name === req.tool.name);
+  const send = (body: unknown) =>
+    postJson(req.fetchImpl || defaultFetch, 'https://api.anthropic.com/v1/messages', { 'x-api-key': req.apiKey, 'anthropic-version': '2023-06-01' }, body, 'Anthropic', req.timeoutMs);
+  const body = buildToolRequest(req);
+  let json = await send(body);
+  const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  const add = (j: any) => {
+    const u = j?.usage || {};
+    usage.input += u.input_tokens || 0;
+    usage.output += u.output_tokens || 0;
+    usage.cacheRead += u.cache_read_input_tokens || 0;
+    usage.cacheWrite += u.cache_creation_input_tokens || 0;
+  };
+  add(json);
+  let block = toolBlock(json, req.tool.name);
+  if (!block && Array.isArray(json?.content)) {
+    // It answered in words: once more, asking for the tool call.
+    json = await send({
+      ...body,
+      messages: [...body.messages, { role: 'assistant', content: json.content }, { role: 'user', content: [{ type: 'text', text: answerRule(req.tool.name) }] }]
+    });
+    add(json);
+    block = toolBlock(json, req.tool.name);
+  }
   if (!block || typeof block.input !== 'object') throw new Error('The design AI didn’t return a plan. Try again.');
-  const u = json?.usage || {};
-  const usage = { input: u.input_tokens || 0, output: u.output_tokens || 0, cacheRead: u.cache_read_input_tokens || 0, cacheWrite: u.cache_creation_input_tokens || 0 };
   return { input: block.input as T, usage, cost: costOf(req.model, usage), model: req.model };
 }

@@ -326,10 +326,40 @@ export function engineKit(doc: IBrandKit): BrandKit {
 }
 
 /** Applies a brand pack: its colours and fonts become the kit's, and logo rules take its defaults. */
-export function applyPack(doc: IBrandKit, packId: string | null): void {
+/**
+ * Turns a club pack on or off. On: the account's own colours and fonts are kept aside and the
+ * pack's are used. Off: they come back, or, when none were kept (a kit from before this was kept),
+ * colours written in the brand guidelines, else neutral ones, with the default fonts.
+ */
+export function applyPack(doc: IBrandKit, packId: string | null, guidelines = ''): void {
   const pack = packById(packId);
+  const had = packById(doc.pack);
   doc.pack = pack ? pack.id : null;
-  if (!pack) return;
+  if (!pack) {
+    if (!had) return;
+    const own = doc.ownLook;
+    if (own?.colors && own?.fonts) {
+      doc.colors = JSON.parse(JSON.stringify(own.colors));
+      doc.fonts = { ...own.fonts };
+    } else {
+      const colors = JSON.parse(JSON.stringify(NEUTRAL));
+      const written = hexesIn(guidelines);
+      if (written[0]) colors.primary = { name: 'Brand colour', hex: written[0] };
+      colors.secondary = written[1] ? { name: 'Second colour', hex: written[1] } : { name: 'Brand colour (deep)', hex: mix(colors.primary.hex, colors.ink.hex, 0.35) };
+      if (written[2]) colors.accent = { name: 'Accent', hex: written[2] };
+      doc.colors = colors;
+      doc.fonts = { display: 'opensans', text: 'gelasio' };
+    }
+    doc.ownLook = null;
+    doc.markModified('colors');
+    doc.markModified('fonts');
+    doc.markModified('ownLook');
+    return;
+  }
+  if (!had) {
+    doc.ownLook = { colors: JSON.parse(JSON.stringify(doc.colors)), fonts: { ...doc.fonts } };
+    doc.markModified('ownLook');
+  }
   doc.colors = JSON.parse(JSON.stringify(pack.colors));
   doc.fonts = { ...pack.fonts };
   for (const l of doc.logos || []) {

@@ -2,7 +2,7 @@ import express, { NextFunction, Request, Response } from 'express';
 import multer from 'multer';
 import mongoose from 'mongoose';
 import { Task } from '../models/Task';
-import { UserRole } from '../models/User';
+import { User, UserRole } from '../models/User';
 import { DesignJob } from '../models/DesignJob';
 import type { IBrandKit } from '../models/BrandKit';
 import { isAuthenticated } from '../middleware/auth';
@@ -303,7 +303,8 @@ router.put('/brand-kit', isAuthenticated, canManageTasks, async (req: Request, r
     if (typeof b.name === 'string') kit.name = b.name.trim().slice(0, 120);
     if (b.pack !== undefined && (b.pack || null) !== (kit.pack || null)) {
       if (b.pack && !packById(b.pack)) throw new DesignError(400, 'Unknown brand pack.');
-      applyPack(kit, b.pack || null);
+      const owner = await User.findById(kit.ownerId).select('companyInfo.brandGuidelines');
+      applyPack(kit, b.pack || null, String((owner as any)?.companyInfo?.brandGuidelines || ''));
     }
     if (b.colors && typeof b.colors === 'object') {
       // A brand pack allows only its own palette (Rotary's brand centre colours, for example).

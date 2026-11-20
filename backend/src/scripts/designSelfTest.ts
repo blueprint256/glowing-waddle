@@ -22,8 +22,8 @@ import type { DesignTemplate, DesignText, FormatId, PhotoSlot } from '../design/
 import { checkScore, hasErrors } from '../design/checks';
 import { plannedDocs, planWithoutAI, cleanCopy, type DirectorInput, type DirectorPlan } from '../design/director';
 import { applyEdits, applyTextEdits } from '../design/edits';
-import { buildToolRequest } from '../design/claude';
-import { DIRECTOR_TOOL, voiceText } from '../design/director';
+import { buildToolRequest, callClaudeTool } from '../design/claude';
+import { DIRECTOR_TOOL, factsInBrief, planWithoutAI, voiceText } from '../design/director';
 import { FONT_DIR, fontFormatOf, fontStack, customFontFaceCss } from '../design/fonts';
 import { buildPage } from '../design/page';
 
@@ -262,7 +262,7 @@ async function main() {
     console.log(`${copyOk ? '✓' : '✗'} copy cleaning`);
     if (!copyOk) failures++;
     const req = buildToolRequest({ apiKey: 'x', model: 'claude-sonnet-5-5', system: 'S', context: 'C', prompt: 'P', images: [{ mediaType: 'image/jpeg', base64: 'AA', label: 'Photo 1:' }], tool: DIRECTOR_TOOL });
-    const reqOk = req.tool_choice.name === DIRECTOR_TOOL.name && req.system.length === 2 && (req.system[1] as any).cache_control && req.messages[0].content.length === 3;
+    const reqOk = req.tool_choice.type === 'auto' && req.tools[0].name === DIRECTOR_TOOL.name && String((req.messages[0].content.slice(-1)[0] as any).text).includes(`calling the ${DIRECTOR_TOOL.name} tool`) && req.system.length === 2 && (req.system[1] as any).cache_control && req.messages[0].content.length === 3;
     console.log(`${reqOk ? '✓' : '✗'} Claude request shape`);
     if (!reqOk) failures++;
   }
@@ -290,6 +290,40 @@ async function main() {
     const fontOk = formatsOk && stackOk && cssOk && pageOk && differs && !hasErrors(own.report.issues);
     console.log(`${fontOk ? '✓' : '✗'} uploaded font: detected ${formatsOk}, stack ${stackOk}, css ${cssOk}, page ${pageOk}, poster changes ${differs}, checks ${own.report.issues.filter((i) => i.level === 'error').map((i) => i.code).join(',') || 'clean'}`);
     if (!fontOk) failures++;
+  }
+
+  // Current Claude models refuse forced tool use: the call offers the tool ("auto") and, if the
+  // model answers in words, asks once more.
+  {
+    const sent: any[] = [];
+    const replies = [
+      { content: [{ type: 'text', text: 'Here is my plan…' }], usage: { input_tokens: 10, output_tokens: 5 } },
+      { content: [{ type: 'tool_use', name: 'plan', input: { ok: 1 } }], usage: { input_tokens: 12, output_tokens: 7 } }
+    ];
+    const fetchImpl = async (_url: string, init: any) => {
+      sent.push(JSON.parse(init.body));
+      const r = replies.shift()!;
+      return { ok: true, status: 200, text: async () => JSON.stringify(r) } as any;
+    };
+    const out = await callClaudeTool<{ ok: number }>({ apiKey: 'k', model: 'claude-sonnet-5-5', system: 'S', prompt: 'P', tool: { name: 'plan', description: 'd', schema: { type: 'object' } }, fetchImpl });
+    const retryOk = out.input.ok === 1 && sent.length === 2 && sent.every((b) => b.tool_choice.type === 'auto') && sent[1].messages.length === 3 && out.usage.input === 22 && out.usage.output === 12;
+    console.log(`${retryOk ? '✓' : '✗'} Claude call without forced tool use (and one retry)`);
+    if (!retryOk) failures++;
+  }
+
+  // Without the art director, the brief's poster facts still become the poster's words.
+  {
+    const brief = 'Invite the community to our clean-water open day. Families see the new borehole.\n\nPoster facts:\n- Headline idea: Clean water, open to all\n- Date: Saturday 5 December\n- Time: 9:00 am – 1:00 pm\n- Place: Nakawa Community Centre\n- Figures: 1,200 families served this year';
+    const f = factsInBrief(brief);
+    const plan = planWithoutAI({ brief, format: 'portrait', photos: [], sponsors: [], designs: BUILTIN_DESIGNS, count: 2, kit } as any);
+    const c = plan.copy;
+    const ok =
+      f.headline === 'Clean water, open to all' && f.place === 'Nakawa Community Centre' && !/Poster facts|Headline idea/.test(f.text) &&
+      c.headline === 'Clean water, open to all' && c.subhead?.startsWith('Invite the community') && !/Poster facts|Date:/.test(c.subhead || '') &&
+      c.details?.map((d) => d.kind).join() === 'date,time,place' && c.stats?.[0]?.value === '1,200' && c.stats?.[0]?.label === 'families served this year' &&
+      plan.options[0]?.design === 'bold-event';
+    console.log(`${ok ? '✓' : '✗'} plan without AI uses the poster facts (${c.headline} · ${plan.options.map((o) => o.design).join(', ')})`);
+    if (!ok) failures++;
   }
 
   // The brand's own words reach the art director.
