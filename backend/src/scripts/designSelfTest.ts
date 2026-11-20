@@ -23,7 +23,7 @@ import { checkScore, hasErrors } from '../design/checks';
 import { plannedDocs, planWithoutAI, cleanCopy, type DirectorInput, type DirectorPlan } from '../design/director';
 import { applyEdits, applyTextEdits } from '../design/edits';
 import { buildToolRequest, callClaudeTool } from '../design/claude';
-import { DIRECTOR_TOOL, factsInBrief, planWithoutAI, voiceText } from '../design/director';
+import { DIRECTOR_TOOL, factsInBrief, voiceText } from '../design/director';
 import { FONT_DIR, fontFormatOf, fontStack, customFontFaceCss } from '../design/fonts';
 import { buildPage } from '../design/page';
 

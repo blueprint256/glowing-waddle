@@ -67,7 +67,9 @@ export async function draftCampaignPlan(campaign: ICampaign, opts: PlanOptions, 
       startDate: campaign.startDate,
       endDate: campaign.endDate
     },
-    instruction
+    instruction,
+    // For an admin prompt without {instruction}: the period and the output rules go at its end.
+    __appendInstruction: instruction
   };
 
   if (opts.command && !usable) throw new AIError(404, `The AI command “${command}” isn’t set up.`);

@@ -1185,8 +1185,12 @@ export async function executeCommandChain(
         console.log(`Skipping image carry-forward (disabled for this step)`);
       }
 
-      // Compile prompt for this step
-      const compiledPrompt = compileSuperPrompt(promptText, stepParams);
+      // Compile prompt for this step. When the app sends rules the answer must follow ({instruction},
+      // e.g. Plan with AI's period and output shape) and the admin's prompt doesn't place them, they
+      // go at the end of the first step, so the feature still works with any prompt.
+      let compiledPrompt = compileSuperPrompt(promptText, stepParams);
+      const appendix = typeof (stepParams as any).__appendInstruction === 'string' ? (stepParams as any).__appendInstruction : '';
+      if (i === 0 && appendix && !/\{instruction\}/.test(promptText)) compiledPrompt = `${compiledPrompt}\n\n${appendix}`;
       compiledPrompts.push(compiledPrompt);
 
       console.log('Compiled Prompt Length:', compiledPrompt.length, 'characters');
