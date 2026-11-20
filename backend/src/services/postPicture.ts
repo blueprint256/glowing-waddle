@@ -171,6 +171,42 @@ export async function createPicture(task: ITask, options: CreateOptions): Promis
   return { draft, dropped };
 }
 
+/**
+ * A real photo-style picture made for a poster that has no photo of its own ("Create with AI ›
+ * Poster › let AI make the photo"). Made from the brief and the brand with no words on it, in the
+ * poster's shape, stored, and added to the post's pictures so it can be reused. It's part of the
+ * poster: its usage is labelled "Design · photo" and isn't counted again.
+ */
+export async function photoForPoster(task: ITask, options: { format: string; userId?: Id; brief?: string }): Promise<string> {
+  const brief = (options.brief ?? task.description ?? task.content ?? '').trim();
+  if (!brief) throw new AIError(400, 'Say what the post is about first, so the AI knows what photo to make.');
+  const shape: PictureFormat = options.format === 'landscape' ? 'landscape' : options.format === 'square' ? 'square' : 'portrait';
+  const size = FORMAT_SIZES[shape];
+  const { companyInfo, campaign } = await pictureContext(task);
+  const prompt = fillTemplate(BUILTIN_CREATE_IMAGE, {
+    brief: brief.replace(/\n+\s*(Poster facts|Picture):[\s\S]*$/i, '').trim() || brief,
+    caption: (task.content || '').trim() || 'None yet.',
+    brand: brandText(companyInfo as any),
+    campaign: campaignText(campaign as any),
+    references: 'None.',
+    format: formatNote(shape),
+    logoNote: logoNote(null)
+  });
+  const raw = await renderImage({
+    prompt: `${prompt}\n\nThis photo goes on a poster: one clear subject (real people where it fits), natural light, a believable real place, and calm, uncluttered areas where words can sit. Documentary photography, not an illustration.\n\n${PHOTO_RULE}`,
+    images: [],
+    size: size.api,
+    userId: options.userId,
+    promptName: 'Design · photo'
+  });
+  const url = await finishAndStore(raw, size, null);
+  if ((task.references || []).length < 6) {
+    task.references = [...(task.references || []), { id: newId(), url, role: 'include', name: 'AI photo', at: new Date() } as any];
+    task.markModified('references');
+  }
+  return url;
+}
+
 export interface ChangeOptions {
   instruction: string;
   /** The picture to change (the current picture, a draft or an earlier picture). */

@@ -7,7 +7,7 @@ import mongoose, { Document, Schema } from 'mongoose';
  */
 
 export type DesignJobStatus = 'queued' | 'running' | 'done' | 'failed';
-export type DesignJobStage = 'queued' | 'reading' | 'directing' | 'background' | 'rendering' | 'checking' | 'reviewing' | 'saving' | 'done';
+export type DesignJobStage = 'queued' | 'reading' | 'photo' | 'directing' | 'background' | 'rendering' | 'checking' | 'reviewing' | 'saving' | 'done';
 
 export interface IDesignJob extends Document {
   taskId: mongoose.Types.ObjectId;
@@ -26,6 +26,8 @@ export interface IDesignJob extends Document {
     count: number;
     /** Designs to choose from (empty: all that fit). */
     designIds: string[];
+    /** No photo given: make one with the image AI first and design around it. */
+    aiPhoto?: boolean;
   };
   /** The drafts made (ids on the post). */
   draftIds: string[];
@@ -53,6 +55,7 @@ const designJobSchema = new Schema<IDesignJob>(
       photoUrls: { type: [String], default: [] },
       partnerIds: { type: [String], default: [] },
       campaignLogoIds: { type: [String], default: [] },
+      aiPhoto: { type: Boolean, default: false },
       count: { type: Number, default: 4, min: 1, max: 4 },
       designIds: { type: [String], default: [] }
     },

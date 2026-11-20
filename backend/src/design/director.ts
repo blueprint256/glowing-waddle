@@ -182,6 +182,7 @@ How you work:
    - Never use exclamation marks unless the request does. No emoji. No hashtags unless asked.
 3. Choose the options: up to the number asked for, each one a real alternative a designer would show a client.
    - Only use designs whose limits fit (photos, sponsors, formats). Prefer different designs; when only one fits, vary its settings meaningfully (colours, proportions, focus) instead.
+   - Every option must look clearly different from the others at thumbnail size: when a design is used twice, change at least two of its settings that alter the look (light or dark ground, layout, colour emphasis), not just a word or a size. Two options a person couldn't tell apart are worse than one: give fewer options instead.
    - Designs with a cut-out person need a photo of one person; they work best for speakers and guests.
    - Photo sizes are given: a photo under about 1,000 px on its long side looks soft when it fills a poster, so show it smaller (a band, a circle, a panel). Wide group photos (many people across) suit designs that show the whole width, never a tall crop through the group.
    - Photo-led designs need a strong photo of people in action; their subject should sit where the design shows it (set focus settings from the photo's description and focal point).
@@ -368,7 +369,7 @@ export function plannedDocs(plan: DirectorPlan, input: DirectorInput, background
   const bare = (v?: string) => (v || '').toLowerCase().replace(/^@|^https?:\/\/|^www\.|\/$/g, '');
   if (base.social && base.web && bare(base.social) === bare(base.web)) delete base.social;
   const primary = input.kit.logos.find((l) => l.role === 'primary');
-  const out: PlannedOption[] = [];
+  const out: (PlannedOption & { look: string })[] = [];
   for (const o of (plan.options || []).slice(0, 4)) {
     const design = input.designs.find((d) => d.id === o?.design);
     if (!design) continue;
@@ -394,15 +395,15 @@ export function plannedDocs(plan: DirectorPlan, input: DirectorInput, background
       background: wantsBackground ? background : null
     };
     if (fitsDesign(design, doc).length) continue;
-    out.push({ doc, design, why: clean(o.why, 200), wantsBackground });
+    // Options that would look the same at a glance (same design, same choice settings, same ground
+    // and photo) aren't a real choice: keep the first.
+    const look = JSON.stringify([design.id, Object.entries(doc.params).filter(([, v]) => typeof v !== 'number').sort(), wantsBackground, photos[0]?.url || null]);
+    if (out.some((x) => x.look === look)) continue;
+    out.push({ doc, design, why: clean(o.why, 200), wantsBackground, look });
   }
-  return out;
+  return out.map(({ look: _look, ...rest }) => rest);
 }
 
-/**
- * Without an AI key the app still makes posters: the words come from the request as written and
- * the options rotate through the designs that fit.
- */
 /** The "Poster facts" lines a plan (or a person) wrote in a brief, and the brief without them. */
 export function factsInBrief(brief: string): { text: string; headline?: string; date?: string; time?: string; place?: string; figures: string[] } {
   const out: { text: string; headline?: string; date?: string; time?: string; place?: string; figures: string[] } = { text: '', figures: [] };
@@ -433,7 +434,11 @@ function statOf(figure: string): { value: string; label: string } | null {
   return m ? { value: m[1].trim(), label: m[2].trim() } : null;
 }
 
-/** A plain plan from the brief alone, used when the art director can't be reached. */
+/**
+ * A plain plan from the brief alone, used when the art director can't be reached (no key, or it
+ * failed): the words come from the brief and its poster facts, and the options rotate through the
+ * designs that fit.
+ */
 export function planWithoutAI(input: DirectorInput): DirectorPlan {
   const facts = factsInBrief(input.brief);
   const sentences = facts.text.split(/(?<=[.!?])\s+/).filter(Boolean);

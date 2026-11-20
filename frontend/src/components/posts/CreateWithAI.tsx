@@ -59,6 +59,7 @@ const CORNERS: { value: LogoCorner; label: string }[] = [
 /** The steps a poster goes through, as shown while it's being made. */
 const STEPS: { label: string; stages: PosterJobStage[] }[] = [
   { label: 'Reading your brief', stages: ['queued', 'reading'] },
+  { label: 'Creating a photo', stages: ['photo'] },
   { label: 'Planning layouts', stages: ['directing', 'background'] },
   { label: 'Setting the type', stages: ['rendering'] },
   { label: 'Checking every detail', stages: ['checking'] },
@@ -97,6 +98,7 @@ export default function CreateWithAI({ task, title, brief, brandLogo, usage, mod
   const [photos, setPhotos] = useState<string[] | null>(null);
   const [partners, setPartners] = useState<string[]>([]);
   const [otherLogos, setOtherLogos] = useState<string[] | null>(null);
+  const [aiPhoto, setAiPhoto] = useState(false);
 
   // Photo
   const photoJob = useAIJobsStore((s) => (taskId ? s.images[taskId] : undefined));
@@ -154,12 +156,14 @@ export default function CreateWithAI({ task, title, brief, brandLogo, usage, mod
     }
     const id = taskId || (await ensureSaved());
     if (!id) return;
-    if (mode === 'poster') await startPoster(id, title, { brief, format: posterFormat, photoUrls: chosenPhotos, partnerIds: partners, campaignLogoIds: chosenOthers, count: 4 });
+    if (mode === 'poster') await startPoster(id, title, { brief, format: posterFormat, photoUrls: chosenPhotos, partnerIds: partners, campaignLogoIds: chosenOthers, count: 4, aiPhoto: aiPhoto && !chosenPhotos.length });
     else await createImage(id, title, { description: brief, format: photoFormat, logo: logoOn && brandLogo ? corner : null });
   };
 
   const seconds = (startedAt?: number) => (startedAt ? Math.max(0, Math.round((now - startedAt) / 1000)) : 0);
-  const stepIndex = posterJob ? Math.max(0, STEPS.findIndex((s) => s.stages.includes(posterJob.stage))) : 0;
+  // The photo step only shows when this poster makes one.
+  const steps = posterJob?.stage === 'photo' || (aiPhoto && !chosenPhotos.length) ? STEPS : STEPS.filter((s) => !s.stages.includes('photo'));
+  const stepIndex = posterJob ? Math.max(0, steps.findIndex((s) => s.stages.includes(posterJob.stage))) : 0;
 
   return (
     <Box id="create-with-ai" sx={{ mt: 1.5, p: 1.75, borderRadius: 'var(--r-card)', border: '1px solid var(--border)', bgcolor: 'var(--bg-raised)', display: 'flex', flexDirection: 'column', gap: 1.75 }}>
@@ -296,6 +300,18 @@ export default function CreateWithAI({ task, title, brief, brandLogo, usage, mod
             </Box>
           )}
         </Box>
+        {mode === 'poster' && !chosenPhotos.length && (
+          <Box sx={{ mt: 1 }}>
+            <FormControlLabel
+              control={<Checkbox size="small" checked={aiPhoto} onChange={(e) => setAiPhoto(e.target.checked)} />}
+              label={<Typography sx={{ fontSize: 13.5 }}>No photo? Let AI create one for this poster</Typography>}
+              sx={{ mr: 0 }}
+            />
+            <Typography sx={{ fontSize: 12, color: 'var(--text-muted)', pl: 3.75 }}>
+              A realistic photo made from your brief, with no words on it. It’s added to this post’s pictures so you can reuse it. It’s an illustration: for real events, your own photos are more trustworthy.
+            </Typography>
+          </Box>
+        )}
         {mode === 'poster' && <Typography sx={{ fontSize: 12, color: 'var(--text-muted)', mt: 0.5 }}>Sharp, well-lit photos of real people make the strongest posters. Only use photos you have permission to share.</Typography>}
       </Box>
 
@@ -399,7 +415,7 @@ export default function CreateWithAI({ task, title, brief, brandLogo, usage, mod
           </Box>
           <LinearProgress variant="determinate" value={Math.max(4, Math.round(posterJob.progress * 100))} />
           <Box component="ol" sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, listStyle: 'none', p: 0, m: 0, mt: 0.75 }}>
-            {STEPS.map((s, i) => (
+            {steps.map((s, i) => (
               <Box component="li" key={s.label} sx={{ fontSize: 12, color: i < stepIndex ? 'var(--text-muted)' : i === stepIndex ? 'var(--text-strong)' : 'var(--text-faint)', fontWeight: i === stepIndex ? 650 : 400 }}>
                 {i < stepIndex ? '✓ ' : ''}
                 {s.label}

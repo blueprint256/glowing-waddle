@@ -12,6 +12,12 @@ A post's picture comes from one place, **Create with AI** on the post, with two 
   built-in prompt; every photo prompt ends with a no-words rule. The old `generate-poster` command
   is no longer used.
 
+**No photo?** A poster can ask the image AI for one first ("No photo? Let AI create one" in the
+panel; `ai_photo` in the connector). It's a realistic, word-free photo made from the brief, added to
+the post's pictures for reuse, and part of the poster (its usage is "Design · photo", not counted
+again). The art director is also asked for options that look clearly different, and options that
+would look the same at a glance are dropped.
+
 Changing a picture follows what it is: a designed poster is changed by this engine (the post's
 `image/change` route hands it over), a photo by the image model. Both share one monthly
 allowance of **AI pictures** (a poster, however many options and edits, counts once).

@@ -7,7 +7,7 @@ import type { PostAIDraft, PosterFormat, PosterText } from '../types';
  * the post's drafts (kind "design").
  */
 
-export type PosterJobStage = 'queued' | 'reading' | 'directing' | 'background' | 'rendering' | 'checking' | 'reviewing' | 'saving' | 'done';
+export type PosterJobStage = 'queued' | 'reading' | 'photo' | 'directing' | 'background' | 'rendering' | 'checking' | 'reviewing' | 'saving' | 'done';
 
 export interface PosterJob {
   id: string;
@@ -26,6 +26,8 @@ export interface StartPosterBody {
   format?: PosterFormat;
   /** Photos to use (default: the post's "Include this" pictures). */
   photoUrls?: string[];
+  /** No photo chosen: the image AI makes one first and the poster is designed around it. */
+  aiPhoto?: boolean;
   partnerIds?: string[];
   /** Campaign logos to add (default: the ones marked "on every poster"). */
   campaignLogoIds?: string[];
@@ -278,6 +280,7 @@ export const POSTER_FORMATS: { value: PosterFormat; label: string; hint: string;
 export const STAGE_TEXT: Record<PosterJobStage, string> = {
   queued: 'Waiting to start',
   reading: 'Looking at your photos',
+  photo: 'Creating a photo',
   directing: 'Planning the layouts',
   background: 'Painting a background',
   rendering: 'Setting the type',

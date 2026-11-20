@@ -229,6 +229,13 @@ async function main() {
     console.log(`${fallback.length ? '✓' : '✗'} plan without AI → ${fallback.length} options`);
     if (!fallback.length) failures++;
 
+    // Two options that would look the same are one option; a real difference keeps both.
+    const twin = { copy: { headline: 'Same' }, options: [{ design: 'art-led' }, { design: 'art-led' }, { design: 'art-led', params: { ground: 'dark' } }] } as any;
+    const twins = plannedDocs(twin, { ...input, photos: [] }, null);
+    const artParams = BUILTIN_DESIGNS.find((d) => d.id === 'art-led')!.params.map((p) => p.key);
+    console.log(`✓ look-alike options dropped (${twins.length} of 3 kept; art-led settings: ${artParams.join(', ')})`);
+    if (twins.length < 1 || twins.length > 2) failures++;
+
     const first = options[0].doc;
     const edited = applyEdits(
       first,

@@ -1368,6 +1368,7 @@ async function waitForPoster(ctx: ToolContext, job: any, maxMs: number): Promise
 const POSTER_STEP: Record<string, string> = {
   queued: 'waiting to start',
   reading: 'looking at the photos',
+  photo: 'creating a photo with the image AI',
   directing: 'planning the layouts',
   background: 'painting a background',
   rendering: 'setting the type',
@@ -1555,13 +1556,14 @@ const aiAdminTools: Tool[] = [
     name: 'generate_task_poster',
     title: 'Design a poster for a post (poster engine)',
     description:
-      "Design poster options for a post (task) with the app's poster engine: the brief's words (put the facts in the post's brief first: what, when, where), the brand's real logo files, colours and fonts, chosen partners' logos and the post's \"include\" pictures as photos, laid out and checked (spelling kept, contrast, logo rules, nothing cut off). Gives up to 4 options as drafts next to the current picture (adopt one with adopt_task_poster; change one with change_task_picture, free). Takes 1–3 minutes: this waits up to about 2 minutes, then says it's still working (check with poster_status). Uses one of the account's monthly AI pictures; confirm with the user first.",
+      "Design poster options for a post (task) with the app's poster engine: the brief's words (put the facts in the post's brief first: what, when, where), the brand's real logo files, colours and fonts, chosen partners' logos and the post's \"include\" pictures as photos (or, with ai_photo, a photo the image AI makes for it), laid out and checked (spelling kept, contrast, logo rules, nothing cut off). Gives up to 4 options as drafts next to the current picture (adopt one with adopt_task_poster; change one with change_task_picture, free). Takes 1–3 minutes: this waits up to about 2 minutes, then says it's still working (check with poster_status). Uses one of the account's monthly AI pictures; confirm with the user first.",
     inputSchema: obj(
       {
         task_id: id('Post (task) ID.'),
         format: { type: 'string', enum: ['portrait', 'square', 'story', 'landscape', 'a4'], description: 'Shape: portrait (4:5, default), square (1:1), story (9:16), landscape (3:2) or a4 (print).' },
         partners: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 80 }, maxItems: 8, description: "Partners or sponsors whose logos go on the poster, by name or id (from get_company_info partners). Leave out for none." },
-        options: { type: 'integer', minimum: 1, maximum: 4, description: 'How many options (default 4).' }
+        options: { type: 'integer', minimum: 1, maximum: 4, description: 'How many options (default 4).' },
+        ai_photo: { type: 'boolean', description: "When the post has no photo to include: make a realistic photo with the image AI first (no words; added to the post's pictures) and design the poster around it. Default false." }
       },
       ['task_id']
     ),
@@ -1582,6 +1584,7 @@ const aiAdminTools: Tool[] = [
         partnerIds = Array.from(new Set(partnerIds));
       }
       const body: Record<string, unknown> = { partnerIds, count: args.options || 4 };
+      if (args.ai_photo) body.aiPhoto = true;
       if (args.format) body.format = args.format;
       const started = await ctx.api.request('POST', `/api/design/tasks/${args.task_id}/posters`, { body });
       const job = await waitForPoster(ctx, started.job, 110000);

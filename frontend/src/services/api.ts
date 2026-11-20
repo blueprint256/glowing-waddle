@@ -14,6 +14,16 @@ const api = axios.create({
 });
 
 // Response interceptor to handle edge cases with cached/empty responses
+// Files: the instance's JSON Content-Type would make axios turn a FormData into JSON (the file is
+// lost and the server says "Choose a file"). Let the browser set multipart with its boundary.
+api.interceptors.request.use((config) => {
+  if (typeof FormData !== 'undefined' && config.data instanceof FormData && config.headers) {
+    if (typeof (config.headers as any).delete === 'function') (config.headers as any).delete('Content-Type');
+    else delete (config.headers as any)['Content-Type'];
+  }
+  return config;
+});
+
 api.interceptors.response.use(
   (response) => {
     // Ensure response data exists for successful requests

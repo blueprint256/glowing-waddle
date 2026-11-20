@@ -235,6 +235,23 @@ export async function runDesignJob(job: IDesignJob): Promise<void> {
   const kit = engineKit(kitDoc);
   if (!kit.logos.some((l) => l.role === 'primary')) throw new DesignError(400, 'Add your logo in Settings › Brand first: every poster carries it.');
   const format: FormatId = isFormatId(job.request.format) ? job.request.format : 'portrait';
+  let photoNote = '';
+  // No photo given and the person asked for one: the image AI makes a real photo first.
+  if (job.request.aiPhoto && !(job.request.photoUrls || []).length) {
+    await stage(job, 'photo', 0.08);
+    try {
+      const { photoForPoster } = await import('./postPicture');
+      const url = await photoForPoster(task, { format, userId, brief: job.request.brief });
+      await task.save();
+      job.request.photoUrls = [url];
+      job.markModified('request');
+      await job.save();
+    } catch (error: any) {
+      // The poster is still made, with the designs that need no photo.
+      console.error('[design] AI photo failed:', error?.message);
+      photoNote = 'The AI photo couldn’t be made, so these designs use no photo.';
+    }
+  }
   const photos = await preparePhotos(job.request.photoUrls || []);
   const sponsors: SponsorSlot[] = (job.request.partnerIds || [])
     .map((id) => kitDoc.partners.find((p) => p.id === id))
@@ -411,7 +428,7 @@ export async function runDesignJob(job: IDesignJob): Promise<void> {
 
   await logUsage(userId, DESIGN_USAGE_LABEL, 'design/poster', { input: 0, output: 0 }, cost, Date.now() - started);
   job.draftIds = drafts.map((d) => d.id);
-  job.message = typeof plan.message === 'string' ? plan.message.slice(0, 600) : undefined;
+  job.message = [photoNote, typeof plan.message === 'string' ? plan.message : ''].filter(Boolean).join(' ').slice(0, 600) || undefined;
   job.cost = cost;
 }
 

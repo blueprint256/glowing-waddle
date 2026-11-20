@@ -178,6 +178,8 @@ export default function BrandSection() {
   const palette = pack ? dedupe([...Object.values(pack.colors), ...pack.palette]) : null;
   const choices = fontChoices(catalog.fonts, kit.customFonts || []);
   const sectorOptions = info.sector && !SECTORS.includes(info.sector) ? [info.sector, ...SECTORS] : SECTORS;
+  // Colours written in the guidelines ("#4B2E1F"), in order.
+  const guideHexes = Array.from(new Set(Array.from(info.brandGuidelines.matchAll(/#([0-9a-f]{6})\b/gi)).map((m) => `#${m[1].toLowerCase()}`)));
   const toneOptions = info.brandTone && !BRAND_TONES.includes(info.brandTone) ? [info.brandTone, ...BRAND_TONES] : BRAND_TONES;
 
   return (
@@ -341,6 +343,34 @@ export default function BrandSection() {
       </Group>
 
       <Group title="Colours" hint={pack ? `From the ${pack.name} palette.` : 'Taken from your logo or your guidelines at first. Adjust them to your brand.'}>
+        {!pack && guideHexes.length > 0 && !guideHexes.every((h) => Object.values(look.colors).some((c) => c.hex.toLowerCase() === h)) && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', p: 1, borderRadius: 'var(--r-ctl)', bgcolor: 'var(--bg-subtle)' }}>
+            <Typography sx={{ fontSize: 13, color: 'var(--text-strong)', flex: 1, minWidth: 220 }}>Your brand guidelines list other colours:</Typography>
+            {guideHexes.slice(0, 3).map((h) => (
+              <Box key={h} title={h} sx={{ width: 22, height: 22, borderRadius: '6px', bgcolor: h, border: '1px solid var(--border-strong)' }} />
+            ))}
+            <Button
+              size="small"
+              onClick={() =>
+                setLook((f) =>
+                  f
+                    ? {
+                        ...f,
+                        colors: {
+                          ...f.colors,
+                          primary: { name: 'Brand colour', hex: guideHexes[0] },
+                          ...(guideHexes[1] ? { secondary: { name: 'Second colour', hex: guideHexes[1] } } : {}),
+                          ...(guideHexes[2] ? { accent: { name: 'Accent', hex: guideHexes[2] } } : {})
+                        }
+                      }
+                    : f
+                )
+              }
+            >
+              Use them
+            </Button>
+          </Box>
+        )}
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(5, minmax(0, 1fr))' }, gap: 1.5 }}>
           {ROLES.map(({ role, label, hint }) => (
             <ColorField key={role} label={label} hint={hint} value={look.colors[role]} palette={palette} onChange={(c) => setLook((f) => (f ? { ...f, colors: { ...f.colors, [role]: c } } : f))} />
@@ -349,7 +379,7 @@ export default function BrandSection() {
       </Group>
 
       <Group title="Fonts" hint={pack ? `The ${pack.name} fonts (free stand-ins for the official ones).` : 'Headlines, text, and an optional accent for a word or two. Choose from the list or upload your own.'}>
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, minmax(0, 1fr))' }, gap: 1.5 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, minmax(0, 1fr))' }, gap: 1.5, mt: 1 }}>
           {(
             [
               ['display', 'Headlines'],
