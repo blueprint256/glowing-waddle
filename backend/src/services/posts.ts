@@ -84,7 +84,21 @@ export function autoTitle(name: unknown, caption: unknown, brief: unknown): stri
  * - the theme's name is kept as legacyTheme
  * - reference images move from attachedImages to references
  */
+/** Resolves once MongoDB is connected (start-up jobs run as the server starts listening, which can be first). */
+export async function databaseReady(timeoutMs = 60000): Promise<void> {
+  if (mongoose.connection.readyState === 1) return;
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('The database didn’t connect within a minute')), timeoutMs);
+    mongoose.connection.once('connected', () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
+
 export async function migratePostsToV2(): Promise<{ owners: number; themes: number; references: number }> {
+  // The raw collection (used below) doesn't wait for the connection the way models do.
+  await databaseReady();
   const result = { owners: 0, themes: 0, references: 0 };
   const posts = Task.collection;
 

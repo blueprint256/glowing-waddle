@@ -1,3 +1,4 @@
+import { databaseReady } from './posts';
 import mongoose from 'mongoose';
 import { Task } from '../models/Task';
 import { SocialPost } from '../models/SocialPost';
@@ -57,6 +58,7 @@ export async function syncRecentlyChangedPosts(): Promise<void> {
  * anything unknown → Draft; then every post with publishing records gets the status they call for.
  */
 export async function migrateTaskStatuses(): Promise<void> {
+  await databaseReady();
   const raw = Task.collection;
   const draft = await raw.updateMany({ status: { $in: ['Pending', 'In Progress'] } }, { $set: { status: TaskStatus.DRAFT } });
   const ready = await raw.updateMany({ status: 'Completed' }, { $set: { status: TaskStatus.READY } });
