@@ -339,7 +339,7 @@ export interface PosterEngineStatus {
 
 export const adminDesignAPI = {
   status: () => api.get<PosterEngineStatus & { success: boolean }>('/design/admin/status').then((r) => r.data),
-  list: () => api.get<{ builtin: AdminDesign[]; imported: AdminDesign[] }>('/design/admin/designs').then((r) => r.data),
+  list: () => api.get<{ builtin: AdminDesign[]; imported: AdminDesign[]; previewsPending?: boolean }>('/design/admin/designs').then((r) => r.data),
   get: (id: string) => api.get<{ design: AdminDesign; template: Record<string, unknown> | null }>(`/design/admin/designs/${id}`).then((r) => r.data),
   builtinTest: (designId: string) => api.get<{ test: AdminDesign['test']; previews: DesignPreview[] }>(`/design/admin/designs/builtin/${designId}/test`).then((r) => r.data),
   import: (file: File, fields: { name?: string; note?: string }) => {

@@ -65,7 +65,7 @@ export default function PosterDesignsPage() {
 
 function DesignList() {
   const navigate = useNavigate();
-  const [data, setData] = useState<{ builtin: AdminDesign[]; imported: AdminDesign[] } | null>(null);
+  const [data, setData] = useState<{ builtin: AdminDesign[]; imported: AdminDesign[]; previewsPending?: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
 
@@ -76,8 +76,8 @@ function DesignList() {
       .catch((e) => setError(errorMessage(e, 'The designs couldn’t load.')));
   }, []);
   useEffect(load, [load]);
-  // While the AI is working on one, keep the list fresh.
-  const working = data?.imported.some((d) => d.status === 'importing');
+  // While the AI is working on one, or preview images are being made, keep the list fresh.
+  const working = data?.imported.some((d) => d.status === 'importing') || data?.previewsPending;
   useEffect(() => {
     if (!working) return;
     const t = setInterval(load, 4000);
@@ -166,7 +166,7 @@ function DesignCard({ d }: { d: AdminDesign }) {
             <Typography sx={{ fontSize: 12.5, color: 'var(--text-muted)', mt: 1 }}>{d.message || 'Working…'}</Typography>
           </Box>
         ) : (
-          <Typography sx={{ fontSize: 12.5, color: 'var(--text-faint)', p: 2, textAlign: 'center' }}>{d.source === 'builtin' ? 'Open to see its test renders' : 'No renders yet'}</Typography>
+          <Typography sx={{ fontSize: 12.5, color: 'var(--text-faint)', p: 2, textAlign: 'center' }}>{d.source === 'builtin' ? 'Making a preview…' : 'No renders yet'}</Typography>
         )}
       </Box>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>

@@ -118,7 +118,7 @@ async function main() {
   // The checks themselves: words pushed under the circle photo, and over its edge, must be caught.
   if (!only || only.includes('bold-event')) {
     const be = BUILTIN_DESIGNS.find((d) => d.id === 'bold-event')!;
-    const words = { ...SAMPLE_TEXT.typical, subhead: 'Join Rotary volunteers as we help health' };
+    const words = { ...SAMPLE_TEXT.typical, subhead: 'Join our volunteers as we help health' };
     for (const [name, extra, code] of [
       ['words across a photo edge', '#poster .be-info { width: 80cqw !important; }', 'text-photo-edge'],
       ['a photo on top of words', '#poster .be-info { width: 80cqw !important; } #poster .be-circle-wrap { z-index: 9 !important; }', 'text-covered']

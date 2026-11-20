@@ -28,7 +28,7 @@ function clubLogo(textColor: string, markColor: string, bg?: string): Buffer {
       <path d="M-62 30 L0 -70 L62 30 Z" fill="${markColor}"/>
       <circle r="26" cy="30" fill="${textColor}"/>
     </g>
-    <text x="300" y="150" font-family="DejaVu Sans" font-weight="700" font-size="104" fill="${textColor}" letter-spacing="2">CLUB</text>
+    <text x="300" y="150" font-family="DejaVu Sans" font-weight="700" font-size="104" fill="${textColor}" letter-spacing="2">LOGO</text>
     <text x="304" y="232" font-family="DejaVu Sans" font-size="54" fill="${textColor}">logo placeholder</text>`
   );
 }
@@ -160,7 +160,7 @@ export const SAMPLE_TEXT: Record<'typical' | 'short' | 'long', DesignText> = {
   typical: {
     eyebrow: 'National Immunisation Days',
     headline: 'Every child.\nEvery dose.',
-    subhead: 'Join Rotary volunteers as we help health workers reach every child under five in Kampala with the polio vaccine.',
+    subhead: 'Join our volunteers as we help health workers reach every child under five in Kampala with life-saving vaccines.',
     details: [
       { kind: 'date', text: 'Sat 14 – Sun 15 December' },
       { kind: 'time', text: '8:00 am – 5:00 pm' },
@@ -176,13 +176,13 @@ export const SAMPLE_TEXT: Record<'typical' | 'short' | 'long', DesignText> = {
     ]
   },
   short: {
-    headline: 'End polio now',
+    headline: 'Clean water now',
     details: [{ kind: 'date', text: '14 December' }],
     badge: { main: '14', bottom: 'Dec' }
   },
   long: {
-    eyebrow: 'Rotary Club of Kampala North · Community Health Week',
-    headline: 'Together we can protect every single child in our community from polio, for good',
+    eyebrow: 'Kampala North Community Trust · Community Health Week',
+    headline: 'Together we can protect every single child in our community from disease, for good',
     subhead:
       'From 14 to 15 December our members, partners and hundreds of community volunteers will work with Ministry of Health teams across five divisions to make sure no child under five is missed by the national campaign.',
     details: [

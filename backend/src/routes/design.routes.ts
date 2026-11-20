@@ -616,9 +616,23 @@ router.get('/admin/status', isAuthenticated, isSystemAdmin, async (_req: Request
 router.get('/admin/designs', isAuthenticated, isSystemAdmin, async (_req: Request, res: Response) => {
   try {
     const rows = await DesignTemplateModel.find({}).sort({ updatedAt: -1 });
+    const { builtinPreviews } = await import('../services/designPreviews');
+    const covers = await builtinPreviews().catch(() => ({}) as Record<string, string>);
     res.json({
       success: true,
-      builtin: BUILTIN_DESIGNS.map((d) => ({ id: d.id, designId: d.id, status: 'builtin', source: 'builtin', name: d.name, description: d.description, formats: d.formats, version: d.version })),
+      builtin: BUILTIN_DESIGNS.map((d) => ({
+        id: d.id,
+        designId: d.id,
+        status: 'builtin',
+        source: 'builtin',
+        name: d.name,
+        description: d.description,
+        formats: d.formats,
+        version: d.version,
+        // One preview (portrait, typical words, neutral brand); null while it's being made.
+        previews: covers[d.id] ? [{ format: 'portrait', case: 'typical-3', url: covers[d.id], passed: true, counted: true, issues: [] }] : []
+      })),
+      previewsPending: BUILTIN_DESIGNS.some((d) => !covers[d.id]),
       imported: rows.map(recordView)
     });
   } catch (error) {

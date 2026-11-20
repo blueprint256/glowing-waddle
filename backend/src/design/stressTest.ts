@@ -54,10 +54,28 @@ async function standInPhoto(): Promise<Buffer> {
   return sharp(Buffer.from(svg)).jpeg({ quality: 88 }).toBuffer();
 }
 
-export async function stressTest(template: DesignTemplate, options: { formats?: FormatId[]; photo?: Buffer } = {}): Promise<StressResult> {
+/** The look of preview images: a calm teal brand that belongs to nobody. */
+const NEUTRAL_PREVIEW = {
+  colors: {
+    primary: { name: 'Teal', hex: '#0f5e63' },
+    secondary: { name: 'Deep teal', hex: '#0a3d40' },
+    accent: { name: 'Sun', hex: '#f2b33d' },
+    ink: { name: 'Ink', hex: '#1f2430' },
+    paper: { name: 'Paper', hex: '#ffffff' }
+  },
+  fonts: { display: 'opensans', text: 'gelasio' }
+};
+
+export async function stressTest(
+  template: DesignTemplate,
+  options: { formats?: FormatId[]; photo?: Buffer; cases?: StressCase['name'][]; neutral?: boolean } = {}
+): Promise<StressResult> {
   const invalid = validateTemplate(template);
   if (invalid.length) return { invalid, cases: [], passed: 0, failed: 0, problems: invalid };
-  const { files, kit, sponsors } = await buildTestKit();
+  const built = await buildTestKit();
+  const { files, sponsors } = built;
+  // Previews shown to admins use a neutral brand (no club pack); the tests keep the strict club kit.
+  const kit = options.neutral ? { ...built.kit, name: 'Your organisation', pack: null, colors: NEUTRAL_PREVIEW.colors, fonts: NEUTRAL_PREVIEW.fonts, rules: [] } : built.kit;
   const photo: PhotoSlot = await testPhoto(files, 'stand-in.jpg', options.photo || (await standInPhoto()));
   const background = template.background !== 'none' ? await testBackground(files) : null;
   const loader = async (url: string) => {
@@ -67,7 +85,7 @@ export async function stressTest(template: DesignTemplate, options: { formats?: 
   };
   const cases: StressCase[] = [];
   for (const format of (options.formats || template.formats).filter((f) => template.formats.includes(f))) {
-    for (const c of CASES) {
+    for (const c of CASES.filter((x) => !options.cases || options.cases.includes(x.name))) {
       const words = c.text === 'long' ? SAMPLE_TEXT.long : withinLimits(SAMPLE_TEXT[c.text], template);
       const photos = template.photos.max > 0 ? [photo] : [];
       const doc = testDoc(template.id, format, words, photos, sponsors.slice(0, Math.min(c.sponsors, template.sponsors.max)));
