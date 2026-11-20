@@ -176,7 +176,12 @@ export const boldEvent: DesignTemplate = {
 /* No photo: the date block grows and moves under the title, centred. */
 #poster:not(:has(.be-person)):not(:has(.be-circle-wrap)) { --info-w: calc(100cqw - var(--m) * 2); }
 #poster:not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-info { width: 100cqw; padding: 0 var(--m); justify-content: center; align-items: center; text-align: center; }
-#poster:not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-date { justify-content: center; }
+/* Centred (no photo): the date reads in one line, "SAT 5 DEC", rather than stacked. */
+#poster#poster:not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-date { display: flex; align-items: baseline; justify-content: center; gap: 1.6cqmin; }
+#poster#poster:not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-date-icon { order: 0; align-self: center; }
+#poster#poster:not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-date-top { order: 1; }
+#poster#poster:not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-date-main { order: 2; }
+#poster#poster:not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-date-bottom { order: 3; margin-top: 0; font-size: 6cqmin; font-weight: 800; color: inherit; }
 #poster:not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-details { align-items: center; }
 #poster:not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-cta { align-self: center; }
 #poster:not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-info { gap: 3.2cqmin; }
@@ -227,7 +232,7 @@ export const boldEvent: DesignTemplate = {
 #poster#poster:is([data-format="story"], [data-format="a4"], [data-format="a3"]):not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-date-icon { font-size: 7cqmin; }
 #poster#poster:is([data-format="story"], [data-format="a4"], [data-format="a3"]):not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-date-main { font-size: 9cqmin; }
 #poster#poster:is([data-format="story"], [data-format="a4"], [data-format="a3"]):not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-date-top { font-size: 7cqmin; }
-#poster#poster:is([data-format="story"], [data-format="a4"], [data-format="a3"]):not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-date-bottom { font-size: 4.2cqmin; }
+#poster#poster:is([data-format="story"], [data-format="a4"], [data-format="a3"]):not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-date-bottom { font-size: 7cqmin; }
 #poster#poster:is([data-format="story"], [data-format="a4"], [data-format="a3"]):not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-detail { font-size: 3cqmin; }
 #poster#poster:is([data-format="story"], [data-format="a4"], [data-format="a3"]):not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-cta { font-size: 2.8cqmin; }
 /* Story: much taller, so they grow further. */
@@ -235,7 +240,7 @@ export const boldEvent: DesignTemplate = {
 #poster#poster[data-format="story"]:not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-date-icon { font-size: 8cqmin; }
 #poster#poster[data-format="story"]:not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-date-main { font-size: 10.5cqmin; }
 #poster#poster[data-format="story"]:not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-date-top { font-size: 8cqmin; }
-#poster#poster[data-format="story"]:not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-date-bottom { font-size: 4.8cqmin; }
+#poster#poster[data-format="story"]:not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-date-bottom { font-size: 8cqmin; }
 #poster#poster[data-format="story"]:not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-detail { font-size: 3.3cqmin; }
 #poster#poster[data-format="story"]:not(:has(.be-person)):not(:has(.be-circle-wrap)) .be-cta { font-size: 3cqmin; }
 `

@@ -364,6 +364,9 @@ export function plannedDocs(plan: DirectorPlan, input: DirectorInput, background
   if (!base.sponsorsTitle && input.sponsors.length) base.sponsorsTitle = pack?.sponsorsTitle || 'With thanks to';
   if (!base.social && input.kit.contact?.social) base.social = clean(input.kit.contact.social, 60);
   if (!base.web && input.kit.contact?.web) base.web = clean(input.kit.contact.web.replace(/^https?:\/\//, '').replace(/\/$/, ''), 60);
+  // The same thing twice ("blueprint.co.ug" as handle and website) is shown once.
+  const bare = (v?: string) => (v || '').toLowerCase().replace(/^@|^https?:\/\/|^www\.|\/$/g, '');
+  if (base.social && base.web && bare(base.social) === bare(base.web)) delete base.social;
   const primary = input.kit.logos.find((l) => l.role === 'primary');
   const out: PlannedOption[] = [];
   for (const o of (plan.options || []).slice(0, 4)) {
