@@ -786,6 +786,11 @@ export function keepPeopleInFrame(layer: PhotoLayer, people: Box01, canvasAspect
       bottom: inside.bottom && !soft.has('bottom') && b.y1 > f.y + f.h + ty
     };
   };
+  // The people should be clear of soft edges too (a face under a fade is half gone). When the
+  // frame is so much taller (or wider) than the photo that covering it zooms them out of view, the
+  // frame gives way: it ends where the photo does, fading into what's behind (a designer's move
+  // when a photo can't fill a space).
+  shrinkToShowPeople(layer, people, canvasAspect, photo, done);
   const c0 = cuts(layer.place);
   if (!c0.left && !c0.right && !c0.top && !c0.bottom) return done;
   // Wider view first when the people are bigger than the frame (the least zoom that covers it).
@@ -836,6 +841,55 @@ export function keepPeopleInFrame(layer: PhotoLayer, people: Box01, canvasAspect
     done.push(`faded ${sides.join(' and ')}`);
   }
   return done;
+}
+
+function shrinkToShowPeople(layer: PhotoLayer, people: Box01, canvasAspect: number, photo: { width: number; height: number }, done: string[]): void {
+  const f = layer.frame;
+  const p = layer.place;
+  if (!p || layer.shape === 'circle' || layer.shape === 'blob' || layer.shape === 'organic') return;
+  const pa = photo.width / photo.height;
+  const soft = new Set(fadeSides(layer.fade));
+  const fs = (layer.fade?.size || 0) / 100;
+  // The clear part of the frame (fades take their share), in % of the poster.
+  // People may reach halfway into a fade (its inner half is nearly solid), and only their heads and
+  // upper bodies (the top 60% of them) must show: a crop through the waist is a normal crop.
+  const clearW = f.w * (1 - (soft.has('left') ? fs / 2 : 0) - (soft.has('right') ? fs / 2 : 0));
+  const clearH = f.h * (1 - (soft.has('top') ? fs / 2 : 0) - (soft.has('bottom') ? fs / 2 : 0));
+  const upperH = people.h * 0.6;
+  const peopleW = people.w * p.w;
+  const peopleH = upperH * p.h;
+  if (peopleW <= clearW * 1.04 && peopleH <= clearH * 1.04) return;
+  // The zoom at which the people fit the clear part (width % of the poster for the whole photo).
+  const needW = Math.min(clearW / people.w, ((clearH / upperH) * pa) / canvasAspect);
+  if (needW >= p.w - 0.5) return;
+  const newH = ((needW / 100) * canvasAspect / pa) * 100; // the photo's height at that zoom
+  const newWOfPhoto = needW;
+  const tall = newH < f.h - 0.5;
+  const wide = newWOfPhoto < f.w - 0.5;
+  // Give way on one side only, by at most 45% of the frame.
+  if (tall && newH >= f.h * 0.55) {
+    const atBottom = f.y + f.h >= 99.5;
+    const atTop = f.y <= 0.5;
+    const y = atBottom ? f.y + f.h - newH : atTop ? f.y : Math.max(f.y, Math.min(f.y + f.h - newH, p.y + (people.y + people.h / 2) * p.h - newH / 2));
+    layer.frame = { ...f, y, h: newH };
+    const side: FadeSide = atBottom ? 'top' : atTop ? 'bottom' : 'top';
+    const all = Array.from(new Set([...fadeSides(layer.fade), side]));
+    layer.fade = { side: all[0], size: Math.max(layer.fade?.size || 0, 18), also: all.length > 1 ? all.slice(1) : undefined };
+    layer.place = coverFrame({ x: p.x + (people.x + people.w / 2) * p.w - (people.x + people.w / 2) * needW, y, w: needW, h: newH }, layer.frame, canvasAspect, pa);
+    layer.crop = undefined;
+    done.push(`frame ends with the photo (${Math.round(newH)}% high), fading at the ${side}`);
+  } else if (wide && !tall && newWOfPhoto >= f.w * 0.55) {
+    const atRight = f.x + f.w >= 99.5;
+    const atLeft = f.x <= 0.5;
+    const x = atRight ? f.x + f.w - newWOfPhoto : atLeft ? f.x : f.x + (f.w - newWOfPhoto) / 2;
+    layer.frame = { ...f, x, w: newWOfPhoto };
+    const side: FadeSide = atRight ? 'left' : 'right';
+    const all = Array.from(new Set([...fadeSides(layer.fade), side]));
+    layer.fade = { side: all[0], size: Math.max(layer.fade?.size || 0, 18), also: all.length > 1 ? all.slice(1) : undefined };
+    layer.place = coverFrame({ x, y: p.y, w: needW, h: newH }, layer.frame, canvasAspect, pa);
+    layer.crop = undefined;
+    done.push(`frame ends with the photo (${Math.round(newWOfPhoto)}% wide), fading at the ${side}`);
+  }
 }
 
 /** A box in shares of a photo (0–1). */
