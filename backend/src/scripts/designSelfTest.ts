@@ -369,10 +369,16 @@ async function main() {
     const pr = a.place!.x + 0.75 * a.place!.w;
     const b = live();
     keepPeopleInFrame(b, { x: 0.02, y: 0.05, w: 0.96, h: 0.9 }, A, photo);
+    // A square photo in a full-height column: the frame ends with the photo instead of zooming in.
+    const tall: PhotoLayer = { type: 'photo', id: 'p1', photo: 0, frame: { x: 0, y: 0, w: 68, h: 100 }, shape: 'rect', fade: { side: 'right', size: 22 }, place: { x: -30, y: 0, w: 150, h: 100 } };
+    const did = keepPeopleInFrame(tall, { x: 0.15, y: 0.09, w: 0.6, h: 0.91 }, A, photo);
     const scene: Scene = { version: 2, aspect: A, backdrop: { kind: 'color', color: 'primary' }, layers: [live(), T('headline', { x: 61, y: 18, w: 34, h: 23 })], copy: { headline: 'x' } };
     keepGutters(scene);
     const head = scene.layers[1] as any;
-    check(pr <= 62.5 && covers(a.place!, a.frame) && fadeSides(b.fade).includes('right') && head.box.x >= 65, `people kept in the frame (right edge ${pr.toFixed(1)}), a group too wide fades, words off the edge (x ${head.box.x})`);
+    check(
+      pr <= a.frame.x + a.frame.w + 0.5 && covers(a.place!, a.frame) && fadeSides(b.fade).includes('right') && b.frame.h === 76 && tall.frame.h < 100 && tall.frame.h > 60 && covers(tall.place!, tall.frame) && fadeSides(tall.fade).includes('top') && head.box.x >= 65,
+      `people kept in the frame (${did.join('; ')}), a group too wide fades, words off the edge (x ${head.box.x})`
+    );
   }
 
   // Repairs: unreadable words get "auto", then a panel; partners that outweigh the logo get smaller.

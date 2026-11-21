@@ -769,6 +769,11 @@ function cutBox(place: Box, p?: PhotoInfo): Box {
 export function keepPeopleInFrame(layer: PhotoLayer, people: Box01, canvasAspect: number, photo: { width: number; height: number }): string[] {
   const done: string[] = [];
   const pa = photo.width / photo.height;
+  // The people should be clear of soft edges too (a face under a fade is half gone). When the
+  // frame is so much taller (or wider) than the photo that covering it zooms them out of view, the
+  // frame gives way: it ends where the photo does, fading into what's behind (a designer's move
+  // when a photo can't fill a space).
+  shrinkToShowPeople(layer, people, canvasAspect, photo, done);
   const f = layer.frame;
   const inside = { left: f.x > 0.5, right: f.x + f.w < 99.5, top: f.y > 0.5, bottom: f.y + f.h < 99.5 };
   const soft = new Set(fadeSides(layer.fade));
@@ -786,11 +791,6 @@ export function keepPeopleInFrame(layer: PhotoLayer, people: Box01, canvasAspect
       bottom: inside.bottom && !soft.has('bottom') && b.y1 > f.y + f.h + ty
     };
   };
-  // The people should be clear of soft edges too (a face under a fade is half gone). When the
-  // frame is so much taller (or wider) than the photo that covering it zooms them out of view, the
-  // frame gives way: it ends where the photo does, fading into what's behind (a designer's move
-  // when a photo can't fill a space).
-  shrinkToShowPeople(layer, people, canvasAspect, photo, done);
   const c0 = cuts(layer.place);
   if (!c0.left && !c0.right && !c0.top && !c0.bottom) return done;
   // Wider view first when the people are bigger than the frame (the least zoom that covers it).
@@ -866,8 +866,8 @@ function shrinkToShowPeople(layer: PhotoLayer, people: Box01, canvasAspect: numb
   const newWOfPhoto = needW;
   const tall = newH < f.h - 0.5;
   const wide = newWOfPhoto < f.w - 0.5;
-  // Give way on one side only, by at most 45% of the frame.
-  if (tall && newH >= f.h * 0.55) {
+  // Give way on one side only, by at most 38% of the frame (beyond that, fades do better).
+  if (tall && newH >= f.h * 0.62) {
     const atBottom = f.y + f.h >= 99.5;
     const atTop = f.y <= 0.5;
     const y = atBottom ? f.y + f.h - newH : atTop ? f.y : Math.max(f.y, Math.min(f.y + f.h - newH, p.y + (people.y + people.h / 2) * p.h - newH / 2));
@@ -878,7 +878,7 @@ function shrinkToShowPeople(layer: PhotoLayer, people: Box01, canvasAspect: numb
     layer.place = coverFrame({ x: p.x + (people.x + people.w / 2) * p.w - (people.x + people.w / 2) * needW, y, w: needW, h: newH }, layer.frame, canvasAspect, pa);
     layer.crop = undefined;
     done.push(`frame ends with the photo (${Math.round(newH)}% high), fading at the ${side}`);
-  } else if (wide && !tall && newWOfPhoto >= f.w * 0.55) {
+  } else if (wide && !tall && newWOfPhoto >= f.w * 0.62) {
     const atRight = f.x + f.w >= 99.5;
     const atLeft = f.x <= 0.5;
     const x = atRight ? f.x + f.w - newWOfPhoto : atLeft ? f.x : f.x + (f.w - newWOfPhoto) / 2;
