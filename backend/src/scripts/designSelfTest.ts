@@ -27,6 +27,7 @@ import { organicMask, refinePlace } from '../design/sceneFit';
 import { IMAGE_USAGE_MODEL_PATTERN, resolveImageModel } from '../lib/imageModels';
 import {
   POSTER_ASPECT,
+  cleanCopy,
   cleanScene,
   coverFrame,
   fadeSides,
@@ -378,6 +379,32 @@ async function main() {
     check(
       pr <= a.frame.x + a.frame.w + 0.5 && covers(a.place!, a.frame) && fadeSides(b.fade).includes('right') && b.frame.h === 76 && tall.frame.h < 100 && tall.frame.h > 60 && covers(tall.place!, tall.frame) && fadeSides(tall.fade).includes('top') && head.box.x >= 65,
       `people kept in the frame (${did.join('; ')}), a group too wide fades, words off the edge (x ${head.box.x})`
+    );
+  }
+
+  // Words that don't read over a photo: the photo is shaded under them (a designer's scrim), and
+  // a box only where there's no photo. Words are trimmed at a word boundary, never mid-word.
+  {
+    const over: Scene = {
+      version: 2,
+      aspect: A,
+      backdrop: { kind: 'color', color: 'paper' },
+      layers: [P({ x: 0, y: 0, w: 100, h: 86 }), T('headline', { x: 54, y: 42, w: 42, h: 21 }, { color: 'paper' }), T('subhead', { x: 5, y: 90, w: 50, h: 6 }, { color: 'paper' })],
+      copy: { headline: 'Over the photo' }
+    };
+    const r1 = repairScene(over, [{ level: 'error', code: 'contrast', key: 'headline' }], photos)!;
+    const photo1 = r1.layers.find((l): l is PhotoLayer => l.type === 'photo')!;
+    const head1 = r1.layers.find((l) => l.type === 'text' && l.role === 'headline') as any;
+    // Twice over: the shade deepens, still no box.
+    const r2 = repairScene(r1, [{ level: 'error', code: 'contrast', key: 'headline' }], photos)!;
+    const photo2 = r2.layers.find((l): l is PhotoLayer => l.type === 'photo')!;
+    // Away from the photo, the old behaviour stands (auto, then a panel).
+    const off = repairScene(over, [{ level: 'error', code: 'contrast', key: 'subhead' }], photos)!;
+    const sub = off.layers.find((l) => l.type === 'text' && l.role === 'subhead') as any;
+    const trimmed = cleanCopy({ headline: 'x', eyebrow: 'Rotaract Club of Kampala East with The Great Lakers' }).eyebrow;
+    check(
+      photo1.scrim?.side === 'bottom' && photo1.scrim.size > 40 && head1.panel === 'none' && head1.color === 'paper' && photo2.scrim!.amount > photo1.scrim.amount && sub.color === 'auto' && trimmed === 'Rotaract Club of Kampala East with The Great Lakers',
+      `words over a photo: the photo is shaded (${Math.round(photo1.scrim!.size)}% up, ${photo1.scrim!.amount} → ${photo2.scrim!.amount}), no box; words trimmed whole ("${trimmed}")`
     );
   }
 

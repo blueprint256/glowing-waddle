@@ -60,6 +60,8 @@ export interface PhotoLayer {
   /** Soft edge into what's behind (`also`: more sides with the same size). */
   fade?: { side: FadeSide; size: number; also?: FadeSide[] };
   tint?: { color: ColorRole; amount: number; mode: 'tint' | 'duotone' | 'darken' };
+  /** A soft shadow over part of the photo so words on it read (what a designer does, not a box). */
+  scrim?: { side: 'bottom' | 'top' | 'left' | 'right'; size: number; amount: number };
   /** The people stand in front of what's above the photo, past the frame's top (or all edges). */
   breakout?: 'top' | 'all' | null;
   /** Words for the cut-out ("the woman holding the baby"); default "person". */
@@ -339,7 +341,15 @@ const num = (v: unknown, lo: number, hi: number, d: number) => {
   return Math.max(lo, Math.min(hi, n));
 };
 const pick = <T extends string>(v: unknown, list: readonly T[], d: T): T => (list.includes(v as T) ? (v as T) : d);
-const str = (v: unknown, max: number) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined);
+/** Trimmed to fit, at a word boundary (never "The Great Laker"). */
+function str(v: unknown, max: number): string | undefined {
+  if (typeof v !== 'string' || !v.trim()) return undefined;
+  const t = v.trim().replace(/\s+/g, ' ');
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max + 1);
+  const space = cut.lastIndexOf(' ');
+  return (space > max * 0.6 ? cut.slice(0, space) : t.slice(0, max)).replace(/[\s,;:–-]+$/, '');
+}
 
 /** A box kept on the canvas (photos and shapes may bleed off by up to half their size). */
 function boxOf(r: any, bleed: boolean): Box {
@@ -355,7 +365,7 @@ function boxOf(r: any, bleed: boolean): Box {
 
 export function cleanCopy(c: any): DesignText {
   const copy: DesignText = { headline: str(c?.headline, 90) || 'Join us' };
-  if (str(c?.eyebrow, 50)) copy.eyebrow = str(c.eyebrow, 50);
+  if (str(c?.eyebrow, 60)) copy.eyebrow = str(c.eyebrow, 60);
   if (str(c?.subhead, 200)) copy.subhead = str(c.subhead, 200);
   if (str(c?.cta, 50)) copy.cta = str(c.cta, 50);
   if (str(c?.sponsorsTitle, 40)) copy.sponsorsTitle = str(c.sponsorsTitle, 40);
@@ -554,6 +564,8 @@ export function fitBox(b: Box, canvasAspect: number, posterAspect: number, bleed
   return out;
 }
 
+const meets = (a: Box, b: Box) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
 // --------------------------------------------------------------------------------------- drawing
 
 /** Text sizes per role (hundredths of the poster's short side) and the field each shows. */
@@ -645,8 +657,16 @@ export function sceneTemplate(scene: Scene, id: string, format: FormatId, photos
       const inner = { x: ((place.x - frame.x) / frame.w) * 100, y: ((place.y - frame.y) / frame.h) * 100, w: (place.w / frame.w) * 100, h: (place.h / frame.h) * 100 };
       const mask = layer.shape === 'organic' && layer.mask ? `-webkit-mask-image:url("${layer.mask}");mask-image:url("${layer.mask}");-webkit-mask-size:100% 100%;mask-size:100% 100%;` : fadeMask(layer.fade);
       const border = layer.border ? `outline:${layer.border.width}cqmin solid ${colorVar(layer.border.color)};outline-offset:-${layer.border.width}cqmin;` : '';
-      parts.push(`<div class="sc-l ${c}" data-frame><div class="sc-pl" data-photo="${layer.photo + 1}" style="position:absolute;${boxCss(inner)}"></div>${layer.tint ? `<div class="sc-tint ${c}-t" aria-hidden="true"></div>` : ''}</div>`);
+      parts.push(
+        `<div class="sc-l ${c}" data-frame><div class="sc-pl" data-photo="${layer.photo + 1}" style="position:absolute;${boxCss(inner)}"></div>${layer.tint ? `<div class="sc-tint ${c}-t" aria-hidden="true"></div>` : ''}${layer.scrim ? `<div class="${c}-s" aria-hidden="true"></div>` : ''}</div>`
+      );
       css.push(`.${c} { ${boxCss(frame)} overflow: hidden; ${frameClip(layer.shape, layer.radius, Math.min(frame.w, frame.h))} ${mask} ${border} }`);
+      if (layer.scrim) {
+        const sc = layer.scrim;
+        const to = { bottom: 'to top', top: 'to bottom', left: 'to right', right: 'to left' }[sc.side];
+        const solid = Math.round(Math.max(4, sc.size * 0.42));
+        css.push(`.${c}-s { position: absolute; inset: 0; background: linear-gradient(${to}, rgba(0,0,0,${sc.amount}) 0, rgba(0,0,0,${sc.amount}) ${solid}%, rgba(0,0,0,0) ${Math.round(sc.size)}%); pointer-events: none; }`);
+      }
       if (layer.tint) {
         const t = layer.tint;
         const blend = t.mode === 'duotone' ? 'color' : t.mode === 'darken' ? 'multiply' : 'soft-light';
@@ -996,7 +1016,6 @@ export function templateForDoc(doc: DesignDoc, format?: FormatId): DesignTemplat
 
 // --------------------------------------------------------------------------------------- repairs
 
-const meets = (a: Box, b: Box) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 /** Whether a box would run into another word or logo layer. */
 function overlapsFront(scene: Scene, self: SceneLayer, box: Box): boolean {
   return scene.layers.some((l) => l !== self && (l.type === 'text' || l.type === 'logo' || l.type === 'partners') && meets(l.box, box));
@@ -1020,6 +1039,21 @@ export function repairScene(scene: Scene, issues: { level: string; code: string;
     if (i.code === 'contrast') {
       const t = textLayerFor(next, i.key) || next.layers.find((l): l is TextLayer => l.type === 'text' && l.role === 'headline');
       if (!t) continue;
+      // Over a photo, a designer shades the photo under the words, never puts a box on top: the
+      // photo keeps its shape and the words read. A box is the last resort, off the photo.
+      const under = next.layers.find((l): l is PhotoLayer => l.type === 'photo' && meets(l.frame, t.box));
+      if (under && (!t.panel || t.panel === 'none')) {
+        const f = under.frame;
+        const mid = t.box.y + t.box.h / 2;
+        const side = mid > f.y + f.h / 2 ? 'bottom' : 'top';
+        const reach = side === 'bottom' ? ((f.y + f.h - t.box.y) / f.h) * 100 : ((t.box.y + t.box.h - f.y) / f.h) * 100;
+        const want = Math.max(28, Math.min(100, reach + 12));
+        if (!under.scrim) under.scrim = { side, size: want, amount: 0.5 };
+        else under.scrim = { side: under.scrim.side, size: Math.max(under.scrim.size, want), amount: Math.min(0.78, under.scrim.amount + 0.16) };
+        t.color = 'paper';
+        changed = true;
+        continue;
+      }
       if (t.color !== 'auto' && (!t.panel || t.panel === 'none')) t.color = 'auto';
       else if (!t.panel || t.panel === 'none') {
         t.panel = 'ink';
@@ -1082,11 +1116,19 @@ export function repairScene(scene: Scene, issues: { level: string; code: string;
       g.box = bigger;
       changed = true;
     } else if (i.code === 'text-over-subject' || (i.code === 'text-over-person' && i.level === 'error')) {
-      // Words over a face: a panel under them won't help; move them off the photo's subject by
-      // giving the photo a fade on that side and the words a panel.
+      // Words on a face: shade that part of the photo (and the words go light) rather than
+      // covering the face with a box.
       const t = textLayerFor(next, i.key);
       if (!t) continue;
-      if (!t.panel || t.panel === 'none') {
+      const under = next.layers.find((l): l is PhotoLayer => l.type === 'photo' && meets(l.frame, t.box));
+      if (under) {
+        const f = under.frame;
+        const side = t.box.y + t.box.h / 2 > f.y + f.h / 2 ? 'bottom' : 'top';
+        const reach = side === 'bottom' ? ((f.y + f.h - t.box.y) / f.h) * 100 : ((t.box.y + t.box.h - f.y) / f.h) * 100;
+        under.scrim = { side, size: Math.max(under.scrim?.size || 0, Math.min(100, reach + 12)), amount: Math.min(0.8, (under.scrim?.amount || 0.4) + 0.2) };
+        t.color = 'paper';
+        changed = true;
+      } else if (!t.panel || t.panel === 'none') {
         t.panel = 'ink';
         t.panelOpacity = 0.85;
         t.color = 'paper';
