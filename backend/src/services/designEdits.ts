@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { templateForConceptDoc } from '../design/concept';
 import { LLMUsage } from '../models/LLMUsage';
 import type { ITask, PostAIDraft, PostDesign } from '../models/Task';
 import { getProviderKey } from './llmService';
@@ -76,7 +77,7 @@ export async function editDesign(task: ITask, ref: string, edit: EditRequest, us
     } catch {
       throw new DesignError(400, 'Describing changes needs an Anthropic key (Settings › AI). You can still type on the poster.');
     }
-    const current = await designById(doc.designId, { includeDrafts: true });
+    const current = await designFor(doc);
     if (!current) throw new DesignError(400, 'This poster’s design is no longer in the library.');
     const designs = await allDesigns();
     const started = Date.now();
@@ -105,12 +106,12 @@ export async function editDesign(task: ITask, ref: string, edit: EditRequest, us
     if (!applied.changed.length) return { draft: null, reply: refused || reply, refused };
     doc = applied.doc;
     if (applied.backgroundPrompt) {
-      const target = await designById(doc.designId, { includeDrafts: true });
+      const target = await designFor(doc);
       if (target && target.background !== 'none') doc.background = await makeBackground(applied.backgroundPrompt, kit, target, doc.format, userId);
     }
   }
 
-  const template = await designById(doc.designId, { includeDrafts: true });
+  const template = await designFor(doc);
   if (!template) throw new DesignError(400, 'This poster’s design is no longer in the library.');
   const result = await renderDesign(template, doc, kit, loader, { type: 'jpeg', quality: 90 });
   if (hasErrors(result.report.issues)) {
@@ -133,10 +134,15 @@ export async function editDesign(task: ITask, ref: string, edit: EditRequest, us
 }
 
 /** A print-ready PDF (A4 or A3) of a designed poster; text stays sharp at any size. */
+/** The design a poster renders with: its concept blueprint, or the library design it names. */
+async function designFor(doc: DesignDoc) {
+  return templateForConceptDoc(doc) || (await designById(doc.designId, { includeDrafts: true }));
+}
+
 export async function printDesign(task: ITask, ref: string, size: 'a4' | 'a3'): Promise<string> {
   const { design } = findDesign(task, ref);
   const doc: DesignDoc = { ...JSON.parse(JSON.stringify(design.doc)), format: size };
-  const template = await designById(doc.designId, { includeDrafts: true });
+  const template = await designFor(doc);
   if (!template) throw new DesignError(400, 'This poster’s design is no longer in the library.');
   if (!template.formats.includes(size)) throw new DesignError(400, 'This design isn’t made for print sizes.');
   const kit = engineKit(await loadBrandKit(task.ownerId));
@@ -149,7 +155,7 @@ export async function printDesign(task: ITask, ref: string, size: 'a4' | 'a3'): 
  *  checked; shapes the words don't fit are skipped with the reason. Not drafts: files to download. */
 export async function exportSizes(task: ITask, ref: string): Promise<{ sizes: { format: FormatId; url: string }[]; skipped: { format: FormatId; reason: string }[] }> {
   const { design } = findDesign(task, ref);
-  const template = await designById(design.doc.designId, { includeDrafts: true });
+  const template = await designFor(design.doc);
   if (!template) throw new DesignError(400, 'This poster’s design is no longer in the library.');
   const kit = engineKit(await loadBrandKit(task.ownerId));
   const cached: Record<string, string> = (design as any).sizes || {};

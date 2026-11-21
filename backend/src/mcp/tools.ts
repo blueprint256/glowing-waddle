@@ -1381,7 +1381,7 @@ const POSTER_STEP: Record<string, string> = {
   queued: 'waiting to start',
   reading: 'looking at the photos',
   photo: 'creating a photo with the image AI',
-  directing: 'planning the layouts',
+  directing: 'planning the layouts (or drawing concepts)',
   background: 'painting a background',
   rendering: 'setting the type',
   checking: 'checking every detail',
@@ -1396,7 +1396,9 @@ async function posterAnswer(ctx: ToolContext, taskId: string, job: any) {
   if (job?.status !== 'done') return { status: 'working', step: POSTER_STEP[job?.stage] || job?.stage, progress: Math.round((job?.progress || 0) * 100), message: 'Still designing. Check again with poster_status in a minute; the options also appear on the post.', task_url: url };
   const task = (await ctx.api.request('GET', `/api/tasks/${taskId}`)).task;
   const ids = new Set(job.draftIds || []);
-  const options = (task?.aiDrafts || []).filter((d: any) => ids.has(d.id)).map((d: any, i: number) => ({ option: i + 1, draft_id: d.id, url: d.url, design: d.design?.doc?.designId }));
+  const options = (task?.aiDrafts || [])
+    .filter((d: any) => ids.has(d.id))
+    .map((d: any, i: number) => clean({ option: i + 1, draft_id: d.id, url: d.url, design: d.design?.doc?.designId, concept_url: d.design?.doc?.concept?.conceptUrl, art_layer_url: d.design?.doc?.background?.prompt === 'concept art layer' ? d.design.doc.background.url : undefined }));
   return { status: 'done', message: job.message || `${options.length} poster option${options.length === 1 ? '' : 's'} ready`, options, task_url: url };
 }
 
@@ -1575,6 +1577,7 @@ const aiAdminTools: Tool[] = [
         format: { type: 'string', enum: ['portrait', 'square', 'story', 'landscape', 'a4'], description: 'Shape: portrait (4:5, default), square (1:1), story (9:16), landscape (3:2) or a4 (print). Always pass the shape the user asked for.' },
         partners: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 80 }, maxItems: 8, description: "Partners or sponsors whose logos go on the poster, by name or id (from get_company_info partners). Leave out for none." },
         options: { type: 'integer', minimum: 1, maximum: 4, description: 'How many options (default 4).' },
+        approach: { type: 'string', enum: ['library', 'concept'], description: "library (default): the art director picks from the design library. concept (trial): the image model draws a concept per option from words alone and the engine rebuilds it with the real words, logos, partners and photo." },
         ai_photo: { type: 'boolean', description: "When the post has no photo to include: make a realistic photo with the image AI first (no words; added to the post's pictures) and design the poster around it. Default false." }
       },
       ['task_id']
@@ -1597,6 +1600,7 @@ const aiAdminTools: Tool[] = [
       }
       const body: Record<string, unknown> = { partnerIds, count: args.options || 4 };
       if (args.ai_photo) body.aiPhoto = true;
+      if (args.approach === 'concept') body.approach = 'concept';
       if (args.format) body.format = args.format;
       const started = await ctx.api.request('POST', `/api/design/tasks/${args.task_id}/posters`, { body });
       const job = await waitForPoster(ctx, started.job, 110000);

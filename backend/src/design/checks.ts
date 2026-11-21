@@ -162,10 +162,10 @@ export function runChecks({ template, doc, kit, report, contrasts }: CheckInput)
     if (brandLogo?.requiresPrimary && !primaryLogo) issues.push({ level: 'error', code: 'campaign-alone', key: l.key, message: 'This campaign logo may only appear together with the club logo.' });
   }
 
-  // Sponsors never outweigh the club logo, and every sponsor that was asked for is shown.
+  // Partners never outweigh the brand's own logo, and every sponsor that was asked for is shown.
   if (primaryLogo?.visualArea) {
     const heavy = sponsors.filter((s) => (s.visualArea || 0) > primaryLogo.visualArea! * 0.82);
-    if (heavy.length) issues.push({ level: 'error', code: 'sponsor-dominant', message: 'A sponsor logo looks bigger than the club logo.' });
+    if (heavy.length) issues.push({ level: 'error', code: 'sponsor-dominant', message: 'A partner logo looks bigger than your own logo.' });
   }
   if (doc.sponsors.length && sponsors.length < doc.sponsors.length) {
     issues.push({ level: 'error', code: 'sponsors-missing', message: `Only ${sponsors.length} of ${doc.sponsors.length} sponsor logos fit on this design.` });

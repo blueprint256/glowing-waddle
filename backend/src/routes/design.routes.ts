@@ -147,7 +147,8 @@ router.post('/tasks/:id/posters', isAuthenticated, canManageTasks, validateMongo
         campaignLogoIds,
         count: Math.max(1, Math.min(4, Number(body.count) || 4)),
         designIds: strList(body.designIds, 20),
-        aiPhoto: body.aiPhoto === true && !photoUrls.length
+        aiPhoto: body.aiPhoto === true && !photoUrls.length,
+        approach: body.approach === 'concept' ? 'concept' : 'library'
       }
     });
     res.status(202).json({ success: true, job: jobView(job), message: 'Making your poster options' });

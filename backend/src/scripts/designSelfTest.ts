@@ -333,6 +333,28 @@ async function main() {
     if (!ok) failures++;
   }
 
+  // Concept-first: a blueprint read from a concept becomes a valid design; the repair step fixes
+  // what the checks find (here: text colour, then a panel).
+  {
+    const { cleanBlueprint, conceptTemplate, repairBlueprint } = await import('../design/concept');
+    const { validateTemplate } = await import('../design/template');
+    const bp = cleanBlueprint(
+      { regions: [{ role: 'headline', x: 6, y: 20, w: 80, h: 20, color: 'primary' }, { role: 'partners', x: 0, y: 86, w: 100, h: 12 }, { role: 'photo', x: 0, y: 0, w: 100, h: 50 }, { role: 'nonsense', x: 1, y: 1, w: 1, h: 1 }], photoUse: 'keep', copy: { headline: 'Clean water', cta: 'Join' } },
+      { partners: 3, photos: 1 }
+    );
+    const t = conceptTemplate(bp, 'concept-selftest', 'portrait');
+    const fixed1 = repairBlueprint(bp, [{ level: 'error', code: 'contrast', key: 'headline' }]);
+    const fixed2 = fixed1 && repairBlueprint(fixed1, [{ level: 'error', code: 'contrast', key: 'headline' }]);
+    const head = (b: any) => b.regions.find((r: any) => r.role === 'headline');
+    const ok =
+      !validateTemplate(t).length &&
+      bp.regions.some((r) => r.role === 'logo') && !bp.regions.some((r) => r.role === 'photo') &&
+      t.formats.join() === 'portrait,a4,a3' &&
+      head(fixed1).color === 'auto' && head(fixed2).panel === 'ink' && repairBlueprint(bp, []) === null;
+    console.log(`${ok ? '✓' : '✗'} concept blueprint → design, and its repair`);
+    if (!ok) failures++;
+  }
+
   // The brand's own words reach the art director.
   {
     const v = voiceText({ about: 'A Kampala café', tone: 'Warm', rules: 'Say “Ugandan coffee”' });

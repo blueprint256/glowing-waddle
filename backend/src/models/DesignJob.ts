@@ -28,6 +28,8 @@ export interface IDesignJob extends Document {
     designIds: string[];
     /** No photo given: make one with the image AI first and design around it. */
     aiPhoto?: boolean;
+    /** "concept": the image model draws a concept per option and the engine rebuilds it; default: the design library. */
+    approach?: 'concept' | 'library';
   };
   /** The drafts made (ids on the post). */
   draftIds: string[];
@@ -56,6 +58,7 @@ const designJobSchema = new Schema<IDesignJob>(
       partnerIds: { type: [String], default: [] },
       campaignLogoIds: { type: [String], default: [] },
       aiPhoto: { type: Boolean, default: false },
+      approach: { type: String, enum: ['concept', 'library'], default: 'library' },
       count: { type: Number, default: 4, min: 1, max: 4 },
       designIds: { type: [String], default: [] }
     },

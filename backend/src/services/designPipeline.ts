@@ -20,6 +20,7 @@ import { findFocal, photoStats } from '../design/assets';
 import { cutout } from './cutout';
 import { callClaudeTool, DESIGN_MODELS, type ClaudeImage } from '../design/claude';
 import { DIRECTOR_SYSTEM, DIRECTOR_TOOL, brandText, catalogText, directorPrompt, plannedDocs, planWithoutAI, type DirectorInput, type DirectorPlan, type PlannedOption } from '../design/director';
+import { conceptTemplate, repairBlueprint } from '../design/concept';
 import { CRITIC_SYSTEM, CRITIC_TOOL, applyRanking, type CriticRanking } from '../design/critic';
 import { checkScore, editableAreas, hasErrors } from '../design/checks';
 import { normalizeParams, roomierSettings } from '../design/template';
@@ -284,11 +285,37 @@ export async function runDesignJob(job: IDesignJob): Promise<void> {
     today: new Date()
   };
 
-  // 2) Art direction.
+  // 2) Art direction: concept-first (the image model draws a concept, Claude reads it), or the
+  // art director choosing from the design library.
   await stage(job, 'directing', 0.15);
   const apiKey = await anthropicKey();
   let plan: DirectorPlan;
-  if (apiKey) {
+  let conceptMade: PlannedOption[] = [];
+  if (apiKey && job.request.approach === 'concept') {
+    const { conceptOptions } = await import('./designConcept');
+    conceptMade = await conceptOptions({
+      brief: input.brief,
+      caption: input.caption || '',
+      kit,
+      format,
+      photos: photos.map((p) => ({ slot: p.slot, buffer: p.buffer, description: p.description })),
+      sponsors,
+      campaignLogoIds,
+      voice: input.voice || null,
+      count: Math.min(3, input.count),
+      apiKey,
+      userId,
+      log: (name, model, usage, c, ms, ok = true, err) => {
+        cost += c;
+        return logUsage(userId, name, model, usage, c, ms, ok, err);
+      }
+    });
+    if (!conceptMade.length) console.error('[design] No concept worked; using the design library.');
+  }
+  if (conceptMade.length) {
+    // The library plan stays as the fallback if a concept fails its checks.
+    plan = planWithoutAI(input);
+  } else if (apiKey) {
     const t0 = Date.now();
     try {
       const images: ClaudeImage[] = [];
@@ -321,7 +348,7 @@ export async function runDesignJob(job: IDesignJob): Promise<void> {
     .filter((o) => o.background || !photos.length)
     .map((o) => designs.find((d) => d.id === o.design))
     .find((d) => d && d.background !== 'none');
-  if (bgDesign && (plan.background_prompt || '').trim()) {
+  if (!conceptMade.length && bgDesign && (plan.background_prompt || '').trim()) {
     await stage(job, 'background', 0.3);
     try {
       background = await makeBackground(plan.background_prompt!, kit, bgDesign, format, userId);
@@ -330,7 +357,7 @@ export async function runDesignJob(job: IDesignJob): Promise<void> {
     }
   }
 
-  let options = plannedDocs(plan, input, background);
+  let options = conceptMade.length ? conceptMade : plannedDocs(plan, input, background);
   if (!options.length) {
     // The plan named nothing usable: fall back to the designs that fit.
     options = plannedDocs(planWithoutAI(input), input, background);
@@ -342,8 +369,20 @@ export async function runDesignJob(job: IDesignJob): Promise<void> {
   let rendered: Rendered[] = [];
   for (const o of options) rendered.push(await renderOption(o, kit));
 
-  // 5) Fix what can be fixed: shorter words, then roomier settings.
+  // 5) Fix what can be fixed. Concepts first: their layout is adjusted the way a designer would
+  // (colour, a panel behind words, a smaller partner strip, a taller box), twice at most.
   await stage(job, 'checking', 0.65);
+  for (let round = 0; round < 2; round++) {
+    for (const r of rendered.filter((x) => (x.option.doc as any).concept && hasErrors(x.result.report.issues))) {
+      const c = (r.option.doc as any).concept;
+      const next = repairBlueprint(c.blueprint, r.result.report.issues);
+      if (!next) continue;
+      const doc = { ...JSON.parse(JSON.stringify(r.option.doc)), text: next.copy, concept: { ...c, blueprint: next } };
+      const design = conceptTemplate(next, doc.designId, format);
+      const again = await renderOption({ ...r.option, doc, design }, kit);
+      if (checkScore(again.result.report.issues) >= checkScore(r.result.report.issues)) rendered = rendered.map((x) => (x === r ? again : x));
+    }
+  }
   const failing = rendered.filter((r) => hasErrors(r.result.report.issues));
   if (failing.length && apiKey && failing.some((r) => r.result.report.issues.some((i) => i.code === 'text-overflow' || i.code === 'text-small'))) {
     const changes = await shorten(failing, apiKey, userId);

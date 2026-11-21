@@ -30,6 +30,29 @@ can read and correct the facts first. **Blue and the connector** use the same en
 AI show the engine's health (`GET /api/design/admin/status`): the Claude key, the renderer,
 cut-outs, the model used for each step and the design library.
 
+## Concept-first posters (trial)
+
+Asked for with `approach: "concept"` (the connector's `generate_task_poster`, or `approach` on
+`POST /api/design/tasks/:id/posters`). For each option, side by side:
+
+1. **Concept**: the image model draws a whole poster from words alone: the brief, the brand's
+   colours and mood, how much text, and the spaces to leave (main logo, a strip of N partner
+   logos, a wide photo of people). It's never given our files: it composes far better from a
+   description. Each option gets a different direction (bold, photographic, editorial, lively).
+   Nobody sees the concept.
+2. **Art layer**: the same picture with every word, logo and badge removed (an image edit).
+3. **Reading**: Claude reads the concept into a blueprint (`design/concept.ts`): where the
+   headline, details, call to action, badge, logo, partner strip and photo sit, aligned and
+   coloured in the brand's colours, improved (margins, hierarchy, contrast), plus the real words
+   from the brief.
+4. **Build**: the blueprint becomes a design rendered like any other: real words in the brand
+   fonts, the real logo files and partners, the real photo, on the art layer; every check runs.
+   Failing checks are repaired the way a designer would (text colour, then a panel; a smaller
+   partner strip; a taller box) up to twice; options that still fail fall back to the library.
+
+Concept posters keep their blueprint, so typed edits and A4/A3 prints work; other social shapes
+need a new concept. Costs about 2 images and 1 Claude reading per option.
+
 ## How it works
 
 Posters are laid out in code, not painted by an image model. Every poster is a **design document**
