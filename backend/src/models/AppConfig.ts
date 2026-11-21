@@ -22,13 +22,20 @@ export interface IAppConfig extends Document {
   geminiKeyUpdatedAt?: Date;
   geminiKeyUpdatedBy?: mongoose.Types.ObjectId;
 
+  // fal.ai (Qwen image models, SAM 3 cut-outs, BiRefNet, Qwen layer splitting)
+  falApiKey?: string;
+  falKeyUpdatedAt?: Date;
+  falKeyUpdatedBy?: mongoose.Types.ObjectId;
+
   // Default LLM configuration (for text generation)
   defaultLLMProvider?: string; // 'openai' | 'anthropic' | 'grok' | 'gemini'
   defaultLLMModel?: string;
 
   // Image model (lib/imageModels.ts): one of SELECTABLE_IMAGE_MODELS; retired models fall back to the default
-  defaultImageLLMProvider?: string; // 'openai' (only option)
+  defaultImageLLMProvider?: string; // 'openai' or 'fal' (follows the model)
   defaultImageLLMModel?: string; // e.g. 'gpt-image-2.5-flare' (the default)
+  /** Posters' concepts and art (design engine); empty = the same model as pictures. */
+  designImageModel?: string;
 
   // Blue (in-app assistant) configuration
   blueEnabled: boolean;
@@ -123,6 +130,19 @@ const appConfigSchema = new Schema<IAppConfig>(
       ref: 'User'
     },
 
+    // fal.ai
+    falApiKey: {
+      type: String,
+      select: false
+    },
+    falKeyUpdatedAt: {
+      type: Date
+    },
+    falKeyUpdatedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User'
+    },
+
     // Default LLM configuration (for text generation)
     defaultLLMProvider: {
       type: String,
@@ -139,6 +159,9 @@ const appConfigSchema = new Schema<IAppConfig>(
       type: String,
       enum: ['openai'],
       default: 'openai'
+    },
+    designImageModel: {
+      type: String
     },
     defaultImageLLMModel: {
       type: String,
@@ -254,7 +277,7 @@ interface IAppConfigModel extends mongoose.Model<IAppConfig> {
 
 // Static method to get or create the singleton config
 appConfigSchema.statics.getConfig = async function (): Promise<IAppConfig> {
-  let config = await this.findOne().select('+openAIApiKey +anthropicApiKey +grokApiKey +geminiApiKey');
+  let config = await this.findOne().select('+openAIApiKey +anthropicApiKey +grokApiKey +geminiApiKey +falApiKey');
   if (!config) {
     config = await this.create({});
   }

@@ -32,7 +32,6 @@ export interface StartPosterBody {
   /** Campaign logos to add (default: the ones marked "on every poster"). */
   campaignLogoIds?: string[];
   count?: number;
-  designIds?: string[];
 }
 
 /** Typed straight into the poster: a field's new words (empty removes it), detail lines, badge. */
@@ -42,13 +41,26 @@ export interface PosterTextEdits extends Partial<Record<Exclude<keyof PosterText
   badge?: PosterText['badge'] | null;
 }
 
-/** Changes from buttons, applied without AI. */
+/** Changes from buttons, applied without AI. `layer` is a photo layer's id (default: the first photo). */
 export type QuickOp =
   | { op: 'headline_size'; scale: number }
   | { op: 'swap_colours' }
   | { op: 'change_format'; format: PosterFormat }
-  | { op: 'switch_design'; design: string }
-  | { op: 'remove_sponsor'; name: string };
+  | { op: 'remove_sponsor'; name: string }
+  | { op: 'photo_zoom'; layer?: string; scale: number }
+  | { op: 'photo_move'; layer?: string; dx: number; dy: number }
+  | { op: 'photo_fade'; layer?: string; side: 'left' | 'right' | 'top' | 'bottom' | 'edges' | 'none'; size?: number }
+  | { op: 'photo_tint'; layer?: string; color: 'primary' | 'secondary' | 'accent' | 'ink' | 'paper' | 'none'; amount?: number; mode?: 'tint' | 'duotone' | 'darken' }
+  | { op: 'photo_shape'; layer?: string; shape: PhotoFrameShape }
+  | { op: 'photo_breakout'; layer?: string; on: boolean }
+  | { op: 'swap_photo'; layer?: string; url: string };
+
+export type PhotoFrameShape = 'rect' | 'rounded' | 'circle' | 'arch' | 'slant-left' | 'slant-right' | 'blob';
+
+/** What the editor needs to know of a poster's scene (its layers). */
+export interface SceneSummary {
+  layers: { id: string; type: 'shape' | 'photo' | 'text' | 'logo' | 'partners'; role?: string; shape?: string; fade?: { side: string; size: number }; tint?: { color: string }; breakout?: string | null; photo?: number }[];
+}
 
 export interface PosterEditBody {
   text?: PosterTextEdits;
@@ -295,65 +307,18 @@ export const STAGE_TEXT: Record<PosterJobStage, string> = {
 
 export type AdminDesignStatus = 'builtin' | 'importing' | 'failed' | 'draft' | 'live' | 'retired';
 
-export interface DesignPreview {
-  format: PosterFormat;
-  /** typical-3, typical-6, short-0, long-6 */
-  case: string;
-  url: string;
-  passed: boolean;
-  /** Long words are shown but don't count. */
-  counted: boolean;
-  issues: string[];
-}
-
-export interface AdminDesign {
-  /** The record's id (imported) or the design id (built-in). */
-  id: string;
-  designId: string;
-  status: AdminDesignStatus;
-  source: 'builtin' | 'imported';
-  name: string;
-  description: string;
-  formats: PosterFormat[];
-  version: number;
-  test?: { at: string; passed: number; failed: number; problems: string[] } | null;
-  previews?: DesignPreview[];
-  notes?: string;
-  sourceNote?: string;
-  message?: string | null;
-  error?: string | null;
-  cost?: number;
-  updatedAt?: string;
-}
-
-/** The poster engine's health (Settings › AI). */
 export interface PosterEngineStatus {
   ready: boolean;
   anthropic: boolean;
+  openai: boolean;
+  fal: boolean;
   renderer: { ok: boolean; error?: string };
-  cutouts: boolean;
-  models: { art_director: string; review: string; quick_edits: string; design_import: string };
-  designs: { built_in: number; imported_live: number; waiting_for_approval: number; retired: number };
+  /** How people are cut out of photos ("server model", "SAM 3 / BiRefNet on fal.ai"), or false. */
+  cutouts: string | false;
+  models: { concept: string; scene_reader: string; review: string; quick_edits: string };
   problems: string[];
 }
 
 export const adminDesignAPI = {
-  status: () => api.get<PosterEngineStatus & { success: boolean }>('/design/admin/status').then((r) => r.data),
-  list: () => api.get<{ builtin: AdminDesign[]; imported: AdminDesign[]; previewsPending?: boolean }>('/design/admin/designs').then((r) => r.data),
-  get: (id: string) => api.get<{ design: AdminDesign; template: Record<string, unknown> | null }>(`/design/admin/designs/${id}`).then((r) => r.data),
-  builtinTest: (designId: string) => api.get<{ test: AdminDesign['test']; previews: DesignPreview[] }>(`/design/admin/designs/builtin/${designId}/test`).then((r) => r.data),
-  import: (file: File, fields: { name?: string; note?: string }) => {
-    const form = new FormData();
-    form.append('file', file);
-    form.append('rights', 'yes');
-    if (fields.name) form.append('name', fields.name);
-    if (fields.note) form.append('note', fields.note);
-    return api.post<{ design: AdminDesign }>('/design/admin/designs/import', form).then((r) => r.data.design);
-  },
-  save: (id: string, template: Record<string, unknown>) => api.put<{ design: AdminDesign; template: Record<string, unknown>; message: string }>(`/design/admin/designs/${id}`, { template }).then((r) => r.data),
-  revise: (id: string, request: string) => api.post<{ design: AdminDesign }>(`/design/admin/designs/${id}/revise`, { request }).then((r) => r.data.design),
-  test: (id: string) => api.post<{ design: AdminDesign }>(`/design/admin/designs/${id}/test`).then((r) => r.data.design),
-  approve: (id: string) => api.post<{ design: AdminDesign }>(`/design/admin/designs/${id}/approve`).then((r) => r.data.design),
-  retire: (id: string) => api.post<{ design: AdminDesign }>(`/design/admin/designs/${id}/retire`).then((r) => r.data.design),
-  remove: (id: string) => api.delete(`/design/admin/designs/${id}`).then(() => undefined)
+  status: () => api.get<PosterEngineStatus & { success: boolean }>('/design/admin/status').then((r) => r.data)
 };

@@ -59,7 +59,6 @@ export const paths = {
   adminUsers: () => '/admin/users',
   adminUser: (userId: unknown) => `/admin/users/${id(userId)}`,
   adminOutreach: () => '/admin/outreach',
-  adminDesigns: (designId?: string) => (designId ? `/admin/designs/${encodeURIComponent(designId)}` : '/admin/designs')
 };
 
 /** The id of a populated reference ({ _id, name }) or a plain id. */

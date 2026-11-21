@@ -8,7 +8,14 @@ import {
   SwapHoriz as SwapIcon,
   AspectRatio as ShapeIcon,
   PhotoSizeSelectLarge as SizesIcon,
-  ViewQuiltOutlined as LayoutIcon,
+  ZoomIn as CloserIcon,
+  ZoomOut as WiderIcon,
+  OpenWith as MoveIcon,
+  Gradient as FadeIcon,
+  CropFree as FrameIcon,
+  Palette as WashIcon,
+  PhotoLibraryOutlined as SwapPhotoIcon,
+  Accessibility as BreakoutIcon,
   PrintOutlined as PrintIcon,
   AutoAwesome as AIIcon,
   Event as DateIcon,
@@ -18,7 +25,7 @@ import {
   Language as WebIcon,
   InfoOutlined as InfoIcon
 } from '@mui/icons-material';
-import { designAPI, POSTER_FORMATS, type DesignCatalog, type PosterEditBody, type PosterTextEdits, type QuickOp } from '../../services/design';
+import { designAPI, POSTER_FORMATS, type DesignCatalog, type PhotoFrameShape, type PosterEditBody, type PosterTextEdits, type QuickOp, type SceneSummary } from '../../services/design';
 import { errorMessage, notify } from '../../store/toastStore';
 import type { DetailKind, PostAIDraft, PostDesign, PosterField, PosterText } from '../../types';
 
@@ -26,7 +33,8 @@ import type { DetailKind, PostAIDraft, PostDesign, PosterField, PosterText } fro
  * Changing a designed poster. Each change re-renders the poster from its document in a few seconds
  * and arrives as a new version next to the one you changed, so nothing is ever lost:
  * - the words, typed straight in (no AI): every line, the details and the date badge
- * - one-tap changes (no AI): headline size, swap colours, another shape or layout
+ * - one-tap changes (no AI): headline size, swap colours, another shape, and the photo: closer,
+ *   wider, moved, faded, framed in another shape, a colour wash, people over the frame, another photo
  * - a change described in a sentence (a quick AI turns it into the same kind of changes)
  * - print files (A4, A3) with sharp text at any size
  */
@@ -87,18 +95,60 @@ export interface PosterEditorProps {
   focus: { field: string; at: number } | null;
   /** A new version was made. */
   onDraft: (draft: PostAIDraft, message: string) => void;
+  /** The post's own pictures, to swap into the poster. */
+  photos?: { url: string; label?: string }[];
 }
 
-export default function PosterEditor({ taskId, posterRef, design, catalog, focus, onDraft }: PosterEditorProps) {
+const SCENE_FIELDS: Record<string, PosterField[]> = { eyebrow: ['eyebrow'], headline: ['headline'], subhead: ['subhead'], cta: ['cta'], contact: ['social', 'web'] };
+const FRAME_SHAPES: { shape: PhotoFrameShape; label: string }[] = [
+  { shape: 'rect', label: 'Straight edges' },
+  { shape: 'rounded', label: 'Rounded corners' },
+  { shape: 'circle', label: 'Circle' },
+  { shape: 'arch', label: 'Arch' },
+  { shape: 'slant-left', label: 'Slanted left side' },
+  { shape: 'slant-right', label: 'Slanted right side' },
+  { shape: 'blob', label: 'Soft organic' }
+];
+const FADES: { side: 'none' | 'bottom' | 'top' | 'left' | 'right' | 'edges'; label: string }[] = [
+  { side: 'none', label: 'No fade' },
+  { side: 'bottom', label: 'Fade at the bottom' },
+  { side: 'top', label: 'Fade at the top' },
+  { side: 'left', label: 'Fade on the left' },
+  { side: 'right', label: 'Fade on the right' },
+  { side: 'edges', label: 'Fade all round' }
+];
+const WASHES: { color: 'none' | 'primary' | 'secondary' | 'accent'; mode?: 'tint' | 'duotone'; label: string }[] = [
+  { color: 'none', label: 'No colour wash' },
+  { color: 'primary', mode: 'tint', label: 'Main brand colour' },
+  { color: 'secondary', mode: 'tint', label: 'Second brand colour' },
+  { color: 'accent', mode: 'tint', label: 'Accent colour' },
+  { color: 'primary', mode: 'duotone', label: 'Duotone in the main colour' }
+];
+
+export default function PosterEditor({ taskId, posterRef, design, focus, onDraft, photos = [] }: PosterEditorProps) {
   const doc = design.doc;
-  const template = catalog?.designs.find((d) => d.id === doc.designId);
+  const scene = (doc as { scene?: SceneSummary }).scene;
+  // The fields this poster shows: its scene's word layers (older posters: the words they have).
   const shown = useMemo(() => {
-    const names = new Set((template?.fields || []).map((f) => f.name));
-    // Without the catalogue: the fields this poster has words in.
-    if (!template) for (const k of Object.keys(doc.text)) names.add(k as keyof PosterText);
+    const names = new Set<keyof PosterText>();
+    if (scene) {
+      for (const l of scene.layers) {
+        if (l.type === 'text' && l.role) {
+          if (l.role === 'details' || l.role === 'badge') names.add(l.role);
+          else for (const f of SCENE_FIELDS[l.role] || []) names.add(f);
+        }
+        if (l.type === 'partners') names.add('sponsorsTitle');
+      }
+      // Words can be added even where the poster has none yet (a line is made for them).
+      for (const f of ['eyebrow', 'subhead', 'cta', 'details'] as (keyof PosterText)[]) names.add(f);
+    } else for (const k of Object.keys(doc.text)) names.add(k as keyof PosterText);
     return names;
-  }, [template, doc.text]);
-  const maxOf = (name: string) => template?.fields.find((f) => f.name === name)?.max;
+  }, [scene, doc.text]);
+  const maxOf = (name: string) => (name === 'headline' ? 90 : name === 'subhead' ? 200 : 60);
+  const photoLayers = (scene?.layers || []).filter((l) => l.type === 'photo');
+  const [photoLayer, setPhotoLayer] = useState<string | undefined>(undefined);
+  const photoOn = photoLayers.find((l) => l.id === photoLayer) || photoLayers[0];
+  const [menu, setMenu] = useState<{ kind: 'fade' | 'frame' | 'wash' | 'swap' | 'move'; anchor: HTMLElement } | null>(null);
 
   const original = useMemo(() => wordsOf(doc.text), [doc.text]);
   const [words, setWords] = useState<Words>(original);
@@ -106,7 +156,6 @@ export default function PosterEditor({ taskId, posterRef, design, catalog, focus
   const [busy, setBusy] = useState<string | null>(null);
   const [reply, setReply] = useState<string | null>(null);
   const [shapeAnchor, setShapeAnchor] = useState<HTMLElement | null>(null);
-  const [layoutAnchor, setLayoutAnchor] = useState<HTMLElement | null>(null);
   const [sizes, setSizes] = useState<{ sizes: { format: string; url: string }[]; skipped: { format: string; reason: string }[] } | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -199,9 +248,10 @@ export default function PosterEditor({ taskId, posterRef, design, catalog, focus
 
   const setField = (f: PosterField, v: string) => setWords((w) => ({ ...w, fields: { ...w.fields, [f]: v } }));
   const setDetail = (i: number, patch: Partial<{ kind: DetailKind; text: string }>) => setWords((w) => ({ ...w, details: w.details.map((d, j) => (j === i ? { ...d, ...patch } : d)) }));
-  const formats = POSTER_FORMATS.filter((f) => f.value !== doc.format && (!template || template.formats.includes(f.value)));
-  const layouts = (catalog?.designs || []).filter((d) => d.id !== doc.designId && d.formats.includes(doc.format) && d.photos.min <= doc.photos.length && (d.background !== 'required' || Boolean(doc.background)));
-  const printable = !template || template.formats.includes('a4');
+  const formats = POSTER_FORMATS.filter((f) => f.value !== doc.format);
+  const printable = Boolean(scene);
+  const layer = photoOn?.id;
+  const photoQuick = (key: string, op: QuickOp, done: string) => quick(key, op, done);
   const scale = doc.tweaks?.headlineScale || 1;
   const warnings = (design.issues || []).filter((i) => i.level === 'warning');
 
@@ -234,11 +284,6 @@ export default function PosterEditor({ taskId, posterRef, design, catalog, focus
             Another shape
           </QuickButton>
         )}
-        {layouts.length > 0 && (
-          <QuickButton icon={<LayoutIcon />} busy={busy === 'layout'} disabled={Boolean(busy)} onClick={(e) => setLayoutAnchor(e.currentTarget)}>
-            Another layout
-          </QuickButton>
-        )}
         <QuickButton icon={<SizesIcon />} busy={busy === 'sizes'} disabled={Boolean(busy)} onClick={allSizes}>
           All sizes
         </QuickButton>
@@ -266,21 +311,92 @@ export default function PosterEditor({ taskId, posterRef, design, catalog, focus
             </MenuItem>
           ))}
         </Menu>
-        <Menu anchorEl={layoutAnchor} open={Boolean(layoutAnchor)} onClose={() => setLayoutAnchor(null)}>
-          {layouts.map((d) => (
-            <MenuItem
-              key={d.id}
-              onClick={() => {
-                setLayoutAnchor(null);
-                quick('layout', { op: 'switch_design', design: d.id }, `${d.name} layout ready`);
-              }}
-              sx={{ maxWidth: 360, whiteSpace: 'normal' }}
-            >
-              <ListItemText primary={d.name} secondary={d.description} />
-            </MenuItem>
-          ))}
-        </Menu>
+
       </Box>
+
+      {/* The photo */}
+      {photoOn && (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography sx={{ fontSize: 13, fontWeight: 600, color: 'var(--text-strong)' }}>The photo</Typography>
+            {photoLayers.length > 1 && (
+              <TextField select size="small" value={photoOn.id} onChange={(e) => setPhotoLayer(e.target.value)} inputProps={{ 'aria-label': 'Which photo' }} sx={{ minWidth: 120 }}>
+                {photoLayers.map((l, i) => (
+                  <MenuItem key={l.id} value={l.id}>
+                    Photo {i + 1}
+                  </MenuItem>
+                ))}
+              </TextField>
+            )}
+          </Box>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+            <QuickButton icon={<CloserIcon />} busy={busy === 'closer'} disabled={Boolean(busy)} onClick={() => photoQuick('closer', { op: 'photo_zoom', layer, scale: 1.2 }, 'Closer photo ready')}>
+              Closer
+            </QuickButton>
+            <QuickButton icon={<WiderIcon />} busy={busy === 'wider'} disabled={Boolean(busy)} onClick={() => photoQuick('wider', { op: 'photo_zoom', layer, scale: 0.84 }, 'Wider photo ready')}>
+              Show more
+            </QuickButton>
+            <QuickButton icon={<MoveIcon />} busy={busy === 'move'} disabled={Boolean(busy)} onClick={(e) => setMenu({ kind: 'move', anchor: e.currentTarget })}>
+              Move
+            </QuickButton>
+            <QuickButton icon={<FadeIcon />} busy={busy === 'fade'} disabled={Boolean(busy)} onClick={(e) => setMenu({ kind: 'fade', anchor: e.currentTarget })}>
+              Fade
+            </QuickButton>
+            <QuickButton icon={<FrameIcon />} busy={busy === 'frame'} disabled={Boolean(busy)} onClick={(e) => setMenu({ kind: 'frame', anchor: e.currentTarget })}>
+              Frame shape
+            </QuickButton>
+            <QuickButton icon={<WashIcon />} busy={busy === 'wash'} disabled={Boolean(busy)} onClick={(e) => setMenu({ kind: 'wash', anchor: e.currentTarget })}>
+              Colour wash
+            </QuickButton>
+            <QuickButton icon={<BreakoutIcon />} busy={busy === 'breakout'} disabled={Boolean(busy)} onClick={() => photoQuick('breakout', { op: 'photo_breakout', layer, on: !photoOn.breakout }, photoOn.breakout ? 'People back inside the frame' : 'People over the frame ready')}>
+              {photoOn.breakout ? 'People inside the frame' : 'People over the frame'}
+            </QuickButton>
+            {photos.length > 0 && (
+              <QuickButton icon={<SwapPhotoIcon />} busy={busy === 'swap-photo'} disabled={Boolean(busy)} onClick={(e) => setMenu({ kind: 'swap', anchor: e.currentTarget })}>
+                Another photo
+              </QuickButton>
+            )}
+          </Box>
+          <Menu anchorEl={menu?.anchor} open={Boolean(menu)} onClose={() => setMenu(null)}>
+            {menu?.kind === 'move' &&
+              ([
+                ['Show more of the left', -12, 0],
+                ['Show more of the right', 12, 0],
+                ['Show more of the top', 0, -12],
+                ['Show more of the bottom', 0, 12]
+              ] as [string, number, number][]).map(([label, dx, dy]) => (
+                <MenuItem key={label} onClick={() => (setMenu(null), photoQuick('move', { op: 'photo_move', layer, dx, dy }, 'Moved photo ready'))}>
+                  {label}
+                </MenuItem>
+              ))}
+            {menu?.kind === 'fade' &&
+              FADES.map((f) => (
+                <MenuItem key={f.side} selected={(photoOn.fade?.side || 'none') === f.side} onClick={() => (setMenu(null), photoQuick('fade', { op: 'photo_fade', layer, side: f.side, size: 30 }, 'Photo fade ready'))}>
+                  {f.label}
+                </MenuItem>
+              ))}
+            {menu?.kind === 'frame' &&
+              FRAME_SHAPES.map((f) => (
+                <MenuItem key={f.shape} selected={photoOn.shape === f.shape} onClick={() => (setMenu(null), photoQuick('frame', { op: 'photo_shape', layer, shape: f.shape }, 'New frame ready'))}>
+                  {f.label}
+                </MenuItem>
+              ))}
+            {menu?.kind === 'wash' &&
+              WASHES.map((w) => (
+                <MenuItem key={w.label} onClick={() => (setMenu(null), photoQuick('wash', { op: 'photo_tint', layer, color: w.color, mode: w.mode, amount: w.mode === 'duotone' ? 0.55 : 0.3 }, 'Colour wash ready'))}>
+                  {w.label}
+                </MenuItem>
+              ))}
+            {menu?.kind === 'swap' &&
+              photos.map((p, i) => (
+                <MenuItem key={p.url} onClick={() => (setMenu(null), photoQuick('swap-photo', { op: 'swap_photo', layer, url: p.url }, 'Poster with the other photo ready'))} sx={{ gap: 1.25 }}>
+                  <Box component="img" src={p.url} alt="" sx={{ width: 44, height: 44, objectFit: 'cover', borderRadius: '4px' }} />
+                  {p.label || `Picture ${i + 1}`}
+                </MenuItem>
+              ))}
+          </Menu>
+        </Box>
+      )}
 
       {sizes && (
         <Box role="status" sx={{ p: 1.25, borderRadius: 'var(--r-ctl)', bgcolor: 'var(--bg-subtle)', display: 'flex', flexDirection: 'column', gap: 0.75 }}>

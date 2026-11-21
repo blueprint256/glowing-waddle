@@ -102,7 +102,7 @@ async function predictMask(input: Buffer, width: number, height: number): Promis
  * Applies a mask to a photo: soft edges kept (hair), stray specks and faint haze dropped, trimmed
  * to the subject with a little room. Returns null when the mask doesn't look like one clear subject.
  */
-export async function applyMask(rgba: Buffer, mask: Buffer, width: number, height: number): Promise<Cutout | null> {
+export async function applyMask(rgba: Buffer, mask: Buffer, width: number, height: number, options: { all?: boolean } = {}): Promise<Cutout | null> {
   const n = width * height;
   // Tighten the matte: below 8% is background, above 92% is solid; in between stays soft.
   const alpha = Buffer.alloc(n);
@@ -116,8 +116,9 @@ export async function applyMask(rgba: Buffer, mask: Buffer, width: number, heigh
   const coverage = solid / n;
   if (coverage < 0.03 || coverage > 0.85) return null;
 
-  // Keep the largest solid region (the subject) and what touches it; drop islands.
-  const keep = largestRegion(alpha, width, height);
+  // Keep the largest solid region (the subject) and what touches it; drop islands. With "all" (a
+  // named subject found by SAM 3, e.g. several people), every sizeable region stays.
+  const keep = options.all ? sizeableRegions(alpha, width, height) : largestRegion(alpha, width, height);
   if (!keep) return null;
   let x0 = width;
   let y0 = height;
@@ -199,6 +200,47 @@ function largestRegion(alpha: Buffer, width: number, height: number): Uint8Array
   return keep;
 }
 
+/** Every region at least half opaque and bigger than 0.4% of the photo, with its soft edge. */
+function sizeableRegions(alpha: Buffer, width: number, height: number): Uint8Array | null {
+  const n = width * height;
+  const label = new Int32Array(n);
+  const sizes: number[] = [0];
+  const stack: number[] = [];
+  for (let s = 0; s < n; s++) {
+    if (label[s] || alpha[s] < 128) continue;
+    const id = sizes.length;
+    let size = 0;
+    stack.push(s);
+    label[s] = id;
+    while (stack.length) {
+      const i = stack.pop()!;
+      size++;
+      const x = i % width;
+      const y = (i - x) / width;
+      if (x > 0 && !label[i - 1] && alpha[i - 1] >= 128) (label[i - 1] = id), stack.push(i - 1);
+      if (x < width - 1 && !label[i + 1] && alpha[i + 1] >= 128) (label[i + 1] = id), stack.push(i + 1);
+      if (y > 0 && !label[i - width] && alpha[i - width] >= 128) (label[i - width] = id), stack.push(i - width);
+      if (y < height - 1 && !label[i + width] && alpha[i + width] >= 128) (label[i + width] = id), stack.push(i + width);
+    }
+    sizes.push(size);
+  }
+  const keep = new Uint8Array(n);
+  let any = false;
+  for (let i = 0; i < n; i++) {
+    if (label[i] && sizes[label[i]] >= n * 0.004) {
+      keep[i] = 1;
+      any = true;
+    }
+  }
+  if (!any) return null;
+  for (let i = 0; i < n; i++) {
+    if (keep[i] || !alpha[i]) continue;
+    const x = i % width;
+    if ((x > 0 && keep[i - 1]) || (x < width - 1 && keep[i + 1]) || (i >= width && keep[i - width]) || (i + width < n && keep[i + width])) keep[i] = 2;
+  }
+  return keep;
+}
+
 // ---- Cache -------------------------------------------------------------------------------------
 
 interface ICutoutCache {
@@ -230,19 +272,47 @@ export const CutoutCache =
   );
 
 /**
- * The subject of a photo, cut out and stored (cached by the photo's bytes). Null when no model is
- * set up, or when the photo has no single clear subject (a group, a landscape).
+ * The subject of a photo, cut out and stored (cached by the photo's bytes and the subject asked for).
+ * Who cuts it out, in order: the model on the server (CUTOUT_MODEL), SAM 3 on fal.ai for a named
+ * subject ("the woman holding the baby"; default "person", every person kept), or BiRefNet on
+ * fal.ai (the main subject). Null when none is set up, or when the photo has no clear subject.
+ * Segmentation only decides which pixels belong to the subject: the pixels are always the photo's.
  */
-export async function cutout(photo: Buffer, store: (png: Buffer) => Promise<string>): Promise<{ url: string; width: number; height: number; box: Cutout['box']; edges?: CutEdges } | null> {
-  if (!cutoutAvailable()) return null;
-  const hash = crypto.createHash('sha1').update(photo).digest('hex');
+export async function cutout(
+  photo: Buffer,
+  store: (png: Buffer) => Promise<string>,
+  options: { subject?: string; userId?: mongoose.Types.ObjectId } = {}
+): Promise<{ url: string; width: number; height: number; box: Cutout['box']; edges?: CutEdges } | null> {
+  const { falAvailable } = await import('./falService');
+  const local = cutoutAvailable();
+  const fal = !local && (await falAvailable());
+  if (!local && !fal) return null;
+  const subject = (options.subject || '').trim().slice(0, 120);
+  const hash = crypto.createHash('sha1').update(photo).update(local ? '' : `|${subject || 'person'}`).digest('hex');
   const cached = await CutoutCache.findOne({ hash }).lean();
   if (cached) return cached.url ? { url: cached.url, width: cached.width, height: cached.height, box: cached.box, edges: cached.edges } : null;
   try {
     // Work at most at 2000 px on the long side: plenty for a poster, quick on a CPU.
     const { data, info } = await sharp(photo, { failOn: 'none' }).rotate().resize(2000, 2000, { fit: 'inside', withoutEnlargement: true }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-    const mask = await predictMask(await sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } }).png().toBuffer(), info.width, info.height);
-    const result = mask ? await applyMask(data, mask, info.width, info.height) : null;
+    const png = await sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } }).png().toBuffer();
+    let mask: Buffer | null = null;
+    let all = false;
+    if (local) mask = await predictMask(png, info.width, info.height);
+    else {
+      const { sam3Mask, removeBackground } = await import('./falService');
+      const found = await sam3Mask({ image: png, prompt: subject || 'person', userId: options.userId, promptName: 'Design · cut-out' }).catch((e) => {
+        console.error('[cutout] SAM 3 failed:', e?.message);
+        return null;
+      });
+      if (found) {
+        mask = await sharp(found.mask, { raw: { width: found.width, height: found.height, channels: 1 } }).resize(info.width, info.height, { fit: 'fill' }).extractChannel(0).raw().toBuffer();
+        all = true;
+      } else {
+        const cut = await removeBackground({ image: png, userId: options.userId, promptName: 'Design · cut-out' });
+        mask = await sharp(cut).resize(info.width, info.height, { fit: 'fill' }).ensureAlpha().extractChannel(3).raw().toBuffer();
+      }
+    }
+    const result = mask ? await applyMask(data, mask, info.width, info.height, { all }) : null;
     const url = result ? await store(result.png) : null;
     const edges = result ? await cutoutEdges(result.png) : undefined;
     await CutoutCache.create({ hash, url, width: result?.width || 0, height: result?.height || 0, box: result?.box || { x: 0, y: 0, w: 0, h: 0 }, coverage: result?.coverage || 0, edges }).catch(() => undefined);

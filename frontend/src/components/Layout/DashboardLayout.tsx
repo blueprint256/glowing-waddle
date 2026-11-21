@@ -11,7 +11,6 @@ import {
   Send as SendIcon,
   Inbox as InboxIcon,
   Forum as OutreachIcon,
-  DashboardCustomizeOutlined as DesignsIcon,
   Settings as SettingsIcon,
   Logout as LogoutIcon,
   DarkMode as DarkModeIcon,
@@ -58,7 +57,6 @@ const NAV: NavItem[] = [
   { text: 'Publishing', icon: <SendIcon />, path: paths.publishing(), accent: 'green', roles: ['all'], publishing: true },
   { text: 'Settings', icon: <SettingsIcon />, path: paths.settings(), roles: ['all'] },
   { text: 'Outreach', icon: <OutreachIcon />, path: paths.adminOutreach(), accent: 'purple', roles: [UserRole.SYSTEM_ADMIN], badge: 'outreach' },
-  { text: 'Poster designs', icon: <DesignsIcon />, path: paths.adminDesigns(), accent: 'violet', roles: [UserRole.SYSTEM_ADMIN] },
   { text: 'Users', icon: <PeopleIcon />, path: paths.adminUsers(), accent: 'wine', roles: [UserRole.SYSTEM_ADMIN] }
 ];
 

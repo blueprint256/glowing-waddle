@@ -62,8 +62,6 @@ export function startDesignWorker(): void {
   const recover = () =>
     DesignJob.updateMany({ status: 'running', lockedAt: { $lt: new Date(Date.now() - 10 * 60_000) } }, { $set: { status: 'queued', stage: 'queued' } }).catch(() => undefined);
   setTimeout(recover, 5000);
-  // Design imports that were running when the server stopped are marked failed.
-  setTimeout(() => import('./designImport').then((m) => m.markStaleImports()).catch(() => undefined), 5000);
   setInterval(() => {
     tick().catch((e) => console.error('[design] Worker error:', e));
   }, POLL_MS);

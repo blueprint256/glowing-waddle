@@ -94,7 +94,7 @@ export interface PhotoSlot {
   /** Consent recorded for photos of people (required for photos with children). */
   consent?: boolean;
   /** The subject cut out of its background (transparent PNG, trimmed to the person). */
-  cutout?: { url: string; width: number; height: number; edges?: CutEdges } | null;
+  cutout?: { url: string; width: number; height: number; edges?: CutEdges; box?: { x: number; y: number; w: number; h: number } } | null;
 }
 
 export type LogoVariant = 'color' | 'reverse' | 'mono-dark' | 'mono-light';
@@ -225,7 +225,7 @@ export type TextField = keyof DesignText;
 /**
  * A design in the library: a parametric layout written as HTML and CSS against the engine's runtime
  * (assets/design-runtime/engine.js). No scripts and no outside addresses are allowed in it
- * (template.ts checks). Built-in designs live in design/library; imported ones in the database.
+ * (template.ts checks). Every poster's design is generated from its scene (design/scene.ts).
  */
 export interface DesignTemplate {
   id: string;

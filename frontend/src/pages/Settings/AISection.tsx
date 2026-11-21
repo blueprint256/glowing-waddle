@@ -7,8 +7,7 @@ import LibrarySettingsCard from '../../components/Settings/LibrarySettingsCard';
 import { MetaChip } from '../../components/ui/StatusChip';
 import { useConfirm } from '../../components/ui/useConfirm';
 import { errorMessage, notify } from '../../store/toastStore';
-import { LLM_MODELS, PROVIDERS, type ProviderId } from './settingsShared';
-import { Link as RouterLink } from 'react-router-dom';
+import { KEY_PROVIDERS, LLM_MODELS, PROVIDERS, type KeyProviderId } from './settingsShared';
 import { adminDesignAPI, type PosterEngineStatus } from '../../services/design';
 
 /**
@@ -20,12 +19,13 @@ import { adminDesignAPI, type PosterEngineStatus } from '../../services/design';
 const PROVIDER_NAME: Record<string, string> = Object.fromEntries(PROVIDERS.map((p) => [p.id, p.name]));
 
 export default function AISection() {
-  const [configured, setConfigured] = useState<Record<ProviderId, boolean> | null>(null);
+  const [configured, setConfigured] = useState<Record<KeyProviderId, boolean> | null>(null);
   const [defaultProvider, setDefaultProvider] = useState('openai');
   const [defaultModel, setDefaultModel] = useState('gpt-4o-mini');
   const [savingDefault, setSavingDefault] = useState(false);
-  const [imageModels, setImageModels] = useState<{ id: string; label: string }[]>([]);
+  const [imageModels, setImageModels] = useState<{ id: string; label: string; provider?: string }[]>([]);
   const [imageModel, setImageModel] = useState('');
+  const [designModel, setDesignModel] = useState('');
   const [editModel, setEditModel] = useState('');
   const [savingImage, setSavingImage] = useState(false);
   const [prompts, setPrompts] = useState<any[] | null>(null);
@@ -35,9 +35,9 @@ export default function AISection() {
     try {
       const r = await api.get('/integrations/status');
       const i = r.data.integrations || {};
-      setConfigured({ openai: Boolean(i.openai?.configured), anthropic: Boolean(i.anthropic?.configured), grok: Boolean(i.grok?.configured), gemini: Boolean(i.gemini?.configured) });
+      setConfigured({ openai: Boolean(i.openai?.configured), anthropic: Boolean(i.anthropic?.configured), grok: Boolean(i.grok?.configured), gemini: Boolean(i.gemini?.configured), fal: Boolean(i.fal?.configured) });
     } catch {
-      setConfigured({ openai: false, anthropic: false, grok: false, gemini: false });
+      setConfigured({ openai: false, anthropic: false, grok: false, gemini: false, fal: false });
     }
   }, []);
 
@@ -64,18 +64,20 @@ export default function AISection() {
       .get('/integrations/image-llm/default')
       .then((r) => {
         setImageModels(Array.isArray(r.data.models) ? r.data.models : []);
-        setImageModel(r.data.defaultModel || '');
+        setImageModel(r.data.storedModel || r.data.defaultModel || '');
         setEditModel(r.data.editModel || '');
+        setDesignModel(r.data.designModel || '');
       })
       .catch(() => undefined);
   }, [loadStatus, loadPrompts]);
 
-  const saveImageModel = async (model: string) => {
+  const saveImageModel = async (body: { model?: string; designModel?: string }) => {
     setSavingImage(true);
     try {
-      const r = await api.patch('/integrations/image-llm/default', { provider: 'openai', model });
-      setImageModel(r.data.defaultModel || model);
+      const r = await api.patch('/integrations/image-llm/default', body);
+      if (body.model) setImageModel(body.model);
       setEditModel(r.data.editModel || '');
+      setDesignModel(r.data.designModel || '');
       notify('Image model saved');
     } catch (e) {
       notify(errorMessage(e, 'Couldn’t save the image model.'), { tone: 'error' });
@@ -109,12 +111,12 @@ export default function AISection() {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-      <Section title="AI providers" hint="Keys are encrypted. Anthropic (Claude) designs posters; OpenAI makes AI photos and posters’ painted backgrounds.">
+      <Section title="AI providers" hint="Keys are encrypted. Anthropic (Claude) reads poster concepts into layers and makes poster changes; OpenAI (or Qwen on fal.ai) draws the concepts and AI photos; fal.ai also cuts people out of photos.">
         {configured === null ? (
           <CircularProgress size={18} sx={{ color: 'var(--text-muted)' }} />
         ) : (
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 1.5 }}>
-            {PROVIDERS.map((p) => (
+            {KEY_PROVIDERS.map((p) => (
               <ProviderKeyCard key={p.id} provider={p} configured={configured[p.id]} onChanged={loadStatus} confirm={confirm} />
             ))}
           </Box>
@@ -156,19 +158,36 @@ export default function AISection() {
         </Box>
       </Section>
 
-      <Section title="Image model" hint="OpenAI makes AI photos and the painted backgrounds some posters use. GPT-Image-2.5 Flare is the fast default; changes to existing photos use Sunburst, which edits more precisely.">
+      <Section title="Image models" hint="Pictures: AI photos and changes to them. Posters: the concepts posters are designed from (and their painted backgrounds). GPT-Image-2.5 Flare is the fast default (changes use Sunburst); Qwen-Image runs on fal.ai (its key above).">
         <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
           <TextField
             select
-            label="Makes pictures with"
+            label="Pictures"
             value={imageModels.some((m) => m.id === imageModel) ? imageModel : ''}
-            onChange={(e) => saveImageModel(e.target.value)}
+            onChange={(e) => saveImageModel({ model: e.target.value })}
             disabled={savingImage || imageModels.length === 0}
             sx={{ minWidth: 320 }}
           >
             {imageModels.map((m) => (
               <MenuItem key={m.id} value={m.id}>
                 {m.label}
+                {configured && m.provider && !configured[m.provider as KeyProviderId] ? ' (no key)' : ''}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            select
+            label="Posters"
+            value={designModel && imageModels.some((m) => m.id === designModel) ? designModel : 'same'}
+            onChange={(e) => saveImageModel({ designModel: e.target.value === 'same' ? '' : e.target.value })}
+            disabled={savingImage || imageModels.length === 0}
+            sx={{ minWidth: 320 }}
+          >
+            <MenuItem value="same">The same as pictures</MenuItem>
+            {imageModels.map((m) => (
+              <MenuItem key={m.id} value={m.id}>
+                {m.label}
+                {configured && m.provider && !configured[m.provider as KeyProviderId] ? ' (no key)' : ''}
               </MenuItem>
             ))}
           </TextField>
@@ -272,7 +291,7 @@ function ProviderKeyCard({
   onChanged,
   confirm
 }: {
-  provider: (typeof PROVIDERS)[number];
+  provider: (typeof KEY_PROVIDERS)[number];
   configured: boolean;
   onChanged: () => void;
   confirm: ReturnType<typeof useConfirm>[0];
@@ -301,7 +320,7 @@ function ProviderKeyCard({
     setBusy('test');
     try {
       const r = await api.post(`/integrations/${provider.id}/test`);
-      notify(r.data.modelCount ? `${provider.name} works (${r.data.modelCount} models available)` : `${provider.name} works`);
+      notify(r.data.modelCount ? `${provider.name} works (${r.data.modelCount} models available)` : r.data.message || `${provider.name} works`);
     } catch (e) {
       notify(errorMessage(e, 'The test failed. Check the key.'), { tone: 'error' });
     } finally {
@@ -395,7 +414,7 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
 }
 
 /** The monthly AI allowance every client account gets (each account can have its own in Admin › Users). */
-/** Is the poster engine ready, which model does what, and the design library at a glance. */
+/** Is the poster engine ready, and which model does what. */
 function PosterEngineCard({ keysChanged }: { keysChanged: unknown }) {
   const [status, setStatus] = useState<PosterEngineStatus | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
@@ -414,7 +433,7 @@ function PosterEngineCard({ keysChanged }: { keysChanged: unknown }) {
   useEffect(() => check(), [check, keysChanged]);
 
   return (
-    <Section title="Poster engine" hint="Makes the posters in Create with AI › Poster: Claude plans and reviews them, and they’re laid out in code with your real words, fonts and logo files.">
+    <Section title="Poster engine" hint="Makes the posters in Create with AI › Poster: the image model designs a concept with your photos, Claude reads it into layers, and the engine draws them with your real words, fonts, logo files and photos, then checks them.">
       {failed ? (
         <Typography sx={{ fontSize: 13.5, color: 'var(--st-attention-fg)' }}>{failed}</Typography>
       ) : !status ? (
@@ -426,7 +445,7 @@ function PosterEngineCard({ keysChanged }: { keysChanged: unknown }) {
               {status.ready ? 'Ready' : 'Needs attention'}
             </Box>
             <Typography sx={{ fontSize: 13, color: 'var(--text-muted)' }}>
-              Claude key {status.anthropic ? 'set' : 'missing'} · renderer {status.renderer.ok ? 'running' : 'not running'} · cut-out people {status.cutouts ? 'on' : 'off (designs use the photo as it is)'}
+              Claude {status.anthropic ? 'set' : 'missing'} · OpenAI {status.openai ? 'set' : 'missing'} · fal.ai {status.fal ? 'set' : 'missing'} · renderer {status.renderer.ok ? 'running' : 'not running'} · people breaking out of frames {status.cutouts ? `on (${status.cutouts})` : 'off'}
             </Typography>
             <Button size="small" onClick={check} disabled={checking} sx={{ ml: 'auto' }}>
               {checking ? 'Checking…' : 'Check again'}
@@ -440,10 +459,10 @@ function PosterEngineCard({ keysChanged }: { keysChanged: unknown }) {
           <Box component="dl" sx={{ m: 0, display: 'grid', gridTemplateColumns: 'max-content 1fr', columnGap: 2, rowGap: 0.5, fontSize: 13 }}>
             {(
               [
-                ['Art director', status.models.art_director],
+                ['Concepts', status.models.concept],
+                ['Reading concepts into layers', status.models.scene_reader],
                 ['Review', status.models.review],
-                ['Typed and quick edits', status.models.quick_edits],
-                ['Importing a design', status.models.design_import]
+                ['Changes and new shapes', status.models.quick_edits]
               ] as [string, string][]
             ).map(([k, v]) => (
               <Box key={k} sx={{ display: 'contents' }}>
@@ -456,13 +475,6 @@ function PosterEngineCard({ keysChanged }: { keysChanged: unknown }) {
               </Box>
             ))}
           </Box>
-          <Typography sx={{ fontSize: 13, color: 'var(--text-muted)' }}>
-            {status.designs.built_in} built-in designs, {status.designs.imported_live} imported
-            {status.designs.waiting_for_approval ? `, ${status.designs.waiting_for_approval} waiting for approval` : ''}.{' '}
-            <Box component={RouterLink} to="/admin/designs" sx={{ color: 'inherit', fontWeight: 600 }}>
-              Poster designs
-            </Box>
-          </Typography>
         </Box>
       )}
     </Section>

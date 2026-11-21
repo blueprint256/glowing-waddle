@@ -14,11 +14,6 @@ import { AIError } from '../lib/aiError';
 import { DesignError } from '../services/designPipeline';
 import { editDesign, exportSizes, findDesign, printDesign } from '../services/designEdits';
 import { applyPack, brandId, engineKit, loadBrandKit, mergeVersions, storeLogoFiles, syncCompanyLogo } from '../services/designBrand';
-import { allDesigns } from '../services/designLibrary';
-import { approveDesign, builtinTest, deleteDesignRecord, getRecord, retestDesign, retireDesign, reviseDesign, saveEditedDesign, startImport } from '../services/designImport';
-import { DesignTemplateModel, type IDesignTemplate } from '../models/DesignTemplate';
-import { BUILTIN_DESIGNS } from '../design/library';
-import type { DesignTemplate } from '../design/types';
 import { BRAND_PACKS, packById } from '../design/packs';
 import { FONTS, FONT_DIR, FONT_CONTENT_TYPE, fontFormatOf, isCustomFontId } from '../design/fonts';
 import { uploadBufferToS3, deleteFromS3, objectKeyFromUrl } from '../utils/s3Service';
@@ -145,10 +140,8 @@ router.post('/tasks/:id/posters', isAuthenticated, canManageTasks, validateMongo
         photoUrls,
         partnerIds,
         campaignLogoIds,
-        count: Math.max(1, Math.min(4, Number(body.count) || 4)),
-        designIds: strList(body.designIds, 20),
-        aiPhoto: body.aiPhoto === true && !photoUrls.length,
-        approach: body.approach === 'concept' ? 'concept' : 'library'
+        count: Math.max(1, Math.min(4, Number(body.count) || 3)),
+        aiPhoto: body.aiPhoto === true && !photoUrls.length
       }
     });
     res.status(202).json({ success: true, job: jobView(job), message: 'Making your poster options' });
@@ -249,16 +242,16 @@ router.use('/font-files', express.static(FONT_DIR, { maxAge: '30d', fallthrough:
 
 router.get('/catalog', isAuthenticated, async (_req: Request, res: Response) => {
   try {
-    const designs = await allDesigns();
     res.json({
       success: true,
-      designs: designs.map((d) => ({ id: d.id, name: d.name, description: d.description, tags: d.tags, formats: d.formats, fields: d.fields, photos: d.photos, sponsors: d.sponsors, background: d.background })),
+      // Posters are scenes made per poster: there is no fixed list of designs any more.
+      designs: [],
       packs: BRAND_PACKS.map((p) => ({ id: p.id, name: p.name, colors: p.colors, fonts: p.fonts, rules: p.rules, palette: p.palette })),
       fonts: FONTS.map((f) => ({ id: f.id, family: f.family, category: f.category, note: f.note || null, faces: f.files.map((x) => ({ path: `/design/font-files/${x.file.split('/').map(encodeURIComponent).join('/')}`, style: x.style, weight: x.weight, stretch: x.stretch || null })) })),
       formats: Object.values(FORMATS).map((f) => ({ id: f.id, label: f.label, width: f.width, height: f.height, print: !!f.print }))
     });
   } catch (error) {
-    fail(res, error, 'Couldn’t load the designs.');
+    fail(res, error, 'Couldn’t load the catalogue.');
   }
 });
 
@@ -544,201 +537,48 @@ router.delete('/brand-kit/fonts/:fontId', isAuthenticated, canManageTasks, async
 });
 
 // ---------------------------------------------------------------------------
-// Design library (system admins): import from a reference, change, test, approve, retire
+// Admins
 // ---------------------------------------------------------------------------
 
-const referenceUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    if (/^image\/(png|jpe?g|webp)$/i.test(file.mimetype)) cb(null, true);
-    else cb(new Error('Use a PNG, JPG or WebP picture of the poster'));
-  }
-});
-
-function recordView(r: IDesignTemplate) {
-  const t = (r.template || {}) as DesignTemplate;
-  return {
-    id: String(r._id),
-    designId: r.designId,
-    status: r.status,
-    source: 'imported' as const,
-    name: t.name || 'New design',
-    description: t.description || '',
-    formats: t.formats || [],
-    version: t.version || 1,
-    test: r.test || null,
-    previews: r.previews || [],
-    notes: r.notes || '',
-    sourceNote: r.sourceNote || '',
-    message: r.message || null,
-    error: r.error || null,
-    cost: Math.round((r.cost || 0) * 100) / 100,
-    updatedAt: r.updatedAt,
-    createdAt: r.createdAt
-  };
-}
-
 /**
- * The poster engine's health for admins (Settings › AI and the connector): the Claude key the art
- * director needs, the renderer, cut-outs, the models used for each step and the design library.
+ * The poster engine's health for admins (Settings › AI and the connector): the keys it uses (Claude
+ * reads concepts into scenes; the image model draws concepts; fal.ai runs Qwen and the cut-outs),
+ * the renderer, and the models used for each step.
  */
 router.get('/admin/status', isAuthenticated, isSystemAdmin, async (_req: Request, res: Response) => {
   try {
-    const { getProviderKey } = await import('../services/llmService');
-    let anthropic = false;
-    try {
-      anthropic = Boolean(await getProviderKey('anthropic'));
-    } catch {
-      anthropic = false;
-    }
-    const [{ rendererStatus }, { cutoutAvailable }, { DESIGN_MODELS }] = await Promise.all([import('../design/renderer'), import('../services/cutout'), import('../design/claude')]);
+    const { getProviderKey, currentImageModel } = await import('../services/llmService');
+    const has = async (p: 'anthropic' | 'openai' | 'fal') => {
+      try {
+        return Boolean(await getProviderKey(p));
+      } catch {
+        return false;
+      }
+    };
+    const [anthropic, openai, fal] = await Promise.all([has('anthropic'), has('openai'), has('fal')]);
+    const [{ rendererStatus }, { cutoutAvailable }, { DESIGN_MODELS }, { imageModelInfo }] = await Promise.all([import('../design/renderer'), import('../services/cutout'), import('../design/claude'), import('../lib/imageModels')]);
     const renderer = await rendererStatus();
-    const records = await DesignTemplateModel.find().select('status').lean();
-    const count = (s: string) => records.filter((r: any) => r.status === s).length;
+    const conceptModel = await currentImageModel('create', 'design');
+    const conceptOnFal = imageModelInfo(conceptModel)?.provider === 'fal';
+    const imageKey = conceptOnFal ? fal : openai;
     const problems: string[] = [];
-    if (!anthropic) problems.push('No Anthropic (Claude) key: posters are laid out without the art director, the review and described edits. Add the key in Settings › AI.');
+    if (!anthropic) problems.push('No Anthropic (Claude) key: posters are plain layouts from the brief (no concepts, review or described edits). Add the key in Settings › AI.');
+    if (!imageKey) problems.push(`No ${conceptOnFal ? 'fal.ai' : 'OpenAI'} key for the poster image model (${conceptModel}): posters are plain layouts from the brief.`);
+    if (!fal && !cutoutAvailable()) problems.push('No fal.ai key: people can’t break out of photo frames (SAM 3 cut-outs) and Qwen can’t be used. Add the key in Settings › AI.');
     if (!renderer.ok) problems.push(`The poster renderer can’t start: ${renderer.error || 'unknown error'}`);
     res.json({
       success: true,
-      ready: anthropic && renderer.ok,
+      ready: anthropic && imageKey && renderer.ok,
       anthropic,
+      openai,
+      fal,
       renderer,
-      cutouts: cutoutAvailable(),
-      models: { art_director: DESIGN_MODELS.director, review: DESIGN_MODELS.critic, quick_edits: DESIGN_MODELS.quick, design_import: DESIGN_MODELS.importer },
-      designs: { built_in: BUILTIN_DESIGNS.length, imported_live: count('live'), waiting_for_approval: count('draft'), retired: count('retired') },
+      cutouts: cutoutAvailable() ? 'server model' : fal ? 'SAM 3 / BiRefNet on fal.ai' : false,
+      models: { concept: conceptModel, scene_reader: DESIGN_MODELS.director, review: DESIGN_MODELS.critic, quick_edits: DESIGN_MODELS.quick },
       problems
     });
   } catch (error) {
     fail(res, error, 'Couldn’t check the poster engine.');
-  }
-});
-
-router.get('/admin/designs', isAuthenticated, isSystemAdmin, async (_req: Request, res: Response) => {
-  try {
-    const rows = await DesignTemplateModel.find({}).sort({ updatedAt: -1 });
-    const { builtinPreviews } = await import('../services/designPreviews');
-    const covers = await builtinPreviews().catch(() => ({}) as Record<string, string>);
-    res.json({
-      success: true,
-      builtin: BUILTIN_DESIGNS.map((d) => ({
-        id: d.id,
-        designId: d.id,
-        status: 'builtin',
-        source: 'builtin',
-        name: d.name,
-        description: d.description,
-        formats: d.formats,
-        version: d.version,
-        // One preview (portrait, typical words, neutral brand); null while it's being made.
-        previews: covers[d.id] ? [{ format: 'portrait', case: 'typical-3', url: covers[d.id], passed: true, counted: true, issues: [] }] : []
-      })),
-      previewsPending: BUILTIN_DESIGNS.some((d) => !covers[d.id]),
-      imported: rows.map(recordView)
-    });
-  } catch (error) {
-    fail(res, error, 'Couldn’t load the designs.');
-  }
-});
-
-router.get('/admin/designs/builtin/:designId/test', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
-  try {
-    res.json({ success: true, ...((await builtinTest(String(req.params.designId))) as object) });
-  } catch (error) {
-    fail(res, error, 'Couldn’t test the design.');
-  }
-});
-
-router.post(
-  '/admin/designs/import',
-  isAuthenticated,
-  isSystemAdmin,
-  (req: Request, res: Response, next: NextFunction) =>
-    referenceUpload.single('file')(req, res, (err: unknown) =>
-      err ? res.status(400).json({ success: false, message: (err as any)?.code === 'LIMIT_FILE_SIZE' ? 'That picture is over 20 MB.' : (err as Error).message }) : next()
-    ),
-  async (req: Request, res: Response) => {
-    try {
-      if (!req.file) throw new DesignError(400, 'Choose a picture of the reference poster.');
-      if (req.body?.rights !== 'yes') throw new DesignError(400, 'Confirm that the reference is only a layout reference: its artwork, logos, photos and words won’t be copied.');
-      const record = await startImport({ image: req.file.buffer, note: str(req.body?.note, 2000), name: str(req.body?.name, 60) }, req.user!._id as Id);
-      res.status(202).json({ success: true, design: recordView(record), message: 'Designing from the reference: this takes a few minutes' });
-    } catch (error) {
-      fail(res, error, 'Couldn’t start the import.');
-    }
-  }
-);
-
-router.get('/admin/designs/:id', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
-  try {
-    const record = await getRecord(String(req.params.id));
-    res.json({ success: true, design: recordView(record), template: record.template || null });
-  } catch (error) {
-    fail(res, error, 'Couldn’t load the design.');
-  }
-});
-
-/** Edited code or settings (the whole design as JSON): checked and tested now. */
-router.put('/admin/designs/:id', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
-  try {
-    const record = await getRecord(String(req.params.id));
-    if (!req.body?.template || typeof req.body.template !== 'object') throw new DesignError(400, 'Send the whole design.');
-    await saveEditedDesign(record, req.body.template);
-    res.json({ success: true, design: recordView(record), template: record.template, message: record.test?.failed ? 'Saved; some cases still fail' : 'Saved and passing' });
-  } catch (error) {
-    fail(res, error, 'Couldn’t save the design.');
-  }
-});
-
-router.post('/admin/designs/:id/revise', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
-  try {
-    const request = str(req.body?.request, 1500);
-    if (!request) throw new DesignError(400, 'Describe the change.');
-    const record = await getRecord(String(req.params.id));
-    await reviseDesign(record, request, req.user!._id as Id);
-    res.status(202).json({ success: true, design: recordView(record), message: 'Making the change' });
-  } catch (error) {
-    fail(res, error, 'Couldn’t start the change.');
-  }
-});
-
-router.post('/admin/designs/:id/test', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
-  try {
-    const record = await getRecord(String(req.params.id));
-    await retestDesign(record);
-    res.json({ success: true, design: recordView(record) });
-  } catch (error) {
-    fail(res, error, 'Couldn’t test the design.');
-  }
-});
-
-router.post('/admin/designs/:id/approve', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
-  try {
-    const record = await getRecord(String(req.params.id));
-    await approveDesign(record, req.user!._id as Id);
-    res.json({ success: true, design: recordView(record), message: 'Design approved: posters can use it now' });
-  } catch (error) {
-    fail(res, error, 'Couldn’t approve the design.');
-  }
-});
-
-router.post('/admin/designs/:id/retire', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
-  try {
-    const record = await getRecord(String(req.params.id));
-    await retireDesign(record);
-    res.json({ success: true, design: recordView(record), message: 'Design retired: new posters won’t use it' });
-  } catch (error) {
-    fail(res, error, 'Couldn’t retire the design.');
-  }
-});
-
-router.delete('/admin/designs/:id', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
-  try {
-    const record = await getRecord(String(req.params.id));
-    await deleteDesignRecord(record);
-    res.json({ success: true, message: 'Design deleted' });
-  } catch (error) {
-    fail(res, error, 'Couldn’t delete the design.');
   }
 });
 

@@ -44,6 +44,9 @@ router.get('/status', isAuthenticated, async (req: Request, res: Response) => {
         },
         gemini: {
           configured: !!(config.geminiApiKey || process.env.GEMINI_API_KEY)
+        },
+        fal: {
+          configured: !!(config.falApiKey || process.env.FAL_KEY)
         }
       };
     }
@@ -832,11 +835,12 @@ router.get('/image-llm/default', isAuthenticated, isSystemAdmin, async (req: Req
     const stored = config.defaultImageLLMModel || DEFAULT_IMAGE_MODEL;
     res.json({
       success: true,
-      defaultProvider: 'openai',
+      defaultProvider: IMAGE_MODELS.find((m) => m.id === stored)?.provider || 'openai',
       defaultModel: resolveImageModel('create', stored),
       editModel: resolveImageModel('edit', stored),
       storedModel: stored,
-      models: IMAGE_MODELS.filter((m) => !m.retired).map((m) => ({ id: m.id, label: m.label }))
+      designModel: config.designImageModel || '',
+      models: IMAGE_MODELS.filter((m) => !m.retired).map((m) => ({ id: m.id, label: m.label, provider: m.provider }))
     });
   } catch (error: any) {
     console.error('Get default Image LLM config error:', error);
@@ -854,36 +858,39 @@ router.get('/image-llm/default', isAuthenticated, isSystemAdmin, async (req: Req
  */
 router.patch('/image-llm/default', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
   try {
-    const { provider, model } = req.body;
-
-    if ((provider && provider !== 'openai') || typeof model !== 'string' || !SELECTABLE_IMAGE_MODELS.includes(model)) {
-      return res.status(400).json({
-        success: false,
-        message: `Pick one of these image models: ${SELECTABLE_IMAGE_MODELS.join(', ')}.`
-      });
-    }
-
+    const { model, designModel } = req.body;
     const config = await AppConfig.getConfig();
+    const keyFor = (id: string) => (IMAGE_MODELS.find((m) => m.id === id)?.provider === 'fal' ? !!(config.falApiKey || process.env.FAL_KEY) : !!(config.openAIApiKey || process.env.OPENAI_API_KEY));
+    const providerName = (id: string) => (IMAGE_MODELS.find((m) => m.id === id)?.provider === 'fal' ? 'fal.ai' : 'OpenAI');
 
-    if (!config.openAIApiKey && !process.env.OPENAI_API_KEY) {
-      return res.status(400).json({
-        success: false,
-        message: 'Add an OpenAI API key first: pictures are made with OpenAI.'
-      });
+    if (model !== undefined) {
+      if (typeof model !== 'string' || !SELECTABLE_IMAGE_MODELS.includes(model)) {
+        return res.status(400).json({ success: false, message: `Pick one of these image models: ${SELECTABLE_IMAGE_MODELS.join(', ')}.` });
+      }
+      if (!keyFor(model)) return res.status(400).json({ success: false, message: `Add a ${providerName(model)} key first: ${model} runs there.` });
+      config.defaultImageLLMProvider = IMAGE_MODELS.find((m) => m.id === model)?.provider || 'openai';
+      config.defaultImageLLMModel = model;
     }
-
-    config.defaultImageLLMProvider = 'openai';
-    config.defaultImageLLMModel = model;
+    // Posters' own model ("" = the same as pictures).
+    if (designModel !== undefined) {
+      if (designModel && (typeof designModel !== 'string' || !SELECTABLE_IMAGE_MODELS.includes(designModel))) {
+        return res.status(400).json({ success: false, message: `Pick one of these image models for posters: ${SELECTABLE_IMAGE_MODELS.join(', ')}.` });
+      }
+      if (designModel && !keyFor(designModel)) return res.status(400).json({ success: false, message: `Add a ${providerName(designModel)} key first: ${designModel} runs there.` });
+      config.designImageModel = designModel || undefined;
+    }
     await config.save();
-
-    console.log(`Image model updated by ${req.user!.email}: openai/${model}`);
+    console.log(`Image models updated by ${req.user!.email}: ${config.defaultImageLLMModel}; posters: ${config.designImageModel || 'same'}`);
+    const stored = config.defaultImageLLMModel || DEFAULT_IMAGE_MODEL;
+    const model2 = stored;
 
     res.json({
       success: true,
       message: 'Image model saved',
-      defaultProvider: 'openai',
-      defaultModel: resolveImageModel('create', model),
-      editModel: resolveImageModel('edit', model)
+      defaultProvider: IMAGE_MODELS.find((m) => m.id === model2)?.provider || 'openai',
+      defaultModel: resolveImageModel('create', model2),
+      editModel: resolveImageModel('edit', model2),
+      designModel: config.designImageModel || ''
     });
   } catch (error: any) {
     console.error('Set default Image LLM config error:', error);
@@ -891,6 +898,62 @@ router.patch('/image-llm/default', isAuthenticated, isSystemAdmin, async (req: R
       success: false,
       message: 'Failed to save the image model'
     });
+  }
+});
+
+// ===========================
+// FAL.AI ROUTES (Qwen image models, SAM 3 cut-outs, background removal, layer splitting)
+// ===========================
+
+router.get('/fal/status', isAuthenticated, isSystemAdmin, async (_req: Request, res: Response) => {
+  try {
+    const config = await AppConfig.getConfig();
+    res.json({ success: true, configured: !!(config.falApiKey || process.env.FAL_KEY), fromEnv: !config.falApiKey && !!process.env.FAL_KEY, updatedAt: config.falKeyUpdatedAt, updatedBy: config.falKeyUpdatedBy });
+  } catch (error: any) {
+    console.error('fal status error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get fal.ai status' });
+  }
+});
+
+router.patch('/fal/key', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
+  try {
+    const { apiKey } = req.body;
+    if (!apiKey || typeof apiKey !== 'string' || !apiKey.trim()) return res.status(400).json({ success: false, message: 'API key is required' });
+    // fal keys look like "<id>:<secret>".
+    if (!/^[\w-]+:[\w-]+$/.test(apiKey.trim())) return res.status(400).json({ success: false, message: 'That doesn’t look like a fal.ai key (it has the form id:secret).' });
+    const config = await AppConfig.getConfig();
+    config.falApiKey = config.encryptApiKey(apiKey.trim());
+    config.falKeyUpdatedAt = new Date();
+    config.falKeyUpdatedBy = req.user!._id;
+    await config.save();
+    res.json({ success: true, message: 'fal.ai key saved', configured: true, updatedAt: config.falKeyUpdatedAt });
+  } catch (error: any) {
+    console.error('fal key save error:', error);
+    res.status(500).json({ success: false, message: 'Failed to save the fal.ai key' });
+  }
+});
+
+router.post('/fal/test', isAuthenticated, isSystemAdmin, async (_req: Request, res: Response) => {
+  try {
+    const { falTest } = await import('../services/falService');
+    const result = await falTest();
+    res.json({ success: result.ok, message: result.message });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error?.message || 'The fal.ai key didn’t work' });
+  }
+});
+
+router.delete('/fal/key', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
+  try {
+    const config = await AppConfig.getConfig();
+    config.falApiKey = undefined;
+    config.falKeyUpdatedAt = new Date();
+    config.falKeyUpdatedBy = req.user!._id;
+    await config.save();
+    res.json({ success: true, message: 'fal.ai key removed', configured: !!process.env.FAL_KEY });
+  } catch (error: any) {
+    console.error('fal key delete error:', error);
+    res.status(500).json({ success: false, message: 'Failed to remove the fal.ai key' });
   }
 });
 

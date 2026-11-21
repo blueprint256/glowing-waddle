@@ -15,8 +15,7 @@ A post's picture comes from one place, **Create with AI** on the post, with two 
 **No photo?** A poster can ask the image AI for one first ("No photo? Let AI create one" in the
 panel; `ai_photo` in the connector). It's a realistic, word-free photo made from the brief, added to
 the post's pictures for reuse, and part of the poster (its usage is "Design · photo", not counted
-again). The art director is also asked for options that look clearly different, and options that
-would look the same at a glance are dropped.
+again). Each option is designed in a different direction, so they look clearly different.
 
 Changing a picture follows what it is: a designed poster is changed by this engine (the post's
 `image/change` route hands it over), a photo by the image model. Both share one monthly
@@ -27,73 +26,51 @@ date, time, place, figures", only facts given) so a poster can be made straight 
 can read and correct the facts first. **Blue and the connector** use the same engine:
 `generate_task_poster` (waits up to about 2 minutes, then `poster_status`), `create_task_photo`,
 `change_task_picture` and `poster_files` (other sizes, A4/A3 PDF). `ai_setup_status` and Settings ›
-AI show the engine's health (`GET /api/design/admin/status`): the Claude key, the renderer,
-cut-outs, the model used for each step and the design library.
+AI show the engine's health (`GET /api/design/admin/status`): the Claude, OpenAI and fal.ai keys,
+the renderer, cut-outs and the model used for each step.
+## Scenes: how a poster is made
 
-## Concept-first posters (trial)
+Every poster is a **scene**: a stack of layers the AI plans and code draws (`design/scene.ts`).
+There is no fixed library of templates: each poster's layout comes from its own concept.
 
-Asked for with `approach: "concept"` (the connector's `generate_task_poster`, or `approach` on
-`POST /api/design/tasks/:id/posters`). For each option, side by side:
+| Layer | What it is |
+| --- | --- |
+| backdrop | art the image model made (with its words, logos and photos removed), or a plain colour or gradient drawn in code |
+| shape | colour blocks, bands, circles, pills, slanted panels and arches, drawn in code |
+| photo | a real photo's own pixels in a frame (rectangle, rounded, circle, arch, slanted, soft blob or a traced organic shape), with the part of the photo shown, a fade, a brand-colour wash or duotone, and people breaking out of the frame (a cut-out of them on top) |
+| text | the real words (eyebrow, headline, subhead, details, button, badge, contact), fitted to their boxes in the brand fonts |
+| logo, partners | the real logo files (with their versions and clear space) and one strip of partner logos |
 
-1. **Concept**: the image model draws a whole poster from words alone: the brief, the brand's
-   colours and mood, how much text, and the spaces to leave (main logo, a strip of N partner
-   logos, a wide photo of people). It's never given our files: it composes far better from a
-   description. Each option gets a different direction (bold, photographic, editorial, lively).
-   Nobody sees the concept.
-2. **Art layer**: the same picture with every word, logo and badge removed (an image edit).
-3. **Reading**: Claude reads the concept into a blueprint (`design/concept.ts`): where the
-   headline, details, call to action, badge, logo, partner strip and photo sit, aligned and
-   coloured in the brand's colours, improved (margins, hierarchy, contrast), plus the real words
-   from the brief.
-4. **Build**: the blueprint becomes a design rendered like any other: real words in the brand
-   fonts, the real logo files and partners, the real photo, on the art layer; every check runs.
-   Failing checks are repaired the way a designer would (text colour, then a panel; a smaller
-   partner strip; a taller box) up to twice; options that still fail fall back to the library.
+For each option, side by side (`services/designScene.ts`):
 
-Concept posters keep their blueprint, so typed edits and A4/A3 prints work; other social shapes
-need a new concept. Costs about 2 images and 1 Claude reading per option.
+1. **Concept.** The poster image model (Settings › AI › Image models › Posters: GPT-Image-2.5 by
+   default, or Qwen-Image on fal.ai) designs the poster *with the post's photos*: it crops them,
+   cuts them into shapes, fades them, lets people overlap a frame, the way a designer would. It is
+   told never to add, remove or change people. Each option gets a different direction.
+2. **Reading.** Claude (Sonnet) reads the concept and the real photos into a scene: where every
+   layer goes, each photo's frame and treatment and which part of the real photo it shows, the
+   brand's colours, and the real words from the brief (dates checked against the weekday).
+3. **Backdrop**, only when the scene keeps the concept's art: one image edit removes its words,
+   logos and photos. Flat or gradient grounds are drawn in code instead (free, crisp, editable).
+4. **Photos, in code.** Each real photo is matched against where the concept drew it (no AI call)
+   and placed exactly; organic frames are traced from where the concept differs from its backdrop
+   (Qwen-Image-Layered on fal.ai if that fails); people who break out of a frame are cut out with
+   **SAM 3** (fal.ai; the subject in a few words, once per photo, cached), else BiRefNet.
+5. **Draw, check, repair.** The scene is drawn in a sealed Chromium; every check runs; what fails
+   is repaired the way a designer would (auto colour, then a panel; a smaller partner strip; a
+   wider or taller box; boxes that give way to each other; words out of the logo's clear space; a
+   bigger logo; a photo shown less zoomed), twice at most, then shorter words. What still fails is
+   recorded in the AI usage log ("Design · scene checks": the render and the concept, to look at).
+6. **Review.** With more than one clean option, Claude ranks them by looking at them.
 
-## How it works
+The finished poster always shows the photos' own pixels: no image model redraws a face.
 
-Posters are laid out in code, not painted by an image model. Every poster is a **design document**
-(JSON: the design, its settings, the words, the photos, the logos) rendered by a sealed headless
-Chromium into a PNG, JPEG or print PDF. Because the words, logos and layout are real objects, they
-can be checked, edited and printed sharply; image models are used only for an optional background
-picture, never for words or logos.
+**Without AI keys** (or when every concept fails), a clean poster is made from the brief in code
+(`fallbackScene`): the brief's facts become the words ("Call to action: …" becomes the button,
+"Photo: …" notes stay off), stacked so nothing collides, in the brand's colours.
 
-## How a poster is made
-
-1. **Read**: the post's brief, the chosen photos (focal point, size), the brand (kit and voice:
-   what it does, tone, audience, always-and-never rules, guidelines), partners.
-2. **Direct**: Claude Sonnet (art director) picks up to four designs from the library, writes the
-   words to each design's limits, sets the design's settings, and marks where people and faces are
-   in each photo. Without an AI key a fixed plan is used.
-3. **Background** (only if an option needs one): a picture from the image model, sized to the area.
-4. **Render** each option, then **check** it (below). Options that fail are retried with roomier
-   settings, then with shorter words, then with the other designs that fit.
-5. **Review**: Claude looks at the clean options and ranks them; bad crops are rejected.
-6. **Save** as the post's drafts (kind `design`), best first. Choosing one keeps its document, so it
-   can be edited and printed later.
-
-Code: `backend/src/design/*` (engine), `backend/assets/design-runtime/*` (the page runtime and base
-CSS), `backend/src/services/design*.ts` (pipeline, brand kit, edits, worker),
-`backend/src/routes/design.routes.ts` (API), `frontend/src/components/posts/CreateWithAI.tsx`,
-`PosterEditor.tsx` and `frontend/src/pages/Settings/BrandSection.tsx` (screens).
-
-## The designs
-
-Built in (`backend/src/design/library/`): **Hero photo**, **Split panel**, **Art led**,
-**Spotlight** (a featured person, cut out when possible), **Observance** (international days),
-**Bold event** (game nights, dinners, launches; also without a photo), **Recap** (thank-you and report-back posts: a wide
-group photo at its own proportions and up to three impact figures). Admins add more from reference
-posters (below). Each declares its fields and their lengths, how many
-photos and partners it takes, its shapes (square, portrait, story, landscape, A4, A3) and its
-settings. Designs are HTML and CSS against the runtime's `data-*` attributes; the runtime fits the
-type, places photos on their subject, sizes partner logos by how big they look, and measures
-everything for the checks.
-
-**Impact figures** (`stats`) appear only when the request states them: the art director is told
-never to estimate or invent one, and anything without a digit is dropped.
+**Cost per option**: a concept (about 2 US cents), Claude's reading (about 2), a backdrop edit only
+for art (about 2), cut-outs half a cent per photo once. About 4–7 cents an option.
 
 ## The checks (every option, before anyone sees it)
 
@@ -102,7 +79,6 @@ covered by something, running across a photo's edge, over a person or a face. Lo
 clear space, cut off, partners outweighing the brand's own logo, missing partners. Photos: enlarged too
 far (on screen past about 2.4×; on paper under 85 dpi). Errors stop an option; warnings lower its
 score.
-
 ## Brand (Settings → Brand)
 
 One page per account, for every kind of organisation (NGOs, businesses, schools, clubs): who you
@@ -128,108 +104,73 @@ outline is measured. On every poster each logo gets the version that reaches 4.5
 behind it (3:1 at the least): uploaded versions first; for a one-colour logo the app also makes its
 white and dark versions (the same artwork brand centres supply) and uses them only where needed.
 If nothing reads, the logo sits on a light or dark plate. Logos are never otherwise recoloured.
+## Editing, other sizes and printing
 
-## Design library (Admin › Poster designs)
+Every change is a new draft next to the one changed (`services/designEdits.ts`, `design/edits.ts`):
 
-Admins import a design from a picture of a poster they like. Claude Opus reads it and writes an
-**original** design for the runtime: the structure (grid, proportions, hierarchy, how photo and
-words meet), never the reference's artwork, logos, photos or words; colours, fonts and logos always
-come from each club's kit. The admin confirms the picture is only a layout reference; the picture
-itself is never stored.
+- **Typing** on the poster: any line, the details, the badge. A line the poster doesn't have yet
+  (a subhead, a button) gets its own layer.
+- **One tap, no AI**: headline size, swap colours, another shape; and the photo: closer, show more,
+  move, fade, frame shape, colour wash, people over the frame, another of the post's photos.
+- **Described** ("fade the photo into the blue", "move the logo to the bottom"): Claude Haiku turns
+  it into the same operations, on any layer. Changes that break a hard brand rule are explained
+  instead. A new backdrop picture is the only change that calls the image model.
 
-Every design (built-in or imported) passes the **stress test** before use: each of its shapes with
-ordinary words and three partners, ordinary words and six partners, short words with none
-(placeholder logos, a stand-in photo; the roomier settings get one try, as in the pipeline). Very
-long words are rendered and shown but don't count. When an import fails cases, the renders and the
-problems go back to the importer for up to two repairs. The admin sees every render with its
-problems, can ask for a change in words, or edit the code (settings JSON, HTML, CSS); saving re-runs
-the test. **Approve** needs every case to pass; only approved designs are offered to the art
-director. **Retire** stops new posters using it (existing ones can still be edited).
-
-Code: `design/stressTest.ts`, `design/importer.ts` (the authoring guide, with a built-in design as
-its worked example), `services/designImport.ts`, `frontend/src/pages/Admin/PosterDesignsPage.tsx`.
-
-## Editing and printing
-
-Typing on the poster (no AI), one-tap changes (headline size, swap colours, another shape or design,
-no AI), or a described change (Claude Haiku turns it into the same operations; changes that break
-a hard brand rule are explained instead). Every change is a new draft. A4 and A3 PDFs on request.
+**Other shapes** (feed, story, landscape; A4/A3 PDFs): a close shape is fitted in code; a very
+different one (a portrait poster as a landscape banner) is laid out again by Claude Haiku (about a
+third of a cent), each photo keeping the part it showed. Without a Claude key the layout keeps its
+percentages and the checks decide.
 
 ## Cleaning up
 
-A poster's own picture is deleted when its draft goes. Its side files (AI background, cut-out
-person, print PDFs: the `design-backgrounds/`, `design-cutouts/` and `post-prints/` folders) are
+A poster's own picture is deleted when its draft goes. Its side files (concepts and backdrops,
+cut-out people, print PDFs: the `design-backgrounds/`, `design-cutouts/` and `post-prints/` folders) are
 swept once a day: anything older than a week that no poster refers to is deleted. Cut-outs are also
 kept for 30 days after they're made, so the same photo isn't cut out twice. `DESIGN_SWEEP=off`
 skips it on an instance.
-
 ## Allowance
 
 Posters and photos share one monthly allowance of **AI pictures** (`aiImagesPerMonth` in AppConfig,
 default 30; per user in Admin › Users). A poster counts once however many options it has; poster
-edits, other sizes and prints are free, and a poster's own AI steps (its background, its review)
-aren't counted again. An AI photo or a change to a photo counts one. The older `designs` allowance
+edits, other sizes and prints are free, and a poster's own AI steps (its concepts, backdrops,
+cut-outs, review) aren't counted again. An AI photo or a change to a photo counts one. The older `designs` allowance
 (`aiDesignsPerMonth`) is no longer used.
-
 ## Deploying
 
-0. Add an **Anthropic (Claude) key** in Settings › AI. Without it posters still render, but from a
-   fixed plan: no art director, no review and no described edits. Settings › AI › Poster engine
-   says whether everything is ready.
-1. `cd backend && npm install` — adds `playwright-core` (the lockfile on the branch was not
-   regenerated; run `npm install` once and commit the lockfile).
-2. A Chromium for the renderer, either `npx playwright install chromium` (as the app's user), or a
-   system Chrome/Chromium with `DESIGN_CHROME_PATH=/path/to/chrome`. On Linux it needs the usual
-   libraries (`npx playwright install-deps chromium` installs them).
-3. Memory: allow about 8 GB for the server (Chromium plus image work). Posters render one at a time
-   per instance by default (`DESIGN_WORKER_CONCURRENCY`).
-4. Optional, cut-out people (Spotlight and Bold event stand the person in front of the words):
-   `npm install onnxruntime-node` and an open-licence segmentation model file, e.g. BiRefNet-lite
-   (MIT) or u2net_human_seg (Apache-2.0), with `CUTOUT_MODEL=/path/model.onnx` and
-   `CUTOUT_MODEL_KIND=birefnet|u2net`. Without it those designs use their no-cut-out layouts.
-5. AI keys: Anthropic (art director, reviewer, edits) and OpenAI (background pictures) in
-   Settings → AI. Without an Anthropic key posters still work with a fixed plan.
+1. Keys in **Settings › AI**: **Anthropic** (reads concepts into scenes, review, changes, new
+   shapes) and **OpenAI** (concepts and AI photos with GPT-Image-2.5). **fal.ai** runs Qwen-Image
+   and Qwen-Image-Edit-Plus (if chosen as the image model), SAM 3 and BiRefNet (people breaking out
+   of frames) and Qwen-Image-Layered (organic frames), or `FAL_KEY` in `.env`. Settings › AI ›
+   Poster engine says whether everything is ready.
+2. `cd backend && npm install` (adds `playwright-core`).
+3. A Chromium for the renderer: `npx playwright install chromium` (as the app's user), or a system
+   Chrome with `DESIGN_CHROME_PATH=/path/to/chrome`. On Linux, `npx playwright install-deps chromium`.
+4. Memory: about 8 GB for the server (Chromium plus image work). Posters render one at a time per
+   instance by default (`DESIGN_WORKER_CONCURRENCY`).
+5. Optional: a cut-out model on the server instead of fal.ai (`npm install onnxruntime-node`,
+   `CUTOUT_MODEL=/path/model.onnx`, `CUTOUT_MODEL_KIND=birefnet|u2net`).
 
 Settings (`backend/.env`):
 
 | Setting | What it does |
 | --- | --- |
+| `FAL_KEY` | fal.ai key (if not saved in Settings › AI) |
 | `DESIGN_CHROME_PATH` | Chrome/Chromium to render with (else Playwright's own) |
 | `DESIGN_WORKER=off` | Don't run the poster worker on this instance |
 | `DESIGN_WORKER_CONCURRENCY` | Posters rendered at once per instance (default 1) |
-| `CUTOUT_MODEL`, `CUTOUT_MODEL_KIND`, `CUTOUT_MODEL_SIZE` | Cut-out model file, its kind and input size |
+| `CUTOUT_MODEL`, `CUTOUT_MODEL_KIND`, `CUTOUT_MODEL_SIZE` | A cut-out model file on the server (else fal.ai) |
 | `DESIGN_SWEEP=off` | Don't run the daily clean-up of unused poster files on this instance |
-| `DESIGN_DEV=1` | Reload the runtime files on every render (while developing designs) |
+| `DESIGN_DEV=1` | Reload the runtime files on every render |
 
 ## Checking it
 
 ```
 cd backend
-DESIGN_CHROME_PATH=/usr/bin/google-chrome npx tsx src/scripts/designSelfTest.ts
+DESIGN_CHROME_PATH=/usr/bin/google-chrome DESIGN_PHOTOS=<folder> npx tsx src/scripts/designSelfTest.ts
 ```
 
-Renders every design in every shape with ordinary, short and very long words and 0, 3 and 6
-partners into `/tmp/design-out`, and checks the plan, edit, check and logo-version logic. Long words
-are a stress test and are expected to fail. `DESIGN_PHOTOS=<folder>` uses your photos;
-`DESIGN_ONLY=bold-event` and `DESIGN_FORMATS=portrait` narrow it.
-
-`src/scripts/designReview.ts` renders one scenario (a JSON file: designs, shapes, words, photo,
-real logo and partner files) and a contact sheet, for people to look at.
-
-## Adding a design
-
-Usually: Admin › Poster designs › Import from a reference. By hand: copy a built-in design, change its HTML and CSS, declare its fields, photos, partners, shapes and
-settings (`roomy` on the settings that give the words more room), add it to
-`library/index.ts`, and run the self-test until every shape passes with ordinary words and six
-partners. The art director reads each design's description to decide when to use it, so write it
-as a designer would brief one.
-
-### Concepts with the user's own photos
-
-When a post has photos (up to 3), the image model designs the concept *with* them as references
-(crop, fade, overlap; never adding or changing people). One image edit then removes the words and
-paints each photo's area a key colour (#00FF00, #FF00FF, #00FFFF). `design/photoFit.ts` turns that
-into the art layer with transparent holes (soft fades un-mixed) and finds where each real photo sits
-by matching it against the concept (no AI call). The poster draws the real photos under the art
-layer, so the finished poster always shows the photos' own pixels. Cost per option: 2 image calls and
-1 Claude reading, the same as a concept without photos.
+Draws sample scenes (full-bleed photo with a fade, a slanted split over painted art, people
+breaking out of an arch, a circle frame) in every shape into `/tmp/design-out`, and checks the
+checks themselves, logo versions, uploaded fonts, the plain poster without AI, cleaning what the
+reader writes, repairs, edits, photo placement and matching, organic tracing and the image-model
+routing. No AI calls. `DESIGN_ONLY=breakout` and `DESIGN_FORMATS=portrait` narrow it.

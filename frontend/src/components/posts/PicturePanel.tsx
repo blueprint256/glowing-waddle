@@ -630,7 +630,7 @@ export default function PicturePanel({ task, brief, title, aiEnabled, brandLogo,
 
       {/* Change the picture being looked at */}
       {editable && editOpen && viewedDesign && taskId && (
-        <PosterEditor taskId={taskId} posterRef={posterRef} design={viewedDesign} catalog={catalog} focus={editFocus} onDraft={onPosterDraft} />
+        <PosterEditor taskId={taskId} posterRef={posterRef} design={viewedDesign} catalog={catalog} focus={editFocus} onDraft={onPosterDraft} photos={references.map((r) => ({ url: r.url, label: r.name }))} />
       )}
 
       {/* Create with AI: a poster or a photo */}

@@ -156,7 +156,7 @@ export default function CreateWithAI({ task, title, brief, brandLogo, usage, mod
     }
     const id = taskId || (await ensureSaved());
     if (!id) return;
-    if (mode === 'poster') await startPoster(id, title, { brief, format: posterFormat, photoUrls: chosenPhotos, partnerIds: partners, campaignLogoIds: chosenOthers, count: 4, aiPhoto: aiPhoto && !chosenPhotos.length });
+    if (mode === 'poster') await startPoster(id, title, { brief, format: posterFormat, photoUrls: chosenPhotos, partnerIds: partners, campaignLogoIds: chosenOthers, count: 3, aiPhoto: aiPhoto && !chosenPhotos.length });
     else await createImage(id, title, { description: brief, format: photoFormat, logo: logoOn && brandLogo ? corner : null });
   };
 
@@ -442,7 +442,7 @@ export default function CreateWithAI({ task, title, brief, brandLogo, usage, mod
             disabled={outOfPictures || Boolean(busy) || (mode === 'poster' && !kit && !kitError)}
             onClick={go}
           >
-            {mode === 'poster' ? ((task?.aiDrafts || []).some((d) => d.kind === 'design') ? 'Design new options' : 'Design 4 options') : 'Create photo'}
+            {mode === 'poster' ? ((task?.aiDrafts || []).some((d) => d.kind === 'design') ? 'Design new options' : 'Design 3 options') : 'Create photo'}
           </Button>
           <Typography sx={{ fontSize: 12.5, color: outOfPictures ? 'var(--danger-text)' : 'var(--text-muted)' }}>
             {outOfPictures

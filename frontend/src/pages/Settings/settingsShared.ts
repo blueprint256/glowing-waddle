@@ -13,10 +13,17 @@ export const LLM_MODELS: Record<string, string[]> = {
 export type ProviderId = 'openai' | 'anthropic' | 'grok' | 'gemini';
 
 export const PROVIDERS: { id: ProviderId; name: string; keyHint: string; placeholder: string }[] = [
-  { id: 'openai', name: 'OpenAI', keyHint: 'Starts with sk-. Also makes AI photos and poster backgrounds.', placeholder: 'sk-…' },
-  { id: 'anthropic', name: 'Anthropic (Claude)', keyHint: 'Starts with sk-ant-. Needed for designed posters (the art director, the review and poster edits).', placeholder: 'sk-ant-…' },
+  { id: 'openai', name: 'OpenAI', keyHint: 'Starts with sk-. Makes AI photos and (by default) posters’ concepts.', placeholder: 'sk-…' },
+  { id: 'anthropic', name: 'Anthropic (Claude)', keyHint: 'Starts with sk-ant-. Needed for designed posters (reading concepts into layers, the review and poster edits).', placeholder: 'sk-ant-…' },
   { id: 'grok', name: 'Grok (xAI)', keyHint: 'From console.x.ai.', placeholder: 'xai-…' },
   { id: 'gemini', name: 'Google Gemini', keyHint: 'From Google AI Studio.', placeholder: 'AIza…' }
+];
+
+/** Providers with a key in Settings › AI: the text models above, plus fal.ai (pictures and cut-outs only). */
+export type KeyProviderId = ProviderId | 'fal';
+export const KEY_PROVIDERS: { id: KeyProviderId; name: string; keyHint: string; placeholder: string }[] = [
+  ...PROVIDERS,
+  { id: 'fal', name: 'fal.ai (Qwen, SAM 3)', keyHint: 'From fal.ai › Keys (id:secret). Runs the Qwen image models, and cuts people out of photos so they can break out of a poster’s frame.', placeholder: 'xxxxxxxx-…:…' }
 ];
 
 export const SECTORS = ['Tech', 'Retail', 'Healthcare', 'Finance', 'Education', 'Manufacturing', 'Food and drink', 'Hospitality', 'Beauty', 'Non-profit', 'Club or association', 'Faith', 'Government', 'Other'];

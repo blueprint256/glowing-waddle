@@ -8,7 +8,7 @@ import mongoose from 'mongoose';
 import { downloadImageFromUrl, uploadBufferToS3 } from '../utils/s3Service';
 import { toFile } from 'openai/uploads';
 import { applyPlaceholderAliases, knownPlaceholderRegex } from '../lib/placeholders';
-import { editExtras, imageCost, isImageModelId, qualityFor, resolveImageModel, type ImagePurpose } from '../lib/imageModels';
+import { editExtras, imageCost, imageModelInfo, isImageModelId, qualityFor, resolveImageModel, type ImagePurpose } from '../lib/imageModels';
 
 // Cache for LLM clients and keys
 let cachedOpenAI: { client: OpenAI; key: string; timestamp: number } | null = null;
@@ -17,7 +17,7 @@ let cachedGemini: { client: GoogleGenerativeAI; key: string; timestamp: number }
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 // Supported providers
-export type LLMProvider = 'openai' | 'anthropic' | 'grok' | 'gemini';
+export type LLMProvider = 'openai' | 'anthropic' | 'grok' | 'gemini' | 'fal';
 
 // LLM configuration
 export interface LLMConfig {
@@ -60,6 +60,15 @@ export async function getProviderKey(provider: LLMProvider): Promise<string> {
           return process.env.GROK_API_KEY;
         }
         throw new Error('Grok API key not configured. An admin adds it in Settings › AI.');
+
+      case 'fal':
+        if (config.falApiKey) {
+          return config.decryptApiKey(config.falApiKey);
+        }
+        if (process.env.FAL_KEY) {
+          return process.env.FAL_KEY;
+        }
+        throw new Error('fal.ai key not configured (Qwen image models, cut-outs). An admin adds it in Settings › AI.');
 
       case 'gemini':
         if (config.geminiApiKey) {
@@ -489,11 +498,15 @@ export function imageQuality(model: string = resolveImageModel('create')): any {
   return qualityFor(model, process.env.IMAGE_QUALITY);
 }
 
-/** The image model to call for making (create) or editing pictures (Settings › AI, lib/imageModels.ts). */
-export async function currentImageModel(purpose: ImagePurpose): Promise<string> {
+/**
+ * The image model to call for making (create) or editing pictures (Settings › AI, lib/imageModels.ts).
+ * "design": posters' concepts and art, which may use their own model (Settings › AI › Posters).
+ */
+export async function currentImageModel(purpose: ImagePurpose, use: 'pictures' | 'design' = 'pictures'): Promise<string> {
   try {
     const config = await AppConfig.getConfig();
-    return resolveImageModel(purpose, config.defaultImageLLMModel);
+    const chosen = use === 'design' && config.designImageModel ? config.designImageModel : config.defaultImageLLMModel;
+    return resolveImageModel(purpose, chosen);
   } catch {
     return resolveImageModel(purpose);
   }
@@ -767,9 +780,20 @@ export async function renderImage(options: {
   mask?: { buffer: Buffer; name: string; contentType: string };
   userId?: mongoose.Types.ObjectId;
   promptName: string;
+  /** "design": the poster model (Settings › AI), else the pictures model. */
+  use?: 'pictures' | 'design';
 }): Promise<Buffer> {
   const startTime = Date.now();
-  const model = await currentImageModel(options.purpose || 'create');
+  const model = await currentImageModel(options.purpose || 'create', options.use || 'pictures');
+  const info = imageModelInfo(model);
+  if (info?.provider === 'fal') {
+    // Qwen on fal: words only → Qwen-Image; with pictures → Qwen-Image-Edit-Plus (usage logged there).
+    const { qwenImage, qwenEdit } = await import('./falService');
+    const images = (options.images || []).map((i) => i.buffer);
+    return images.length
+      ? qwenEdit({ prompt: options.prompt, images, size: options.size, userId: options.userId, promptName: options.promptName })
+      : qwenImage({ prompt: options.prompt, size: options.size, userId: options.userId, promptName: options.promptName });
+  }
   try {
     const openai = await getOpenAIClient();
     const files = await Promise.all(

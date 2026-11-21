@@ -14,9 +14,17 @@
 
 export type ImagePurpose = 'create' | 'edit';
 
+export type ImageProvider = 'openai' | 'fal';
+
 export interface ImageModelInfo {
   id: string;
   label: string;
+  /** Who runs it: OpenAI, or fal.ai (Qwen; its key in Settings › AI). */
+  provider: ImageProvider;
+  /** fal models: the model's id on fal, and the model that does edits for it. */
+  fal?: { create: string; edit: string };
+  /** fal models are priced per picture (US$, about 1 megapixel). */
+  perImage?: number;
   /** US$ per million tokens: text in, picture in, picture out. */
   price: { textIn: number; imageIn: number; out: number };
   /** Only the 1.x models take `input_fidelity`; 2.x reads input pictures at high fidelity on its own. */
@@ -26,21 +34,30 @@ export interface ImageModelInfo {
 }
 
 export const IMAGE_MODELS: ImageModelInfo[] = [
-  { id: 'gpt-image-2.5-flare', label: 'GPT-Image-2.5 Flare (fast, default)', price: { textIn: 5, imageIn: 8, out: 30 }, inputFidelity: false },
-  { id: 'gpt-image-2.5-sunburst', label: 'GPT-Image-2.5 Sunburst (precise editing)', price: { textIn: 5, imageIn: 8, out: 30 }, inputFidelity: false },
-  { id: 'gpt-image-2', label: 'GPT Image 2', price: { textIn: 5, imageIn: 8, out: 30 }, inputFidelity: false },
-  { id: 'gpt-image-1.5', label: 'GPT Image 1.5 (retired 1 Dec 2026)', price: { textIn: 5, imageIn: 8, out: 32 }, inputFidelity: true, retired: true },
-  { id: 'gpt-image-1', label: 'GPT Image 1 (retired)', price: { textIn: 5, imageIn: 10, out: 40 }, inputFidelity: true, retired: true },
-  { id: 'gpt-image-1-mini', label: 'GPT Image 1 mini (retired)', price: { textIn: 2, imageIn: 2.5, out: 8 }, inputFidelity: true, retired: true }
+  { id: 'gpt-image-2.5-flare', label: 'GPT-Image-2.5 Flare (fast, default)', provider: 'openai', price: { textIn: 5, imageIn: 8, out: 30 }, inputFidelity: false },
+  { id: 'gpt-image-2.5-sunburst', label: 'GPT-Image-2.5 Sunburst (precise editing)', provider: 'openai', price: { textIn: 5, imageIn: 8, out: 30 }, inputFidelity: false },
+  { id: 'gpt-image-2', label: 'GPT Image 2', provider: 'openai', price: { textIn: 5, imageIn: 8, out: 30 }, inputFidelity: false },
+  {
+    id: 'qwen-image',
+    label: 'Qwen-Image (fal.ai; edits with Qwen-Image-Edit-Plus)',
+    provider: 'fal',
+    fal: { create: 'fal-ai/qwen-image', edit: 'fal-ai/qwen-image-edit-plus' },
+    perImage: 0.02,
+    price: { textIn: 0, imageIn: 0, out: 0 },
+    inputFidelity: false
+  },
+  { id: 'gpt-image-1.5', label: 'GPT Image 1.5 (retired 1 Dec 2026)', provider: 'openai', price: { textIn: 5, imageIn: 8, out: 32 }, inputFidelity: true, retired: true },
+  { id: 'gpt-image-1', label: 'GPT Image 1 (retired)', provider: 'openai', price: { textIn: 5, imageIn: 10, out: 40 }, inputFidelity: true, retired: true },
+  { id: 'gpt-image-1-mini', label: 'GPT Image 1 mini (retired)', provider: 'openai', price: { textIn: 2, imageIn: 2.5, out: 8 }, inputFidelity: true, retired: true }
 ];
 
 export const DEFAULT_IMAGE_MODEL = 'gpt-image-2.5-flare';
 export const DEFAULT_EDIT_MODEL = 'gpt-image-2.5-sunburst';
 
-/** Every image model's usage is logged as "openai/<model>"; this matches all of them. */
-export const IMAGE_USAGE_MODEL_PATTERN = /^openai\/gpt-image/;
+/** Image models log as "openai/<model>" or "fal/fal-ai/qwen-image…"; this matches all of them. */
+export const IMAGE_USAGE_MODEL_PATTERN = /^(openai\/gpt-image|fal\/fal-ai\/qwen-image(?!-layered))/;
 
-export const isImageModelId = (v: unknown): v is string => typeof v === 'string' && /^gpt-image/.test(v.trim());
+export const isImageModelId = (v: unknown): v is string => typeof v === 'string' && /^(gpt-image|qwen-image)/.test(v.trim());
 
 export function imageModelInfo(id: string | null | undefined): ImageModelInfo | undefined {
   return IMAGE_MODELS.find((m) => m.id === (id || '').trim());
@@ -56,6 +73,8 @@ export const SELECTABLE_IMAGE_MODELS = IMAGE_MODELS.filter((m) => !m.retired).ma
 export function resolveImageModel(purpose: ImagePurpose, configured?: string | null): string {
   const info = imageModelInfo(configured);
   const usable = info && !info.retired ? info.id : null;
+  // A fal model serves both purposes (its own edit model is picked when the call is made).
+  if (info?.provider === 'fal') return info.id;
   if (purpose === 'edit') return usable && usable !== DEFAULT_IMAGE_MODEL ? usable : DEFAULT_EDIT_MODEL;
   return usable || DEFAULT_IMAGE_MODEL;
 }

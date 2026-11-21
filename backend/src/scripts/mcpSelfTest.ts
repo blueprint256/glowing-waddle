@@ -443,7 +443,7 @@ async function main() {
     // A poster: the poster engine, partners by name, then its options as drafts.
     const poster = jsonOf(await call(ai, 'generate_task_poster', { task_id: ID(100), format: 'story', partners: ['nile water co', 'p2'] }));
     const started = recorded.find((r) => r.path === `/api/design/tasks/${ID(100)}/posters`)!;
-    assert.deepEqual(started.body, { partnerIds: ['p1', 'p2'], count: 4, format: 'story' });
+    assert.deepEqual(started.body, { partnerIds: ['p1', 'p2'], count: 3, format: 'story' });
     assert.equal(poster.status, 'done');
     assert.deepEqual(poster.options.map((o: any) => o.draft_id), ['d1']);
     const unknown = await call(ai, 'generate_task_poster', { task_id: ID(100), partners: ['Nobody Ltd'] });

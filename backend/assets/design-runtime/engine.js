@@ -446,6 +446,14 @@
       var x0 = Math.max(b.x, b.x + s.x0);
       var x1 = Math.min(b.x + b.w, b.x + s.x1);
       if (y < b.y || y > b.y + b.h || x1 < x0) return;
+      // In a frame (scenes), only the part of the photo the frame shows counts.
+      var fr = img.parentElement.closest('[data-frame]');
+      if (fr) {
+        var f = rect(fr);
+        x0 = Math.max(x0, f.x);
+        x1 = Math.min(x1, f.x + f.w);
+        if (y < f.y || y > f.y + f.h || x1 < x0) return;
+      }
       out.push({ x0: x0, x1: x1, y: y, hh: s.hh || 0 });
     });
     return out;
@@ -461,6 +469,14 @@
       if (!c) return;
       var bw = box.clientWidth;
       var bh = box.clientHeight;
+      // data-exact: the box is where the person is in their photo (scenes): fill it, no fades.
+      if (box.hasAttribute('data-exact')) {
+        img.style.width = bw + 'px';
+        img.style.height = bh + 'px';
+        img.style.left = '0px';
+        img.style.top = '0px';
+        return;
+      }
       var maxW = attrNumber(box, 'data-max-w', 1.25) * bw;
       var s = bh / c.height;
       if (c.width * s > maxW) s = maxW / c.width;

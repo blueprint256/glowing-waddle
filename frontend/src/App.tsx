@@ -19,7 +19,6 @@ const PostPage = lazy(() => import('./pages/Posts/PostPage'));
 const PlannerPage = lazy(() => import('./pages/Planner/PlannerPage'));
 const UserManagement = lazy(() => import('./pages/Admin/UserManagement'));
 const OutreachPage = lazy(() => import('./pages/Admin/OutreachPage'));
-const PosterDesignsPage = lazy(() => import('./pages/Admin/PosterDesignsPage'));
 const InboxPage = lazy(() => import('./pages/Inbox/InboxPage'));
 const UserDetail = lazy(() => import('./pages/Admin/UserDetail'));
 const Settings = lazy(() => import('./pages/Settings/SettingsPage'));
@@ -129,8 +128,6 @@ function App() {
         <Route path="admin/users" element={<AdminRoute><UserManagement /></AdminRoute>} />
         <Route path="admin/users/:id" element={<AdminRoute><UserDetail /></AdminRoute>} />
         <Route path="admin/outreach" element={<AdminRoute><OutreachPage /></AdminRoute>} />
-        <Route path="admin/designs" element={<AdminRoute><PosterDesignsPage /></AdminRoute>} />
-        <Route path="admin/designs/:designId" element={<AdminRoute><PosterDesignsPage /></AdminRoute>} />
       </Route>
     </Routes>
     </Suspense>

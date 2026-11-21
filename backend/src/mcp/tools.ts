@@ -1422,7 +1422,7 @@ const aiAdminTools: Tool[] = [
       const configured = new Set((mappings.mappings || []).map((m: any) => m.command));
       return {
         api_keys: Object.fromEntries(PROVIDERS.map((p) => [p, Boolean(i[p]?.configured)])),
-        poster_engine: clean({ ready: engine.ready, anthropic_key: engine.anthropic, renderer: engine.renderer, cutouts: engine.cutouts, models: engine.models, designs: engine.designs, problems: engine.problems?.length ? engine.problems : undefined }),
+        poster_engine: clean({ ready: engine.ready, anthropic_key: engine.anthropic, openai_key: engine.openai, fal_key: engine.fal, renderer: engine.renderer, cutouts: engine.cutouts, models: engine.models, problems: engine.problems?.length ? engine.problems : undefined }),
         prompts: (prompts.prompts || []).map((p: any) => shapePrompt(p)),
         commands: (mappings.mappings || []).map(shapeMapping),
         app_commands_using_built_in_prompt: Object.keys(APP_COMMANDS).filter((c) => !configured.has(c)).map((c) => ({ command: c, used_by: APP_COMMANDS[c] })),
@@ -1570,14 +1570,13 @@ const aiAdminTools: Tool[] = [
     name: 'generate_task_poster',
     title: 'Design a poster for a post (poster engine)',
     description:
-      "Design poster options for a post (task) with the app's poster engine: the brief's words (put the facts in the post's brief first: what, when, where), the brand's real logo files, colours and fonts, chosen partners' logos and the post's \"include\" pictures as photos (or, with ai_photo, a photo the image AI makes for it), laid out and checked (spelling kept, contrast, logo rules, nothing cut off). Gives up to 4 options as drafts next to the current picture (adopt one with adopt_task_poster; change one with change_task_picture, free). Takes 1–3 minutes: this waits up to about 2 minutes, then says it's still working (check with poster_status). Uses one of the account's monthly AI pictures; confirm with the user first.",
+      "Design poster options for a post (task) with the app's poster engine: the image AI designs a concept with the post's \"include\" photos (or, with ai_photo, a photo it makes first), Claude reads it into layers, and the engine draws them with the brief's real words (put the facts in the post's brief first: what, when, where), the brand's real logo files, colours and fonts, chosen partners' logos and the photos' own pixels (cropped, shaped, faded, people breaking out of frames), then checks it (spelling kept, contrast, logo rules, nothing cut off). Gives up to 4 options as drafts next to the current picture (adopt one with adopt_task_poster; change one with change_task_picture, free). Takes 1–3 minutes: this waits up to about 2 minutes, then says it's still working (check with poster_status). Uses one of the account's monthly AI pictures; confirm with the user first.",
     inputSchema: obj(
       {
         task_id: id('Post (task) ID.'),
         format: { type: 'string', enum: ['portrait', 'square', 'story', 'landscape', 'a4'], description: 'Shape: portrait (4:5, default), square (1:1), story (9:16), landscape (3:2) or a4 (print). Always pass the shape the user asked for.' },
         partners: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 80 }, maxItems: 8, description: "Partners or sponsors whose logos go on the poster, by name or id (from get_company_info partners). Leave out for none." },
-        options: { type: 'integer', minimum: 1, maximum: 4, description: 'How many options (default 4).' },
-        approach: { type: 'string', enum: ['library', 'concept'], description: "library (default): the art director picks from the design library. concept (trial): the image model draws a concept per option from words alone and the engine rebuilds it with the real words, logos, partners and photo." },
+        options: { type: 'integer', minimum: 1, maximum: 4, description: 'How many options (default 3; each costs a few US cents of AI).' },
         ai_photo: { type: 'boolean', description: "When the post has no photo to include: make a realistic photo with the image AI first (no words; added to the post's pictures) and design the poster around it. Default false." }
       },
       ['task_id']
@@ -1598,9 +1597,8 @@ const aiAdminTools: Tool[] = [
         if (unknown.length) throw new ToolError(`No saved partner called ${unknown.map((u) => `“${u}”`).join(', ')}. Partners are added once in Settings › Brand; saved ones: ${(kit.partners || []).map((p: any) => p.name).join(', ') || 'none'}.`);
         partnerIds = Array.from(new Set(partnerIds));
       }
-      const body: Record<string, unknown> = { partnerIds, count: args.options || 4 };
+      const body: Record<string, unknown> = { partnerIds, count: args.options || 3 };
       if (args.ai_photo) body.aiPhoto = true;
-      if (args.approach === 'concept') body.approach = 'concept';
       if (args.format) body.format = args.format;
       const started = await ctx.api.request('POST', `/api/design/tasks/${args.task_id}/posters`, { body });
       const job = await waitForPoster(ctx, started.job, 110000);
@@ -1672,7 +1670,7 @@ const aiAdminTools: Tool[] = [
     name: 'change_task_picture',
     title: "Change a post's picture (app AI)",
     description:
-      "Change one of a post's pictures following a sentence; everything else is kept. A designed poster is changed by the poster engine (e.g. \"make the headline bigger\", \"change the date to Saturday 14 June\", \"use the square shape\"; free, and its brand rules still apply: a change that breaks one is explained instead). A photo is edited by the image AI (e.g. \"replace the mountain with a waterfall\"; uses one of the account's monthly AI pictures, so confirm with the user first). By default it changes the current picture; pass from_url to change a draft or an earlier picture. The result is a new draft: use it with adopt_task_poster.",
+      "Change one of a post's pictures following a sentence; everything else is kept. A designed poster is changed by the poster engine (e.g. \"make the headline bigger\", \"change the date to Saturday 14 June\", \"zoom the photo in on the speaker\", \"fade the photo into the blue\", \"use the square shape\"; free, and its brand rules still apply: a change that breaks one is explained instead). A photo is edited by the image AI (e.g. \"replace the mountain with a waterfall\"; uses one of the account's monthly AI pictures, so confirm with the user first). By default it changes the current picture; pass from_url to change a draft or an earlier picture. The result is a new draft: use it with adopt_task_poster.",
     inputSchema: obj(
       {
         task_id: id('Post (task) ID.'),
