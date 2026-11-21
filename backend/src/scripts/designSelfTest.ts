@@ -382,6 +382,25 @@ async function main() {
     );
   }
 
+  // A headline's second colour: the phrase in *stars* takes it, and its contrast is checked too.
+  {
+    const two = async (emphasis: string, ground: string, color: string) => {
+      const scene: Scene = {
+        version: 2,
+        aspect: 0.8,
+        backdrop: { kind: 'color', color: ground as any },
+        layers: [logo({ x: 6, y: 5, w: 40, h: 8 }), T('headline', { x: 6, y: 25, w: 88, h: 30 }, { color, emphasis, lines: 4 })],
+        copy: { headline: 'Healthy mothers, *brighter futures*' }
+      };
+      const doc = sceneDoc({ id: 'em', format: 'portrait', scene, photos: [], sponsors: [], primaryLogo: kit.logos[0].id, campaignLogos: [] });
+      const r = await renderDesign(sceneTemplate(scene, 'em', 'portrait'), doc, kit, loader, { scale: 1 });
+      return { em: (r.report.elements.find((e) => e.kind === 'text') as any)?.emColor, issues: r.report.issues.map((i) => i.code) };
+    };
+    const good = await two('accent', 'primary', 'paper');
+    const bad = await two('paper', 'paper', 'ink');
+    check(good.em === 'rgb(247, 168, 27)' && !good.issues.includes('contrast') && bad.issues.includes('contrast'), `a headline's second colour is drawn (${good.em}) and checked for contrast`);
+  }
+
   // Words that don't read over a photo: the photo is shaded under them (a designer's scrim), and
   // a box only where there's no photo. Words are trimmed at a word boundary, never mid-word.
   {

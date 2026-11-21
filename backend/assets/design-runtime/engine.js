@@ -909,6 +909,9 @@
         m.field = el.getAttribute('data-field') || key;
         m.fontSize = parseFloat(cs.fontSize);
         m.color = cs.color;
+        // A phrase set in the emphasis colour (*stars* in the words) is checked for contrast too.
+        var em = el.querySelector('em');
+        if (em) m.emColor = getComputedStyle(em).color;
         m.lines = lineCount(el);
         var box = el.hasAttribute('data-fit') ? fitBox(el) : null;
         why = [];

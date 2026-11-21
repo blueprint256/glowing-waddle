@@ -291,6 +291,8 @@ export interface MeasuredElement {
   box: { x: number; y: number; w: number; h: number };
   /** Text only. */
   fontSize?: number;
+  /** Text: the colour of a phrase set in the emphasis colour (*stars*), when there is one. */
+  emColor?: string;
   color?: string;
   overflow?: boolean;
   lines?: number;

@@ -86,6 +86,8 @@ export interface TextLayer {
   weight?: 'regular' | 'bold' | 'black';
   font?: 'display' | 'text' | 'accent';
   lines?: number;
+  /** The colour for a phrase the words mark with *stars* (a headline's second colour). */
+  emphasis?: ColorRole;
 }
 
 export interface LogoLayer {
@@ -163,10 +165,11 @@ export interface ConceptAsk {
 
 /** One direction per option, so the options differ. With photos, every direction uses them. */
 export const DIRECTIONS_WITH_PHOTOS = [
-  'Layout: the photograph full-bleed across the whole poster, the words together on one calm area with a soft colour fade behind them. Mood: cinematic and warm.',
-  'Layout: split, a solid brand-colour panel holding all the words, the photograph filling the other part edge to edge, straight clean edges. Mood: confident and modern.',
-  'Layout: the photograph cut into a bold shape (a circle, an arch or a slanted panel), the people breaking out over its top edge, strong colour blocks and a huge headline. Mood: bold and graphic.',
-  'Layout: typography first, a huge headline on a flat colour ground, the photograph cropped tight on the people in a clean frame lower down. Mood: editorial.'
+  'Layout: the photograph cut into a bold shape (a wide arch, a circle or a hard diagonal), set on flat brand colour, with the people breaking over its edge. A huge headline locks against the shape. Two or three flat colour blocks hold the other words. Mood: bold and graphic.',
+  'Layout: the photograph full-bleed, with a strong diagonal or angled block of brand colour cutting across one corner and carrying the words; a thin accent rule and a small date badge. Mood: cinematic, with a confident graphic overlay.',
+  'Layout: a strict grid — the photograph in one clear field, flat colour fields beside and below it in different brand colours, the words living in those fields with generous margins. A bold rule or a bar of accent colour ties them together. Mood: editorial and modern.',
+  'Layout: typography first — an enormous headline, one word in the accent colour, on flat brand colour; the photograph cropped tight on the people and tucked into the layout so it overlaps the type block. Mood: poster-first, high contrast.',
+  'Layout: the photograph fading into a deep colour field on one side, with a large circle or arch of accent colour behind the people, and the words stacked over the colour with a strong rule above them. Mood: warm and designed.'
 ];
 export const DIRECTIONS_WITHOUT_PHOTOS = [
   'Layout: graphic and illustrated, shapes, patterns and an illustrated scene in the brand colours, the words on a clean area. Mood: lively and celebratory.',
@@ -201,7 +204,8 @@ export function conceptPrompt(a: ConceptAsk): string {
   const photos = a.photos
     ? [
         `The ${a.photos > 1 ? `${a.photos} attached photographs are` : 'attached photograph is'} the real photography for this poster. Design with ${a.photos > 1 ? 'them' : 'it'} like a professional designer: crop and scale freely, cut ${a.photos > 1 ? 'them' : 'it'} into a shape, let people overlap a frame's edge, fade into a colour field, run panels beside or across parts with no faces.`,
-        `Keep each photograph's content as it is: the same people, faces, poses and scene. Never add, remove or replace people, and never change a face. Show each photograph once, as one piece.`
+        `The photograph is one element of a designed poster, not the poster itself. Build a real graphic system around it in the brand colours — flat colour blocks, a bold angle or arch, a rule, a badge — so it would still look designed with the photograph taken away.`,
+        `Keep each photograph's content as it is: the same people, faces, poses and scene. Never add, remove or replace people, and never change a face. Show each photograph once, as one piece. The photograph needn't be sharp or finished — its shape, crop and place in the composition are what matter.`
       ].join(' ')
     : 'There is no photograph: no people.';
   return [
@@ -214,6 +218,9 @@ export function conceptPrompt(a: ConceptAsk): string {
     `Leave room for: ${spaces.join('; ')}.`,
     trimNote(a.format),
     'Avoid template clichés: no corner swooshes, no wavy stripes along the bottom, no lens flares.',
+    a.photos
+      ? 'Avoid the lazy default above all: a plain rectangle of photograph beside a plain rectangle of colour, words stacked in the middle of it, no other graphic element and a large empty area left over. That is not a design.'
+      : '',
     'Make it a finished, professional poster: strong composition, clear hierarchy, generous margins. Keep every text and logo area on a calm, simple part of the design. No other brands, no watermark, no mock-up frame or border.'
   ]
     .filter(Boolean)
@@ -238,9 +245,11 @@ Layers, back to front (later layers sit on top):
 
 Read the concept's intent and improve on it:
 - Keep its composition and its photo treatment (crop, shape, fades, overlaps): that is the design.
+- Judge it as a designer, though: the concept is a sketch, not a master. If its layout is weak — a plain split of photo and colour with no graphic structure, words adrift in an empty field, a large dead area, a timid headline — lift it. Add at most two simple graphic elements in the brand colours (a flat colour block, a bold angled or arched shape, a thick rule, a badge behind a date), tighten everything to a clean grid, and make the headline as large as the space allows. Never leave a quarter of the poster empty.
 - Improve: align to clean edges and a consistent margin (at least 5% from every side for words and logos), make the hierarchy obvious, give words room, keep them off faces and busy areas (add a panel or a fade when needed), keep logos away from clutter.
 - Colours only from the brand (primary, secondary, accent, ink, paper). "auto" picks light or dark text for what's behind; prefer it over imagery. Fonts: display for headlines, eyebrows, details, buttons; text only for a longer supporting sentence; accent for a word or two at most.
 - Positions are percentages of the concept picture (x, w of its width; y, h of its height). Boxes for words and logos must not overlap each other. A headline box is usually 12–30% of the height; details 3.5–5% per line; the call to action a clear button.
+- A headline reads better in two colours: mark one word or short phrase of it with *stars* ("Healthy mothers, *brighter futures*") and set that text layer's "emphasis" to the brand colour it should take. Use it on the headline, rarely elsewhere, never on more than half the words.
 - Words: the real copy from the brief only. Facts exactly as given; never invent dates, places, names, numbers or prices. Headline at most about 8 words. Only fields with something true to say.
 - Dates: today's date is given. If a weekday doesn't match its date, or a date has passed, leave the weekday out and say so in "message". Don't correct silently.
 - Every real photo the concept shows gets a photo layer; never invent a photo that isn't given.`;
@@ -291,6 +300,7 @@ export const SCENE_TOOL = {
             weight: { type: 'string', enum: ['regular', 'bold', 'black'] },
             font: { type: 'string', enum: ['display', 'text', 'accent'] },
             lines: { type: 'integer' },
+            emphasis: { type: 'string', enum: COLORS, description: 'text: the colour for the phrase marked with *stars* in the words' },
             photo: { type: 'integer', description: 'photo: which real photo (1 = the first)' },
             crop: { type: 'object', properties: { x: { type: 'number' }, y: { type: 'number' }, w: { type: 'number' } } },
             fade: {
@@ -457,7 +467,8 @@ export function cleanScene(raw: any, opts: { partners: number; photos: number; a
         upper: Boolean(r.upper),
         weight: pick(r.weight, ['regular', 'bold', 'black'] as const, role === 'headline' ? 'black' : role === 'cta' || role === 'eyebrow' || role === 'details' ? 'bold' : 'regular'),
         font: pick(r.font, ['display', 'text', 'accent'] as const, role === 'subhead' ? 'text' : 'display'),
-        lines: Math.round(num(r.lines, 1, 8, role === 'headline' ? 3 : role === 'subhead' ? 3 : 2))
+        lines: Math.round(num(r.lines, 1, 8, role === 'headline' ? 3 : role === 'subhead' ? 3 : 2)),
+        emphasis: COLORS.includes(r.emphasis) ? (r.emphasis as ColorRole) : undefined
       });
     } else if (r.type === 'logo' && !logo) {
       logo = true;
@@ -685,6 +696,8 @@ export function sceneTemplate(scene: Scene, id: string, format: FormatId, photos
       const font = `font-family: var(--f-${layer.font || 'text'});`;
       const weight = layer.weight === 'black' ? 'font-weight: 900;' : layer.weight === 'bold' ? 'font-weight: 700;' : 'font-weight: 400;';
       css.push(`.${c} { ${boxCss(b)} align-items: ${align}; text-align: ${layer.align}; ${pad} ${panel} ${radius} ${tone} ${font} ${weight} ${layer.upper ? 'text-transform: uppercase; letter-spacing: 0.04em;' : ''} }`);
+      // A phrase the words mark with *stars*: the design's second colour, never italic.
+      if (layer.emphasis) css.push(`.${c} em { font-style: normal; color: ${colorVar(layer.emphasis)}; }`);
       const toneAttr = layer.color === 'auto' ? ` data-tone="auto" data-key="${layer.role}"` : '';
       // A person breaking out of a frame may stand in front of the headline a little, by design.
       const personOk = layer.role === 'headline' && breakoutsLater(scene, layer) ? ' data-person-ok="0.25"' : '';
@@ -1051,6 +1064,12 @@ export function repairScene(scene: Scene, issues: { level: string; code: string;
         if (!under.scrim) under.scrim = { side, size: want, amount: 0.5 };
         else under.scrim = { side: under.scrim.side, size: Math.max(under.scrim.size, want), amount: Math.min(0.78, under.scrim.amount + 0.16) };
         t.color = 'paper';
+        changed = true;
+        continue;
+      }
+      if (t.emphasis) {
+        // Shaded and still hard to read: the second colour is what fails. One colour it is.
+        t.emphasis = undefined;
         changed = true;
         continue;
       }

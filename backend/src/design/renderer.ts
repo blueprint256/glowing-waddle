@@ -137,14 +137,17 @@ function textContrasts(raw: Raw, elements: MeasuredElement[]): Map<string, numbe
   const out = new Map<string, number>();
   for (const el of elements) {
     if (el.kind !== 'text') continue;
-    const col = parseCssColor(el.color);
-    if (!col) continue;
+    const cols = [el.color, el.emColor].map(parseCssColor).filter(Boolean) as ReturnType<typeof parseCssColor>[];
+    if (!cols.length) continue;
     const { lums } = sampleBox(raw, el.inner || el.box);
     if (!lums.length) continue;
-    const lt = luminance(col);
-    const worst = lt > 0.5 ? pct(lums, 0.9) : pct(lums, 0.1);
-    const ratio = (Math.max(lt, worst) + 0.05) / (Math.min(lt, worst) + 0.05);
-    out.set(el.key, Math.round(ratio * 100) / 100);
+    // The emphasis phrase is part of the words: the poster is as readable as its worse colour.
+    const ratios = cols.map((c) => {
+      const lt = luminance(c!);
+      const worst = lt > 0.5 ? pct(lums, 0.9) : pct(lums, 0.1);
+      return (Math.max(lt, worst) + 0.05) / (Math.min(lt, worst) + 0.05);
+    });
+    out.set(el.key, Math.round(Math.min(...ratios) * 100) / 100);
   }
   return out;
 }

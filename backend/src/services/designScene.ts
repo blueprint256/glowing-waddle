@@ -48,6 +48,8 @@ export interface SceneInput {
   campaignLogoIds: string[];
   voice: { sector?: string; tone?: string } | null;
   count: number;
+  /** Which direction the first option takes (so one option isn't always the same layout). */
+  directionFrom: number;
   apiKey: string;
   userId: Id;
   today?: Date;
@@ -93,12 +95,15 @@ async function oneScene(input: SceneInput, index: number): Promise<SceneOption |
       partners: input.sponsors.length,
       otherLogos: input.campaignLogoIds.length,
       photos: refs.length,
-      direction: directions[index % directions.length]
+      direction: directions[(index + input.directionFrom) % directions.length]
     });
     const images = await Promise.all(
       refs.map(async (p, i) => ({ buffer: await sharp(p.buffer).rotate().resize({ width: 1024, height: 1024, fit: 'inside' }).jpeg({ quality: 88 }).toBuffer(), name: `photo-${i + 1}.jpg`, contentType: 'image/jpeg' }))
     );
-    concept = await renderImage({ prompt, images, size, fidelity: refs.length ? 'high' : undefined, userId: input.userId, promptName: 'Design · concept', use: 'design' });
+    // No fidelity lock: the concept's pixels are never used (the engine draws the real photo), and
+    // asking the model to reproduce the photograph exactly makes it place the photo instead of
+    // designing around it.
+    concept = await renderImage({ prompt, images, size, userId: input.userId, promptName: 'Design · concept', use: 'design' });
     concept = await sharp(concept).resize(cw, ch, { fit: 'fill' }).png().toBuffer();
   } catch (error: any) {
     console.error('[design] Concept failed:', error?.message);
@@ -230,8 +235,10 @@ async function layeredMask(concept: Buffer, layer: PhotoLayer, userId: Id): Prom
 }
 
 /** The options for a poster, made side by side; those that fail are left out. */
-export async function sceneOptions(input: SceneInput): Promise<SceneOption[]> {
+export async function sceneOptions(input: Omit<SceneInput, 'directionFrom'> & { directionFrom?: number }): Promise<SceneOption[]> {
   const n = Math.max(1, Math.min(4, input.count));
-  const made = await Promise.all(Array.from({ length: n }, (_, i) => oneScene(input, i).catch((e) => (console.error('[design] Option failed:', e?.message), null))));
+  const from = input.directionFrom ?? Math.floor(Math.random() * DIRECTIONS_WITH_PHOTOS.length);
+  const job: SceneInput = { ...input, directionFrom: from };
+  const made = await Promise.all(Array.from({ length: n }, (_, i) => oneScene(job, i).catch((e) => (console.error('[design] Option failed:', e?.message), null))));
   return made.filter((o): o is SceneOption => !!o);
 }
