@@ -45,6 +45,8 @@ export interface ConceptRegion {
 
 export interface ConceptBlueprint {
   regions: ConceptRegion[];
+  /** The concept picture's width / height: positions are read on it, then fitted to the poster. */
+  aspect?: number;
   /** Where the real photo goes ("photo" region); "keep" leaves the concept's imagery there. */
   photoUse?: 'real' | 'keep';
   /** A soft fade behind the words, if the art needs one for contrast. */
@@ -95,11 +97,26 @@ export interface ConceptAsk {
 
 /** Directions given to the concepts of one poster, one each, so the options differ. */
 export const CONCEPT_DIRECTIONS = [
-  'Bold and graphic: big confident type, strong colour blocks, a clear focal image.',
-  'Photographic and warm: a large natural-light scene that carries the mood, type set calmly over a quiet part of it.',
-  'Editorial and elegant: generous space, refined layout, a striking crop, understated colour.',
-  'Lively and celebratory: energetic composition, shapes and texture, a sense of occasion.'
+  'Layout: a full-bleed photograph fills the whole poster; the words sit together in one calm area (a dark gradient at the bottom or a sky at the top). Mood: cinematic and warm.',
+  'Layout: split in two, a solid brand-colour panel down one side (about 45%) holding all the words, the photograph filling the other side edge to edge. Straight, clean edges, no curves. Mood: confident and modern.',
+  'Layout: typography first, a huge headline across the top half on a flat colour ground, the image smaller (a framed rectangle or circle) lower down. Mood: bold, graphic, editorial.',
+  'Layout: illustrated or graphic, no photograph: shapes, patterns and an illustrated scene in the brand colours, the words on a clean area. Mood: lively and celebratory.'
 ];
+
+/** The poster is a little wider than the picture drawn: keep what matters off the trimmed edges. */
+function trimNote(format: FormatId): string {
+  const size = CONCEPT_SIZE[format] || '1024x1536';
+  const [w, h] = size.split('x').map(Number);
+  const poster = POSTER_ASPECT[format] || w / h;
+  const art = w / h;
+  if (Math.abs(poster - art) < 0.02) return '';
+  return art < poster
+    ? `The top and bottom ${Math.round(((1 - art / poster) / 2) * 100)}% of the picture will be trimmed: keep every text area, logo and the main subject out of them (background only there).`
+    : `The left and right ${Math.round(((1 - poster / art) / 2) * 100)}% of the picture will be trimmed: keep every text area, logo and the main subject out of them (background only there).`;
+}
+
+/** Width / height of each poster shape (matches design/formats.ts). */
+export const POSTER_ASPECT: Record<string, number> = { square: 1, portrait: 0.8, story: 0.5625, landscape: 1.5, a4: 0.707, a3: 0.707 };
 
 /** The words the image model gets: what the poster is for, and the spaces to leave. Never files. */
 export function conceptPrompt(a: ConceptAsk): string {
@@ -124,6 +141,8 @@ export function conceptPrompt(a: ConceptAsk): string {
     `Direction: ${a.direction}`,
     `Text it will carry: ${text.join(', ')}.`,
     `Leave room for: ${spaces.join('; ')}.`,
+    trimNote(a.format),
+    'Avoid the clichés of template posters: no corner swooshes, no wavy stripes along the bottom, no stock lens flares. Follow the layout above closely.',
     'Make it a finished, professional poster: strong composition, clear hierarchy, generous margins, imagery that blends naturally with the colour areas. Keep every text and logo area on a calm, simple part of the design so words can be read. No other brands, no watermark, no mock-up frame or border.'
   ].join('\n');
 }
@@ -139,9 +158,12 @@ Read the concept's intent and improve on it:
 - Improve it: align things to clean edges and a consistent margin (at least 5% from every side), make the hierarchy obvious (headline clearly first), give text enough room, keep it on calm areas, add a panel or a soft fade wherever the art behind words is busy, keep logos away from clutter.
 - Brand: colours are only the brand's (primary, secondary, accent, ink, paper). Fonts are the brand's display (headlines), text (body) and accent (a word or two at most).
 - Positions are percentages of the poster's width (x, w) and height (y, h). Boxes must not overlap, except text sitting inside a panel or over the art. Give each text box room for its words at a readable size: a headline box is usually 12–30% of the height; details 3–5% per line; partner strip 8–14% high.
-- The main logo is always placed ("logo"), at least 6% of the poster's shorter side high, on a calm area. If partners are given, place one "partners" strip wide enough for all of them in one row (they're sized evenly). If there's a real photo, place one "photo" region where the concept's main image is, shaped like the concept's (rounded or circle if it is), and set photoUse "real"; if there's no real photo, set photoUse "keep" and don't add a photo region: the concept's imagery stays in the art.
+- Positions are read on the concept picture as given; the engine fits them to the poster's exact shape.
+- The main logo is always placed ("logo"), at least 6% of the poster's shorter side high, on a calm area. If partners are given, place one "partners" strip wide enough for all of them in one row (they're sized evenly). If there's a real photo, it replaces the concept's main image: place one "photo" region covering that whole image area (edge to edge where the image bleeds off the poster; rounded or circle only if the concept's image is that shape), and set photoUse "real". Never place the real photo as a small inset next to the concept's own subject, and never let words sit on the photo's faces. If there's no real photo, set photoUse "keep" and don't add a photo region: the concept's imagery stays in the art.
 - Words: write the real copy from the brief only. Use facts exactly as given; never invent dates, places, names, numbers or prices. Headline at most about 8 words. Use the poster facts lines if the brief has them. Only include fields that have something true to say.
-- color "auto" picks light or dark text for what's behind it; prefer it for text over imagery. Use a brand colour where the concept clearly uses one.`;
+- color "auto" picks light or dark text for what's behind it; prefer it for text over imagery. Use a brand colour where the concept clearly uses one.
+- Size like the concept, not smaller: text boxes as tall as the concept's text blocks. Details are bold and easy to read (each line about 3.5–5% of the height); the call to action is a clear button.
+- Fonts: display (the headline font) for headlines, eyebrows, details, buttons and labels; text only for a longer supporting sentence, and only if the concept's supporting text looks like a book face.`;
 
 const ROLE_ENUM: RegionRole[] = ['eyebrow', 'headline', 'subhead', 'details', 'cta', 'badge', 'logo', 'partners', 'photo', 'contact'];
 const COLOR_ENUM = ['primary', 'secondary', 'accent', 'ink', 'paper'];
@@ -242,8 +264,8 @@ export function cleanBlueprint(raw: any, opts: { partners: number; photos: numbe
       panelOpacity: num(r.panelOpacity, 0, 1, 1),
       radius: num(r.radius, 0, 50, 0),
       upper: Boolean(r.upper),
-      weight: pick(r.weight, ['regular', 'bold', 'black'] as const, role === 'headline' ? 'black' : 'regular'),
-      font: pick(r.font, ['display', 'text', 'accent'] as const, ['headline', 'eyebrow', 'cta', 'badge'].includes(role) ? 'display' : 'text'),
+      weight: pick(r.weight, ['regular', 'bold', 'black'] as const, role === 'headline' ? 'black' : role === 'cta' || role === 'eyebrow' ? 'bold' : 'regular'),
+      font: pick(r.font, ['display', 'text', 'accent'] as const, role === 'subhead' ? 'text' : 'display'),
       lines: Math.round(num(r.lines, 1, 8, role === 'headline' ? 3 : role === 'subhead' ? 3 : 2))
     });
   }
@@ -288,6 +310,42 @@ export function cleanBlueprint(raw: any, opts: { partners: number; photos: numbe
 }
 
 /**
+ * The art is drawn at one shape and shown "cover" on the poster, so part of it is trimmed (top and
+ * bottom when the poster is wider). Positions read on the art are moved to where that part of the
+ * art lands on the poster; anything in a trimmed edge is pulled inside a small margin. Photos and
+ * panels that bleed off the art still bleed off the poster.
+ */
+export function fitToPoster(regions: ConceptRegion[], artAspect: number | undefined, posterAspect: number): ConceptRegion[] {
+  if (!artAspect || Math.abs(artAspect - posterAspect) < 0.01) return regions;
+  const tallerArt = artAspect < posterAspect;
+  const v = tallerArt ? artAspect / posterAspect : posterAspect / artAspect; // share of the art visible
+  const off = ((1 - v) / 2) * 100;
+  const m = 3;
+  return regions.map((r) => {
+    const out = { ...r };
+    const bleeds = r.role === 'photo' || (r.panel && r.panel !== 'none' && (r.w > 96 || r.h > 96));
+    const map = (pos: number, size: number): [number, number] => {
+      let p = (pos - off) / v;
+      let sz = size / v;
+      if (bleeds) return [p, sz];
+      if (p < m) {
+        sz = Math.max(2, sz - (m - p));
+        p = m;
+      }
+      if (p + sz > 100 - m) {
+        const over = p + sz - (100 - m);
+        p = Math.max(m, p - over);
+        sz = Math.min(sz, 100 - m - p);
+      }
+      return [p, sz];
+    };
+    if (tallerArt) [out.y, out.h] = map(r.y, r.h);
+    else [out.x, out.w] = map(r.x, r.w);
+    return out;
+  });
+}
+
+/**
  * Fixes a blueprint from what the checks found, the way a designer would: text that doesn't read
  * gets "auto" colour, then a panel behind it; partners that outweigh the logo get a smaller strip
  * and the logo more room; words that overflow get a taller box. Null when there's nothing to fix.
@@ -297,6 +355,7 @@ export function repairBlueprint(bp: ConceptBlueprint, issues: { level: string; c
   let changed = false;
   const regionFor = (key?: string) => {
     if (!key) return undefined;
+    if (key.startsWith('detail')) return next.regions.find((r) => r.role === 'details');
     const role = (Object.keys(TEXT_ROLE) as RegionRole[]).find((r) => TEXT_ROLE[r]!.field === key || key.startsWith(TEXT_ROLE[r]!.field));
     return next.regions.find((r) => r.role === (role || key) || `cx-${next.regions.indexOf(r)}` === key);
   };
@@ -333,9 +392,9 @@ export function repairBlueprint(bp: ConceptBlueprint, issues: { level: string; c
 /** The fields a role shows, and its text sizes (hundredths of the poster's short side). */
 const TEXT_ROLE: Partial<Record<RegionRole, { field: TextField; min: number; max: number; order: number; tag: string }>> = {
   headline: { field: 'headline', min: 4.2, max: 16, order: 1, tag: 'h1' },
-  subhead: { field: 'subhead', min: 2.2, max: 4.2, order: 2, tag: 'p' },
-  eyebrow: { field: 'eyebrow', min: 1.8, max: 3, order: 4, tag: 'p' },
-  cta: { field: 'cta', min: 2.1, max: 3.4, order: 3, tag: 'p' }
+  subhead: { field: 'subhead', min: 2.6, max: 5, order: 2, tag: 'p' },
+  eyebrow: { field: 'eyebrow', min: 2.1, max: 3.4, order: 4, tag: 'p' },
+  cta: { field: 'cta', min: 2.5, max: 4, order: 3, tag: 'p' }
 };
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -346,7 +405,8 @@ const colorVar = (c: ColorRole) => `var(--c-${c})`;
  * the art layer behind. Rebuilt the same way from the stored blueprint for edits and prints.
  */
 export function conceptTemplate(bp: ConceptBlueprint, id: string, format: FormatId): DesignTemplate {
-  const regions = bp.regions;
+  const details = bp.copy.details?.length || 2;
+  const regions = fitToPoster(bp.regions, bp.aspect, POSTER_ASPECT[format] || 0.8);
   const parts: string[] = ['<div class="cx-art d-fill" data-bg></div>'];
   if (bp.scrim) parts.push('<div class="cx-scrim d-fill"></div>');
   const css: string[] = [
@@ -377,7 +437,9 @@ export function conceptTemplate(bp: ConceptBlueprint, id: string, format: Format
       parts.push(
         `<div class="cx-r ${k}"${toneAttr} data-details><template><div class="d-detail cx-detail"><span data-detail-icon></span><span data-detail-text></span></div></template></div>`
       );
-      css.push(`.${k} .cx-detail { display: flex; align-items: center; gap: 1.2cqmin; font-size: ${Math.max(2.1, Math.min(3.4, (r.h / Math.max(1, 3)) * 0.42))}cqmin; line-height: 1.3; justify-content: ${align}; }`);
+      // Each detail line gets its share of the box, as large as reads well (never tiny).
+      const lines = Math.max(1, details);
+      css.push(`.${k} { gap: 0.6em; } .${k} .cx-detail { display: flex; align-items: center; gap: 0.5em; font-family: var(--f-display); font-weight: 700; font-size: clamp(2.6cqmin, ${((r.h / lines) * 0.5).toFixed(2)}cqh, 4.6cqmin); line-height: 1.2; justify-content: ${align}; }`);
       css.push(`.${k} .cx-detail svg { width: 1em; height: 1em; flex: none; }`);
     } else if (r.role === 'badge') {
       parts.push(`<div class="cx-r ${k}" data-badge style="align-items:center;text-align:center"><span data-badge-top></span><span data-badge-main style="font-size:2.2em;line-height:1;font-weight:900"></span><span data-badge-bottom></span></div>`);

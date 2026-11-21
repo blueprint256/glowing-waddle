@@ -130,6 +130,8 @@ async function oneConcept(input: ConceptInput, index: number): Promise<ConceptOp
   if (!artBuf || !raw) return null;
 
   const bp = cleanBlueprint(raw, { partners: input.sponsors.length, photos: input.photos.length });
+  const [cw, ch] = size.split('x').map(Number);
+  bp.aspect = cw / ch;
   if (bp.regions.some((r) => r.role === 'contact')) {
     if (kit.contact?.social) bp.copy.social = kit.contact.social;
     if (kit.contact?.web) bp.copy.web = kit.contact.web.replace(/^https?:\/\//, '').replace(/\/$/, '');
