@@ -57,6 +57,8 @@ export interface ConceptBlueprint {
   keep?: string;
   /** How the poster improves on the concept (alignment, hierarchy…), for the record. */
   improvements?: string;
+  /** A note for the person (a weekday that doesn't match its date…). */
+  message?: string;
 }
 
 /** Image sizes the concept and art layer are made at, by poster shape. */
@@ -160,6 +162,7 @@ Read the concept's intent and improve on it:
 - Positions are percentages of the poster's width (x, w) and height (y, h). Boxes must not overlap, except text sitting inside a panel or over the art. Give each text box room for its words at a readable size: a headline box is usually 12–30% of the height; details 3–5% per line; partner strip 8–14% high.
 - Positions are read on the concept picture as given; the engine fits them to the poster's exact shape.
 - The main logo is always placed ("logo"), at least 6% of the poster's shorter side high, on a calm area. If partners are given, place one "partners" strip wide enough for all of them in one row (they're sized evenly). If there's a real photo, it replaces the concept's main image: place one "photo" region covering that whole image area (edge to edge where the image bleeds off the poster; rounded or circle only if the concept's image is that shape), and set photoUse "real". Never place the real photo as a small inset next to the concept's own subject, and never let words sit on the photo's faces. If there's no real photo, set photoUse "keep" and don't add a photo region: the concept's imagery stays in the art.
+- Dates: today's date is given. If a weekday doesn't match its date (in the coming year), leave the weekday out and say so in "message"; also say so if a date has already passed. Don't correct silently.
 - Words: write the real copy from the brief only. Use facts exactly as given; never invent dates, places, names, numbers or prices. Headline at most about 8 words. Use the poster facts lines if the brief has them. Only include fields that have something true to say.
 - color "auto" picks light or dark text for what's behind it; prefer it for text over imagery. Use a brand colour where the concept clearly uses one.
 - Size like the concept, not smaller: text boxes as tall as the concept's text blocks. Details are bold and easy to read (each line about 3.5–5% of the height); the call to action is a clear button.
@@ -216,14 +219,16 @@ export const CONCEPT_TOOL = {
         }
       },
       keep: { type: 'string' },
-      improvements: { type: 'string' }
+      improvements: { type: 'string' },
+      message: { type: 'string', description: 'A short note to the person about anything to check (a weekday that does not match its date, a date that has passed). Empty if nothing.' }
     }
   }
 };
 
-export function conceptReaderPrompt(o: { brief: string; facts?: string; brand: string; partners: string[]; otherLogos: number; photos: number; format: FormatId }): string {
+export function conceptReaderPrompt(o: { brief: string; facts?: string; brand: string; partners: string[]; otherLogos: number; photos: number; format: FormatId; today?: Date }): string {
+  const today = (o.today || new Date()).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
   return [
-    `Poster shape: ${o.format}.`,
+    `Today is ${today}. Poster shape: ${o.format}.`,
     `Brief:\n${o.brief.slice(0, 2500)}`,
     o.brand,
     `Real content: the main logo${o.otherLogos ? ` and ${o.otherLogos} other logo${o.otherLogos > 1 ? 's' : ''}` : ''}; ${o.partners.length ? `${o.partners.length} partner logos (${o.partners.join(', ')})` : 'no partners'}; ${o.photos ? `${o.photos} real photo${o.photos > 1 ? 's' : ''} (shown after the concept)` : 'no real photo'}.`,
@@ -305,7 +310,8 @@ export function cleanBlueprint(raw: any, opts: { partners: number; photos: numbe
     scrim,
     copy,
     keep: t(raw?.keep, 300),
-    improvements: t(raw?.improvements, 400)
+    improvements: t(raw?.improvements, 400),
+    message: t(raw?.message, 300)
   };
 }
 

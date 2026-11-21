@@ -313,8 +313,11 @@ export async function runDesignJob(job: IDesignJob): Promise<void> {
     if (!conceptMade.length) console.error('[design] No concept worked; using the design library.');
   }
   if (conceptMade.length) {
-    // The library plan stays as the fallback if a concept fails its checks.
+    // The library plan stays as the fallback if a concept fails its checks; the readers' notes
+    // (a weekday that doesn't match its date…) reach the person once.
     plan = planWithoutAI(input);
+    const notes = Array.from(new Set(conceptMade.map((o) => (o.doc as any).concept?.blueprint?.message).filter(Boolean)));
+    if (notes.length) plan.message = notes[0];
   } else if (apiKey) {
     const t0 = Date.now();
     try {
