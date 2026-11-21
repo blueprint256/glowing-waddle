@@ -404,6 +404,15 @@ export async function runDesignJob(job: IDesignJob): Promise<void> {
     const again = await renderOption({ ...r.option, doc: { ...r.option.doc, params } }, kit);
     if (checkScore(again.result.report.issues) > checkScore(r.result.report.issues)) rendered = rendered.map((x) => (x === r ? again : x));
   }
+  // A concept that still fails its checks is replaced by a library design; what failed is kept in
+  // the AI usage log (with the render and the concept), so it can be looked at and fixed.
+  for (const r of rendered.filter((x) => (x.option.doc as any).concept && hasErrors(x.result.report.issues))) {
+    const c = (r.option.doc as any).concept;
+    const renderUrl = await uploadBufferToS3(r.result.file, r.result.contentType || 'image/png', 'design-backgrounds').catch(() => '');
+    const errs = r.result.report.issues.filter((i) => i.level === 'error').map((i) => `${i.code}${i.key ? `(${i.key})` : ''}: ${i.message}`);
+    const layers = (c.blueprint?.photoLayers || []).map((l: any) => `${l.index + 1}@${[l.x, l.y, l.w, l.h].map((v: number) => Math.round(v)).join(',')}${l.matched ? '' : ' unmatched'}`);
+    await logUsage(userId, 'Design · concept checks', 'design/checks', { input: 0, output: 0 }, 0, 0, false, `${errs.join(' | ')} · render: ${renderUrl} · concept: ${c.conceptUrl} · art: ${r.option.doc.background?.url || ''} · photos: ${layers.join(' ') || 'none'}`.slice(0, 1900));
+  }
   let good = rendered.filter((r) => !hasErrors(r.result.report.issues));
   // Too few clean options: try the other designs that fit, with the same words.
   const wanted = Math.min(input.count, 2);
