@@ -164,19 +164,110 @@ export interface ConceptAsk {
 }
 
 /** One direction per option, so the options differ. With photos, every direction uses them. */
-export const DIRECTIONS_WITH_PHOTOS = [
-  'Layout: the photograph cut into a bold shape (a wide arch, a circle or a hard diagonal), set on flat brand colour, with the people breaking over its edge. A huge headline locks against the shape. Two or three flat colour blocks hold the other words. Mood: bold and graphic.',
-  'Layout: the photograph full-bleed, with a strong diagonal or angled block of brand colour cutting across one corner and carrying the words; a thin accent rule and a small date badge. Mood: cinematic, with a confident graphic overlay.',
-  'Layout: a strict grid — the photograph in one clear field, flat colour fields beside and below it in different brand colours, the words living in those fields with generous margins. A bold rule or a bar of accent colour ties them together. Mood: editorial and modern.',
-  'Layout: typography first — an enormous headline, one word in the accent colour, on flat brand colour; the photograph cropped tight on the people and tucked into the layout so it overlaps the type block. Mood: poster-first, high contrast.',
-  'Layout: the photograph fading into a deep colour field on one side, with a large circle or arch of accent colour behind the people, and the words stacked over the colour with a strong rule above them. Mood: warm and designed.'
-];
-export const DIRECTIONS_WITHOUT_PHOTOS = [
-  'Layout: graphic and illustrated, shapes, patterns and an illustrated scene in the brand colours, the words on a clean area. Mood: lively and celebratory.',
-  'Layout: typography first, a huge headline on a flat colour ground with bold geometric shapes. Mood: bold, graphic, editorial.',
-  'Layout: an atmospheric illustrated scene that fits the subject, the words together on a calm area. Mood: warm and inviting.',
-  'Layout: a strong split of two brand colours with a large simple symbol of the subject. Mood: modern and clean.'
-];
+/**
+ * Where a poster's look comes from. Nothing here is a template: an art director (a quick Claude
+ * call, `artDirections`) writes a fresh direction for every option, seeded with a random draw from
+ * these vocabularies so that no two runs start from the same idea — and so the image model doesn't
+ * fall back on its own house style. Each list holds only choices a designer would actually make,
+ * which is what keeps the randomness professional. The draw is a starting point: the art director
+ * drops anything that doesn't suit the subject.
+ */
+export const DESIGN_VOCAB: Record<string, string[]> = {
+  composition: [
+    'the photograph full-bleed with a graphic overlay system',
+    'a hard split, photograph against flat colour',
+    'a band of photograph across the middle, colour above and below',
+    'a strict grid of fields, the photograph in one of them',
+    'the photograph cut into one bold shape on flat colour',
+    'type dominant, the photograph small and placed like a stamp',
+    'overlapping layers: colour block, photograph, type crossing both',
+    'the photograph behind a large window shape cut out of a colour field',
+    'a corner-to-corner diagonal division',
+    'a wide margin frame with everything inset'
+  ],
+  photoShape: ['a hard rectangle', 'a wide arch', 'a circle', 'a tall ellipse', 'one slanted edge', 'a soft organic shape', 'a rectangle with a thick border', 'a shape that follows the people'],
+  photoPlace: ['anchored to the top edge', 'anchored to the bottom edge', 'running off the left edge', 'running off the right edge', 'centred with air around it', 'filling one corner', 'bleeding off two edges'],
+  colour: ['the primary colour dominant', 'the secondary colour dominant', 'the accent colour used large and boldly', 'a deep dark ground', 'a light paper ground with colour as accents', 'two brand colours split across the poster'],
+  type: ['an enormous headline filling its width', 'a headline stacked in tight lines', 'a medium headline with generous air', 'one huge word with the rest small', 'the headline set across two colours'],
+  accent: ['a thick rule', 'a date badge', 'an arrow', 'a repeated small pattern', 'an outlined shape', 'a large number', 'a tag or sticker shape', 'no extra ornament at all'],
+  mood: ['cinematic', 'editorial', 'celebratory', 'urgent and direct', 'calm and dignified', 'civic and formal', 'warm and human', 'bold and loud']
+};
+
+export type DesignSeed = Record<string, string>;
+
+/** One random draw: the starting point for a poster's look. */
+export function designSeed(rand: () => number = Math.random, photos = true): DesignSeed {
+  const pick = (k: string) => DESIGN_VOCAB[k][Math.floor(rand() * DESIGN_VOCAB[k].length)];
+  const seed: DesignSeed = { composition: pick('composition'), colour: pick('colour'), type: pick('type'), accent: pick('accent'), mood: pick('mood') };
+  if (photos) {
+    seed.photoShape = pick('photoShape');
+    seed.photoPlace = pick('photoPlace');
+  }
+  return seed;
+}
+
+export const seedText = (seed: DesignSeed): string => Object.entries(seed).map(([k, v]) => `${k}: ${v}`).join('; ');
+
+/** A direction written from the draw alone, when there's no Claude key to write a better one. */
+export function directionFromSeed(seed: DesignSeed, photos: boolean): string {
+  const parts = [
+    `Layout: ${seed.composition}`,
+    photos && seed.photoShape ? `the photograph cut as ${seed.photoShape}, ${seed.photoPlace}` : 'graphic shapes and an illustrated element instead of photography',
+    `${seed.colour}`,
+    `${seed.type}`,
+    seed.accent === 'no extra ornament at all' ? 'no extra ornament' : `one graphic accent: ${seed.accent}`,
+    `Mood: ${seed.mood}.`
+  ].filter(Boolean);
+  return parts.join('. ');
+}
+
+export const ART_DIRECTOR_SYSTEM = `You are the creative director of a design studio. For one poster you write the art direction each designer will work to: what the poster looks like, in a few sentences they can design from.
+
+You are given a random starting draw from the studio's design vocabulary. Treat it as a provocation, not an order: keep what suits this subject, drop or swap anything that fights it (nothing loud for a memorial, nothing playful for a formal civic notice), and add whatever the draw doesn't mention. Two posters must never come out alike, so push away from the obvious solution for this kind of subject.
+
+Each direction must describe: the composition (where the big areas are and how they divide the poster), how the photograph is used (its shape, crop and place, how type and colour blocks meet it) or what stands in for photography, how the brand colours are used, the type treatment, and one graphic idea that holds it together. Be concrete about placement and scale. Never mention specific words, dates or logos: the engine places the real ones. Never ask for a template look (corner swooshes, wavy stripes, lens flares, drop shadows everywhere).
+
+When you are asked for several directions they must differ in kind, not in detail: a different composition, a different role for the photograph and a different mood each. Four to six sentences each.`;
+
+export const ART_DIRECTOR_TOOL = {
+  name: 'write_directions',
+  description: 'The art direction for each poster option.',
+  schema: {
+    type: 'object',
+    required: ['directions'],
+    properties: {
+      directions: {
+        type: 'array',
+        items: {
+          type: 'object',
+          required: ['name', 'direction'],
+          properties: {
+            name: { type: 'string', description: 'A few words naming the idea, for the person choosing (e.g. "Arch of hands, type over colour").' },
+            direction: { type: 'string', description: 'The art direction, four to six sentences.' }
+          }
+        }
+      }
+    }
+  }
+};
+
+export function artDirectorPrompt(o: { brief: string; brand: string; sector?: string; tone?: string; format: FormatId; photos: { width: number; height: number; note?: string }[]; count: number; seeds: DesignSeed[] }): string {
+  const shape = SHAPE_WORDS[o.format] || 'a social media poster';
+  const photos = o.photos.length
+    ? `${o.photos.length} real photograph${o.photos.length > 1 ? 's' : ''} to design with (shown after this${o.photos.map((p) => `; ${p.width}×${p.height}${p.note ? `, ${p.note}` : ''}`).join('')}). The people in them must stay recognisable and uncut.`
+    : 'No photograph: the poster is graphic or illustrated.';
+  return [
+    `Poster: ${shape}.`,
+    `What it's about:\n${o.brief.slice(0, 1200)}`,
+    o.brand,
+    o.sector || o.tone ? `The organisation: ${[o.sector, o.tone].filter(Boolean).join('; ')}.` : '',
+    photos,
+    `Write ${o.count} art direction${o.count > 1 ? 's' : ''}, clearly different from each other.`,
+    `Random draw${o.count > 1 ? 's' : ''} from the studio vocabulary to work from:\n${o.seeds.map((s, i) => `${o.count > 1 ? `${i + 1}. ` : ''}${seedText(s)}`).join('\n')}`
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+}
 
 /** The poster may be a little wider or taller than the picture drawn: keep what matters off the trimmed edges. */
 function trimNote(format: FormatId): string {

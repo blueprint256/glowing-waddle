@@ -27,6 +27,9 @@ import { organicMask, refinePlace } from '../design/sceneFit';
 import { IMAGE_USAGE_MODEL_PATTERN, resolveImageModel } from '../lib/imageModels';
 import {
   POSTER_ASPECT,
+  artDirectorPrompt,
+  designSeed,
+  directionFromSeed,
   cleanCopy,
   cleanScene,
   coverFrame,
@@ -379,6 +382,21 @@ async function main() {
     check(
       pr <= a.frame.x + a.frame.w + 0.5 && covers(a.place!, a.frame) && fadeSides(b.fade).includes('right') && b.frame.h === 76 && tall.frame.h < 100 && tall.frame.h > 60 && covers(tall.place!, tall.frame) && fadeSides(tall.fade).includes('top') && head.box.x >= 65,
       `people kept in the frame (${did.join('; ')}), a group too wide fades, words off the edge (x ${head.box.x})`
+    );
+  }
+
+  // Every poster starts from a fresh draw of the design vocabulary, not a fixed list of layouts.
+  {
+    const seeds = Array.from({ length: 60 }, () => designSeed());
+    const key = (s: Record<string, string>) => Object.values(s).join('|');
+    const unique = new Set(seeds.map(key)).size;
+    const compositions = new Set(seeds.map((s) => s.composition)).size;
+    const noPhoto = designSeed(Math.random, false);
+    const text = directionFromSeed(seeds[0], true);
+    const prompt = artDirectorPrompt({ brief: 'A health camp for mothers.', brand: 'Brand: Test', format: 'portrait', photos: [{ width: 1600, height: 1600 }], count: 2, seeds: seeds.slice(0, 2) });
+    check(
+      unique >= 55 && compositions >= 6 && !noPhoto.photoShape && text.includes('Mood:') && text.length > 80 && prompt.includes('1600×1600') && prompt.includes(seeds[1].mood) && prompt.includes('2 art directions'),
+      `the look starts from a random draw (${unique}/60 different, ${compositions} compositions), and the art director is briefed with it`
     );
   }
 

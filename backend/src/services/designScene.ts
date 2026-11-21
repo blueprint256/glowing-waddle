@@ -6,10 +6,10 @@ import { cutout } from './cutout';
 import { callClaudeTool, DESIGN_MODELS, type ClaudeImage } from '../design/claude';
 import { brandText } from '../design/brief';
 import {
+  ART_DIRECTOR_SYSTEM,
+  ART_DIRECTOR_TOOL,
   BACKDROP_PROMPT,
   CONCEPT_SIZE,
-  DIRECTIONS_WITH_PHOTOS,
-  DIRECTIONS_WITHOUT_PHOTOS,
   SCENE_READER_SYSTEM,
   SCENE_TOOL,
   brandColors,
@@ -18,6 +18,10 @@ import {
   sceneDoc,
   sceneReaderPrompt,
   sceneTemplate,
+  artDirectorPrompt,
+  designSeed,
+  directionFromSeed,
+  type DesignSeed,
   type PhotoLayer,
   type Scene,
   type SceneDoc
@@ -48,8 +52,8 @@ export interface SceneInput {
   campaignLogoIds: string[];
   voice: { sector?: string; tone?: string } | null;
   count: number;
-  /** Which direction the first option takes (so one option isn't always the same layout). */
-  directionFrom: number;
+  /** The art direction for each option, written for this poster (design/scene.ts). */
+  directions: { name: string; direction: string }[];
   apiKey: string;
   userId: Id;
   today?: Date;
@@ -78,7 +82,7 @@ async function oneScene(input: SceneInput, index: number): Promise<SceneOption |
   const aspect = cw / ch;
   const refs = input.photos.slice(0, 3);
   const details = (input.brief.match(/\b(date|time|place|where|when)\s*:|\b(mon|tues|wednes|thurs|fri|satur|sun)day\b|\d{1,2}(:\d{2})?\s*(am|pm)/gim) || []).length;
-  const directions = refs.length ? DIRECTIONS_WITH_PHOTOS : DIRECTIONS_WITHOUT_PHOTOS;
+  const brief = input.directions[index % input.directions.length];
 
   // 1) The concept.
   let t0 = Date.now();
@@ -95,7 +99,7 @@ async function oneScene(input: SceneInput, index: number): Promise<SceneOption |
       partners: input.sponsors.length,
       otherLogos: input.campaignLogoIds.length,
       photos: refs.length,
-      direction: directions[(index + input.directionFrom) % directions.length]
+      direction: brief.direction
     });
     const images = await Promise.all(
       refs.map(async (p, i) => ({ buffer: await sharp(p.buffer).rotate().resize({ width: 1024, height: 1024, fit: 'inside' }).jpeg({ quality: 88 }).toBuffer(), name: `photo-${i + 1}.jpg`, contentType: 'image/jpeg' }))
@@ -197,7 +201,7 @@ async function oneScene(input: SceneInput, index: number): Promise<SceneOption |
   const id = `scene-${Date.now().toString(36)}${index}`;
   const primary = kit.logos.find((l) => l.role === 'primary');
   const doc = sceneDoc({ id, format, scene, art, photos: slots, sponsors: input.sponsors, primaryLogo: primary?.id || '', campaignLogos: input.campaignLogoIds, conceptUrl });
-  return { doc, design: sceneTemplate(scene, id, format, doc.photos), why: scene.improvements || 'Read from a concept', conceptUrl };
+  return { doc, design: sceneTemplate(scene, id, format, doc.photos), why: brief.name || scene.improvements || 'Read from a concept', conceptUrl };
 }
 
 /**
@@ -234,11 +238,53 @@ async function layeredMask(concept: Buffer, layer: PhotoLayer, userId: Id): Prom
   return `data:image/png;base64,${out.toString('base64')}`;
 }
 
+/**
+ * The art direction for each option, written for this poster by a quick model from a random draw
+ * of the studio's design vocabulary (so no two runs start alike), about a tenth of a US cent for
+ * the whole run. Without a key, or if it fails, the draw itself is the direction.
+ */
+async function artDirections(input: Omit<SceneInput, 'directions'>, n: number): Promise<{ name: string; direction: string }[]> {
+  const photos = input.photos.slice(0, 3);
+  const seeds: DesignSeed[] = Array.from({ length: n }, () => designSeed(Math.random, photos.length > 0));
+  const fallback = seeds.map((seed, i) => ({ name: `Direction ${i + 1}`, direction: directionFromSeed(seed, photos.length > 0) }));
+  if (!input.apiKey) return fallback;
+  const started = Date.now();
+  try {
+    const images: ClaudeImage[] = [];
+    for (const [i, p] of photos.entries()) images.push({ ...(await small(p.buffer, 448)), label: `Photograph ${i + 1}:` });
+    const res = await callClaudeTool<{ directions: { name: string; direction: string }[] }>({
+      apiKey: input.apiKey,
+      model: DESIGN_MODELS.quick,
+      system: ART_DIRECTOR_SYSTEM,
+      context: brandText(input.kit),
+      prompt: artDirectorPrompt({
+        brief: input.brief,
+        brand: '',
+        sector: input.voice?.sector,
+        tone: input.voice?.tone,
+        format: input.format,
+        photos: photos.map((p) => ({ width: p.slot.width, height: p.slot.height, note: p.description })),
+        count: n,
+        seeds
+      }),
+      images,
+      tool: ART_DIRECTOR_TOOL,
+      maxTokens: 1800
+    });
+    await input.log('Design · art direction', `anthropic/${res.model}`, res.usage, res.cost, Date.now() - started);
+    const out = (res.input.directions || []).filter((d) => d && typeof d.direction === 'string' && d.direction.trim().length > 40).map((d, i) => ({ name: String(d.name || `Direction ${i + 1}`).slice(0, 80), direction: d.direction.trim().slice(0, 1200) }));
+    return out.length ? Array.from({ length: n }, (_, i) => out[i % out.length]) : fallback;
+  } catch (error: any) {
+    await input.log('Design · art direction', `anthropic/${DESIGN_MODELS.quick}`, { input: 0, output: 0 }, 0, Date.now() - started, false, error?.message);
+    console.error('[design] Art direction failed, using the random draw:', error?.message);
+    return fallback;
+  }
+}
+
 /** The options for a poster, made side by side; those that fail are left out. */
-export async function sceneOptions(input: Omit<SceneInput, 'directionFrom'> & { directionFrom?: number }): Promise<SceneOption[]> {
+export async function sceneOptions(input: Omit<SceneInput, 'directions'> & { directions?: SceneInput['directions'] }): Promise<SceneOption[]> {
   const n = Math.max(1, Math.min(4, input.count));
-  const from = input.directionFrom ?? Math.floor(Math.random() * DIRECTIONS_WITH_PHOTOS.length);
-  const job: SceneInput = { ...input, directionFrom: from };
+  const job: SceneInput = { ...input, directions: input.directions?.length ? input.directions : await artDirections(input, n) };
   const made = await Promise.all(Array.from({ length: n }, (_, i) => oneScene(job, i).catch((e) => (console.error('[design] Option failed:', e?.message), null))));
   return made.filter((o): o is SceneOption => !!o);
 }

@@ -38,15 +38,23 @@ There is no fixed library of templates: each poster's layout comes from its own 
 | backdrop | art the image model made (with its words, logos and photos removed), or a plain colour or gradient drawn in code |
 | shape | colour blocks, bands, circles, pills, slanted panels and arches, drawn in code |
 | photo | a real photo's own pixels in a frame (rectangle, rounded, circle, arch, slanted, soft blob or a traced organic shape), with the part of the photo shown, a fade, a brand-colour wash or duotone, and people breaking out of the frame (a cut-out of them on top) |
-| text | the real words (eyebrow, headline, subhead, details, button, badge, contact), fitted to their boxes in the brand fonts |
+| text | the real words (eyebrow, headline, subhead, details, button, badge, contact), fitted to their boxes in the brand fonts; a phrase marked with *stars* takes a second brand colour |
 | logo, partners | the real logo files (with their versions and clear space) and one strip of partner logos |
 
 For each option, side by side (`services/designScene.ts`):
 
+0. **Art direction.** There is no list of layouts. For each run a random draw is made from the
+   studio's design vocabulary (`DESIGN_VOCAB`: composition, the photo's shape and place, colour,
+   type, one graphic accent, mood — thousands of combinations), and a quick Claude call turns the
+   draw into a written art direction for each option, judged against the subject and the photos
+   (about a tenth of a cent for the whole run). Without a Claude key the draw itself is the
+   direction. This is what keeps posters from looking alike while staying designed.
 1. **Concept.** The poster image model (Settings › AI › Image models › Posters: GPT-Image-2.5 by
-   default, or Qwen-Image on fal.ai) designs the poster *with the post's photos*: it crops them,
-   cuts them into shapes, fades them, lets people overlap a frame, the way a designer would. It is
-   told never to add, remove or change people. Each option gets a different direction.
+   default, or Qwen-Image on fal.ai) designs to that direction *with the post's photos*: it crops
+   them, cuts them into shapes, fades them, lets people overlap a frame, the way a designer would.
+   It is told never to add, remove or change people, and that the photograph is one element of a
+   designed poster rather than the poster itself. Its pixels are never used, so it is not asked to
+   reproduce the photograph faithfully: that would make it place the photo instead of designing.
 2. **Reading.** Claude (Sonnet) reads the concept and the real photos into a scene: where every
    layer goes, each photo's frame and treatment and which part of the real photo it shows, the
    brand's colours, and the real words from the brief (dates checked against the weekday).
@@ -70,7 +78,8 @@ The finished poster always shows the photos' own pixels: no image model redraws 
 "Photo: …" notes stay off), stacked so nothing collides, in the brand's colours.
 
 **Cost per option**: a concept (about 2 US cents), Claude's reading (about 2), a backdrop edit only
-for art (about 2), cut-outs half a cent per photo once. About 4–7 cents an option.
+for art (about 2), cut-outs half a cent per photo once, and the art direction about a tenth of a
+cent for the whole run. About 4–7 cents an option.
 
 ## The checks (every option, before anyone sees it)
 
