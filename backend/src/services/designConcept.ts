@@ -164,7 +164,11 @@ async function oneConcept(input: ConceptInput, index: number): Promise<ConceptOp
       if (place) layers.push({ index: i, x: place.x, y: place.y, w: place.w, h: place.h, matched: place.matched });
     }
     if (!layers.length) {
-      console.error('[design] The keyed art showed no photo areas; this option is dropped.');
+      // Kept for a look (system admins see it in the AI usage log): what the image model painted.
+      const keyedUrl = await uploadBufferToS3(await sharp(artBuf).jpeg({ quality: 80 }).toBuffer(), 'image/jpeg', 'design-backgrounds').catch(() => '');
+      const note = `No photo areas found in the keyed art (key strength ${keyed.strength.map((v) => v.toFixed(2)).join('/')}): ${keyedUrl} · concept: ${conceptUrl}`;
+      console.error('[design] ' + note);
+      await input.log('Design · photo areas', 'design/photo-fit', { input: 0, output: 0 }, 0, 0, false, note);
       return null;
     }
     bp.photoLayers = layers;

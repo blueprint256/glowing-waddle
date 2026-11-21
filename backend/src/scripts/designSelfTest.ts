@@ -368,7 +368,8 @@ async function main() {
     const panel = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="120"><rect width="400" height="120" fill="#7b2d8e"/></svg>');
     const base = () => sharp({ create: { width: W, height: H, channels: 3, background: '#0f2a5c' } });
     const concept = await base().composite([{ input: placed, left: 0, top: 250 }, { input: panel, left: 0, top: 0 }]).jpeg().toBuffer();
-    const fade = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="350"><defs><linearGradient id="f" x2="0" y2="1"><stop offset="0" stop-color="#00ff00" stop-opacity="0"/><stop offset=".2" stop-color="#00ff00"/></linearGradient></defs><rect width="400" height="350" fill="url(#f)"/></svg>');
+    // The model's "bright green" is rarely pure: rgb(60, 215, 80).
+    const fade = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="350"><defs><linearGradient id="f" x2="0" y2="1"><stop offset="0" stop-color="#3cd750" stop-opacity="0"/><stop offset=".2" stop-color="#3cd750"/></linearGradient></defs><rect width="400" height="350" fill="url(#f)"/></svg>');
     const keyed = await base().composite([{ input: fade, left: 0, top: 250 }, { input: panel, left: 0, top: 0 }]).png().toBuffer();
     const k = await keyMasks(keyed, 2);
     const px = async (x: number, y: number) => { const { data } = await sharp(k.artPng).extract({ left: x, top: y, width: 1, height: 1 }).raw().toBuffer({ resolveWithObject: true }); return [...data]; };

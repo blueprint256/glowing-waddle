@@ -405,8 +405,8 @@ export function plannedDocs(plan: DirectorPlan, input: DirectorInput, background
 }
 
 /** The "Poster facts" lines a plan (or a person) wrote in a brief, and the brief without them. */
-export function factsInBrief(brief: string): { text: string; headline?: string; date?: string; time?: string; place?: string; figures: string[] } {
-  const out: { text: string; headline?: string; date?: string; time?: string; place?: string; figures: string[] } = { text: '', figures: [] };
+export function factsInBrief(brief: string): { text: string; headline?: string; date?: string; time?: string; place?: string; cta?: string; figures: string[] } {
+  const out: { text: string; headline?: string; date?: string; time?: string; place?: string; cta?: string; figures: string[] } = { text: '', figures: [] };
   const kept: string[] = [];
   for (const raw of brief.split(/\r?\n/)) {
     const line = raw.replace(/^\s*[-•*]\s*/, '').trim();
@@ -424,7 +424,18 @@ export function factsInBrief(brief: string): { text: string; headline?: string; 
     else if (key === 'place' || key === 'where' || key === 'venue') out.place = value;
     else out.figures.push(...value.split(/\s*;\s*/).filter(Boolean));
   }
-  out.text = kept.join(' ').replace(/\s+/g, ' ').trim();
+  // Labels written inside prose ("… Call to action: Volunteer with us. Photo: our volunteers."):
+  // the call to action is kept for the button; notes about the picture never reach the poster.
+  const prose = kept.join(' ').replace(/\s+/g, ' ').trim();
+  out.text = prose
+    .split(/(?<=[.!?])\s+/)
+    .filter((sentence) => {
+      const m = sentence.match(/^(call to action|cta|photo|picture|picture idea|image)\s*:\s*(.+?)[.!]?$/i);
+      if (!m) return true;
+      if (/^(call to action|cta)$/i.test(m[1])) out.cta = m[2].trim();
+      return false;
+    })
+    .join(' ');
   return out;
 }
 
@@ -458,7 +469,7 @@ export function planWithoutAI(input: DirectorInput): DirectorPlan {
   const options: PlanOption[] = [];
   for (let i = 0; i < input.count && fitting.length; i++) options.push({ design: fitting[i % fitting.length].id, photos: [((i % Math.max(1, input.photos.length)) || 0) + 1] });
   return {
-    copy: { headline: headline.replace(/[.!]+$/, ''), subhead, eyebrow: input.campaign?.name, details: details.length ? details : undefined, stats: stats.length ? stats : undefined },
+    copy: { headline: headline.replace(/[.!]+$/, ''), subhead, cta: facts.cta, eyebrow: input.campaign?.name, details: details.length ? details : undefined, stats: stats.length ? stats : undefined },
     options
   };
 }

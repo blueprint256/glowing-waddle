@@ -23,6 +23,8 @@ export interface KeyResult {
   height: number;
   /** One per key colour: 1 where that photo shows (0..255 coverage). */
   masks: Uint8Array[];
+  /** How strongly each key was painted (0..1 of the ideal key; 0 when it wasn't found). */
+  strength: number[];
   /** Share of the poster each photo covers (0..1). */
   areas: number[];
   /** The art layer: a PNG with the photo areas transparent. */
@@ -53,18 +55,46 @@ export async function keyMasks(keyed: Buffer, count: number): Promise<KeyResult>
   const masks = keys.map(() => new Uint8Array(n));
   const owner = new Int8Array(n).fill(-1);
   const amount = new Float32Array(n);
+  const best = new Int8Array(n).fill(-1);
   for (let i = 0; i < n; i++) {
-    let best = -1;
     let bv = 0;
     for (let k = 0; k < keys.length; k++) {
       const v = keyAmount(data[i * 3], data[i * 3 + 1], data[i * 3 + 2], k);
       if (v > bv) {
         bv = v;
-        best = k;
+        best[i] = k;
       }
     }
     amount[i] = bv;
-    if (bv >= 0.8) owner[i] = best; // solid key
+  }
+  // The image model rarely paints a pure key (a "bright green" may come out as rgb(60, 215, 80)):
+  // each key's full strength is what its strongest areas reach, and amounts are read against it.
+  const full = keys.map((_, k) => {
+    const hist = new Uint32Array(101);
+    let count = 0;
+    for (let i = 0; i < n; i++) {
+      if (best[i] === k && amount[i] >= 0.3) {
+        hist[Math.round(amount[i] * 100)]++;
+        count++;
+      }
+    }
+    if (count < n * 0.003) return 0;
+    let seen = 0;
+    for (let v = 100; v >= 0; v--) {
+      seen += hist[v];
+      // Under half the ideal key, it's an ordinary colour (a purple panel), not a painted key.
+      if (seen >= count * 0.2) return v >= 50 ? v / 100 : 0;
+    }
+    return 0;
+  });
+  for (let i = 0; i < n; i++) {
+    const k = best[i];
+    if (k < 0 || !full[k]) {
+      amount[i] = 0;
+      continue;
+    }
+    amount[i] = Math.min(1, amount[i] / full[k]);
+    if (amount[i] >= 0.8) owner[i] = k; // solid key
   }
   // Grow each solid area through pixels that still hold some of the same key.
   const queue = new Int32Array(n);
@@ -78,13 +108,26 @@ export async function keyMasks(keyed: Buffer, count: number): Promise<KeyResult>
     const nb = [x > 0 ? i - 1 : -1, x < width - 1 ? i + 1 : -1, i - width, i + width];
     for (const j of nb) {
       if (j < 0 || j >= n || owner[j] >= 0) continue;
-      const v = keyAmount(data[j * 3], data[j * 3 + 1], data[j * 3 + 2], k);
+      const v = Math.min(1, keyAmount(data[j * 3], data[j * 3 + 1], data[j * 3 + 2], k) / full[k]);
       if (v < 0.04) continue;
       owner[j] = k;
       amount[j] = v;
       queue[qt++] = j;
     }
   }
+  const painted = keys.map((key, k) => {
+    const sum = [0, 0, 0];
+    let c = 0;
+    for (let i = 0; i < n; i += 7) {
+      if (owner[i] === k && amount[i] >= 0.95) {
+        sum[0] += data[i * 3];
+        sum[1] += data[i * 3 + 1];
+        sum[2] += data[i * 3 + 2];
+        c++;
+      }
+    }
+    return c ? sum.map((v) => v / c) : key;
+  });
   const out = Buffer.alloc(n * 4);
   for (let i = 0; i < n; i++) {
     const r = data[i * 3];
@@ -99,10 +142,11 @@ export async function keyMasks(keyed: Buffer, count: number): Promise<KeyResult>
       continue;
     }
     const a = amount[i] >= 0.8 ? 1 : amount[i];
+    // Un-mixing uses the key as the model painted it, not the ideal one.
     masks[k][i] = Math.round(a * 255);
     // Un-mix: pixel = a·key + (1 − a)·art, so art = (pixel − a·key) / (1 − a).
     const keep = 1 - a;
-    const kc = keys[k];
+    const kc = painted[k];
     const un = (c: number, kv: number) => (keep > 0.08 ? Math.max(0, Math.min(255, Math.round((c - a * kv) / keep))) : 0);
     out[i * 4] = un(r, kc[0]);
     out[i * 4 + 1] = un(g, kc[1]);
@@ -129,7 +173,7 @@ export async function keyMasks(keyed: Buffer, count: number): Promise<KeyResult>
     areas[k] = 0;
   });
   const artPng = await sharp(out, { raw: { width, height, channels: 4 } }).png({ compressionLevel: 8 }).toBuffer();
-  return { width, height, masks, areas, artPng };
+  return { width, height, masks, areas, artPng, strength: full };
 }
 
 export interface Placement {
