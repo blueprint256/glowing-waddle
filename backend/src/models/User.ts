@@ -29,6 +29,36 @@ export function canUseAI(user: { role: UserRole; accessMode?: string }): boolean
   return user.accessMode !== AccessMode.PART_TWO;
 }
 
+/**
+ * True when the user may connect an AI assistant (e.g. Claude via our MCP connector) to their account.
+ * Enabled for everyone by default; a System Admin can switch it off per account.
+ * Deactivated accounts can never use the connector.
+ */
+export function canUseConnector(user: { isActive?: boolean; mcpEnabled?: boolean }): boolean {
+  return user.isActive !== false && user.mcpEnabled !== false;
+}
+
+/**
+ * True when the user may use Blue, the in-app AI assistant (runs on the app's own AI keys).
+ * Available to every user by default, whatever their Part; a System Admin can switch it off per account.
+ */
+export function canUseBlue(user: { isActive?: boolean; assistantEnabled?: boolean }): boolean {
+  return user.isActive !== false && user.assistantEnabled !== false;
+}
+
+/**
+ * True when the user may use the Library (Aggregator): upload past work, versions, AI search.
+ * On for everyone by default; a System Admin can switch it off per account.
+ */
+export function canUseLibrary(user: { isActive?: boolean; libraryEnabled?: boolean }): boolean {
+  return user.isActive !== false && user.libraryEnabled !== false;
+}
+
+/** Publishing (scheduling and posting to social accounts) is on unless an admin turned it off for this user. */
+export function canUsePublishing(user: { isActive?: boolean; publishingEnabled?: boolean }): boolean {
+  return user.isActive !== false && user.publishingEnabled !== false;
+}
+
 export interface IUser extends Document {
   email: string;
   password?: string;
@@ -38,6 +68,22 @@ export interface IUser extends Document {
   lastName: string;
   role: UserRole;
   accessMode: AccessMode;
+  /** Claude connector (MCP) access, toggled by a System Admin. Default true. */
+  mcpEnabled: boolean;
+  /** Blue (in-app assistant) access, toggled by a System Admin. Default true. */
+  assistantEnabled: boolean;
+  /** Library (Aggregator) access, toggled by a System Admin. Default true. */
+  libraryEnabled: boolean;
+  publishingEnabled: boolean;
+  /** Labels a System Admin gives users to target Inbox messages (e.g. "pharmacy", "vip"). */
+  tags: string[];
+  /**
+   * Monthly AI allowance set by a System Admin for this account. null (or missing) uses the
+   * workspace default; 0 means no limit. See services/aiAllowance.ts.
+   */
+  aiAllowance?: { images?: number | null; designs?: number | null; blueMessages?: number | null };
+  /** Inbox reminder types this user turned off (only optional ones, e.g. "post_upcoming"). */
+  inboxMuted: string[];
   isActive: boolean;
   companyInfo?: {
     companyName?: string;
@@ -113,6 +159,35 @@ const userSchema = new Schema<IUser>(
       type: String,
       enum: Object.values(AccessMode),
       default: AccessMode.PART_ONE
+    },
+    mcpEnabled: {
+      type: Boolean,
+      default: true
+    },
+    assistantEnabled: {
+      type: Boolean,
+      default: true
+    },
+    libraryEnabled: {
+      type: Boolean,
+      default: true
+    },
+    publishingEnabled: {
+      type: Boolean,
+      default: true
+    },
+    tags: {
+      type: [String],
+      default: []
+    },
+    aiAllowance: {
+      images: { type: Number, default: null, min: 0 },
+      designs: { type: Number, default: null, min: 0 },
+      blueMessages: { type: Number, default: null, min: 0 }
+    },
+    inboxMuted: {
+      type: [String],
+      default: []
     },
     isActive: {
       type: Boolean,

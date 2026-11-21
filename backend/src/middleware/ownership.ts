@@ -81,7 +81,7 @@ export const checkProjectOwnership = async (
     if (!project) {
       res.status(404).json({
         success: false,
-        message: 'Project not found'
+        message: 'Theme not found'
       });
       return;
     }
@@ -105,7 +105,7 @@ export const checkProjectOwnership = async (
     if (campaign.createdBy.toString() !== req.user._id.toString()) {
       res.status(403).json({
         success: false,
-        message: 'Access denied: You can only access projects under campaigns you created'
+        message: 'Access denied: You can only access themes under campaigns you created'
       });
       return;
     }
@@ -114,7 +114,7 @@ export const checkProjectOwnership = async (
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: 'Error checking project ownership'
+      message: 'Error checking theme ownership'
     });
   }
 };
@@ -143,7 +143,7 @@ export const checkTaskOwnership = async (
     if (!task) {
       res.status(404).json({
         success: false,
-        message: 'Task not found'
+        message: 'Post not found'
       });
       return;
     }
@@ -153,21 +153,12 @@ export const checkTaskOwnership = async (
       return next();
     }
 
-    // Check ownership through parent campaign
-    const campaign = await Campaign.findById(task.campaignId);
-    if (!campaign) {
+    // A post belongs to an account (ownerId), with or without a campaign. Others' posts are
+    // reported as missing, so their ids aren't confirmed.
+    if (String(task.ownerId) !== String(req.user._id)) {
       res.status(404).json({
         success: false,
-        message: 'Parent campaign not found'
-      });
-      return;
-    }
-
-    // Hybrid users can only access tasks under campaigns they created
-    if (campaign.createdBy.toString() !== req.user._id.toString()) {
-      res.status(403).json({
-        success: false,
-        message: 'Access denied: You can only access tasks under campaigns you created'
+        message: 'Post not found'
       });
       return;
     }
@@ -176,7 +167,7 @@ export const checkTaskOwnership = async (
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: 'Error checking task ownership'
+      message: 'Error checking post ownership'
     });
   }
 };

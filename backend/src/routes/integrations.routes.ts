@@ -6,134 +6,11 @@ import { AppConfig } from '../models/AppConfig';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { DEFAULT_IMAGE_MODEL, IMAGE_MODELS, SELECTABLE_IMAGE_MODELS, resolveImageModel } from '../lib/imageModels';
 
 const router = express.Router();
 
-/**
- * @route   GET /api/integrations/canva
- * @desc    Initiate Canva OAuth flow
- * @access  Private
- */
-router.get('/canva', isAuthenticated, (req: Request, res: Response) => {
-  const clientId = process.env.CANVA_CLIENT_ID;
-  const redirectUri = process.env.CANVA_CALLBACK_URL || 'http://localhost:5000/api/integrations/canva/callback';
-  const state = req.user?._id.toString();
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-
-  console.log('Canva OAuth initiated by user:', req.user?.email);
-  console.log('Canva Client ID configured:', !!clientId);
-
-  if (!clientId) {
-    console.error('Canva Client ID not configured');
-    // Redirect to frontend with error instead of returning JSON
-    return res.redirect(`${frontendUrl}/settings?integration=canva&status=error&message=not_configured`);
-  }
-
-  // For demo purposes, we'll simulate a successful connection without actual Canva OAuth
-  // In production, you would use the actual Canva OAuth URL
-  // const canvaAuthUrl = `https://www.canva.com/api/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=${state}&scope=design:read design:content:read`;
-
-  // For now, redirect directly to callback with a demo code
-  console.log('Demo mode: Simulating Canva OAuth success');
-  const demoCode = `demo_${Date.now()}`;
-  res.redirect(`${redirectUri}?code=${demoCode}&state=${state}`);
-});
-
-/**
- * @route   GET /api/integrations/canva/callback
- * @desc    Canva OAuth callback
- * @access  Public
- */
-router.get('/canva/callback', async (req: Request, res: Response) => {
-  const { code, state, error: oauthError } = req.query;
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-
-  console.log('Canva callback received:', { code: !!code, state: !!state, error: oauthError });
-
-  if (oauthError) {
-    console.error('Canva OAuth error:', oauthError);
-    return res.redirect(`${frontendUrl}/settings?integration=canva&status=error&message=${oauthError}`);
-  }
-
-  if (!code || !state) {
-    console.error('Missing code or state in callback');
-    return res.redirect(`${frontendUrl}/settings?integration=canva&status=error&message=missing_params`);
-  }
-
-  try {
-    // In a real implementation, you would exchange the code for an access token
-    // For now, we'll simulate a successful connection
-    const userId = state as string;
-    const user = await User.findById(userId);
-
-    if (!user) {
-      console.error('User not found for ID:', userId);
-      return res.redirect(`${frontendUrl}/settings?integration=canva&status=error&message=user_not_found`);
-    }
-
-    console.log('Connecting Canva for user:', user.email);
-
-    // Update user's Canva integration (in a real app, you'd exchange code for token)
-    if (!user.integrations) {
-      user.integrations = {};
-    }
-    if (!user.integrations.canva) {
-      user.integrations.canva = {
-        connected: false
-      };
-    }
-
-    user.integrations.canva = {
-      accessToken: code as string, // In production, exchange code for actual token
-      connected: true,
-      connectedAt: new Date()
-    };
-
-    await user.save();
-
-    console.log('Canva integration saved successfully for:', user.email);
-    res.redirect(`${frontendUrl}/settings?integration=canva&status=success`);
-  } catch (error) {
-    console.error('Canva callback error:', error);
-    res.redirect(`${frontendUrl}/settings?integration=canva&status=error&message=server_error`);
-  }
-});
-
-/**
- * @route   POST /api/integrations/canva/disconnect
- * @desc    Disconnect Canva integration
- * @access  Private
- */
-router.post('/canva/disconnect', isAuthenticated, async (req: Request, res: Response) => {
-  try {
-    const user = await User.findById(req.user?._id);
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-
-    if (user.integrations?.canva) {
-      user.integrations.canva = {
-        connected: false
-      };
-      await user.save();
-    }
-
-    res.json({
-      success: true,
-      message: 'Canva integration disconnected'
-    });
-  } catch (error) {
-    console.error('Canva disconnect error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to disconnect Canva integration'
-    });
-  }
-});
+// Canva connect / Edit in Canva: see canva.routes.ts (mounted at /api/integrations/canva).
 
 /**
  * @route   GET /api/integrations/status
@@ -157,16 +34,16 @@ router.get('/status', isAuthenticated, async (req: Request, res: Response) => {
       const config = await AppConfig.getConfig();
       llmProviders = {
         openai: {
-          configured: !!config.openAIApiKey
+          configured: !!(config.openAIApiKey || process.env.OPENAI_API_KEY)
         },
         anthropic: {
-          configured: !!config.anthropicApiKey
+          configured: !!(config.anthropicApiKey || process.env.ANTHROPIC_API_KEY)
         },
         grok: {
-          configured: !!config.grokApiKey
+          configured: !!(config.grokApiKey || process.env.GROK_API_KEY)
         },
         gemini: {
-          configured: !!config.geminiApiKey
+          configured: !!(config.geminiApiKey || process.env.GEMINI_API_KEY)
         }
       };
     }
@@ -175,7 +52,8 @@ router.get('/status', isAuthenticated, async (req: Request, res: Response) => {
       success: true,
       integrations: {
         canva: {
-          connected: user.integrations?.canva?.connected || false,
+          // Only real (encrypted) Canva sign-ins count; the old demo connection stored no real token.
+          connected: Boolean(user.integrations?.canva?.connected && String(user.integrations?.canva?.accessToken || '').startsWith('g1:')),
           connectedAt: user.integrations?.canva?.connectedAt
         },
         ...(req.user?.role === UserRole.SYSTEM_ADMIN && llmProviders)
@@ -201,7 +79,9 @@ router.get('/openai/status', isAuthenticated, isSystemAdmin, async (req: Request
 
     res.json({
       success: true,
-      configured: !!config.openAIApiKey,
+      configured: !!(config.openAIApiKey || process.env.OPENAI_API_KEY),
+      // 'settings' = saved in the app; 'server' = from the server's .env (OPENAI_API_KEY)
+      source: config.openAIApiKey ? 'settings' : process.env.OPENAI_API_KEY ? 'server' : null,
       updatedAt: config.openAIKeyUpdatedAt,
       updatedBy: config.openAIKeyUpdatedBy
     });
@@ -943,18 +823,20 @@ router.patch('/llm/default', isAuthenticated, isSystemAdmin, async (req: Request
 
 /**
  * @route   GET /api/integrations/image-llm/default
- * @desc    Get default Image LLM configuration (Admin only)
+ * @desc    The image model used for pictures (Admin only). See lib/imageModels.ts.
  * @access  Private (System Admin)
- * @note    RESTRICTED: Only gpt-image-1.5 is supported for image generation
  */
 router.get('/image-llm/default', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
   try {
     const config = await AppConfig.getConfig();
-
+    const stored = config.defaultImageLLMModel || DEFAULT_IMAGE_MODEL;
     res.json({
       success: true,
-      defaultProvider: config.defaultImageLLMProvider || 'openai',
-      defaultModel: config.defaultImageLLMModel || 'gpt-image-1.5'
+      defaultProvider: 'openai',
+      defaultModel: resolveImageModel('create', stored),
+      editModel: resolveImageModel('edit', stored),
+      storedModel: stored,
+      models: IMAGE_MODELS.filter((m) => !m.retired).map((m) => ({ id: m.id, label: m.label }))
     });
   } catch (error: any) {
     console.error('Get default Image LLM config error:', error);
@@ -967,64 +849,47 @@ router.get('/image-llm/default', isAuthenticated, isSystemAdmin, async (req: Req
 
 /**
  * @route   PATCH /api/integrations/image-llm/default
- * @desc    Set default Image LLM configuration (Admin only)
+ * @desc    Set the image model (Admin only): one of the current OpenAI image models.
  * @access  Private (System Admin)
- * @note    RESTRICTED: Only gpt-image-1.5 is supported for image generation
  */
 router.patch('/image-llm/default', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
   try {
     const { provider, model } = req.body;
 
-    if (!provider || !model) {
+    if ((provider && provider !== 'openai') || typeof model !== 'string' || !SELECTABLE_IMAGE_MODELS.includes(model)) {
       return res.status(400).json({
         success: false,
-        message: 'Provider and model are required'
-      });
-    }
-
-    // ENFORCED: Only OpenAI with gpt-image-1.5 is allowed
-    if (provider !== 'openai') {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid provider. Only "openai" is supported for image generation.'
-      });
-    }
-
-    if (model !== 'gpt-image-1.5') {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid model. Only "gpt-image-1.5" is supported for image generation.'
+        message: `Pick one of these image models: ${SELECTABLE_IMAGE_MODELS.join(', ')}.`
       });
     }
 
     const config = await AppConfig.getConfig();
 
-    // Check if OpenAI API key is configured
-    if (!config.openAIApiKey) {
+    if (!config.openAIApiKey && !process.env.OPENAI_API_KEY) {
       return res.status(400).json({
         success: false,
-        message: 'Cannot set OpenAI as default image provider. No OpenAI API key configured.'
+        message: 'Add an OpenAI API key first: pictures are made with OpenAI.'
       });
     }
 
     config.defaultImageLLMProvider = 'openai';
-    config.defaultImageLLMModel = 'gpt-image-1.5';
-
+    config.defaultImageLLMModel = model;
     await config.save();
 
-    console.log(`Default Image LLM config updated by ${req.user!.email}: openai/gpt-image-1.5`);
+    console.log(`Image model updated by ${req.user!.email}: openai/${model}`);
 
     res.json({
       success: true,
-      message: 'Default Image LLM configuration saved successfully',
-      defaultProvider: config.defaultImageLLMProvider,
-      defaultModel: config.defaultImageLLMModel
+      message: 'Image model saved',
+      defaultProvider: 'openai',
+      defaultModel: resolveImageModel('create', model),
+      editModel: resolveImageModel('edit', model)
     });
   } catch (error: any) {
     console.error('Set default Image LLM config error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to save default Image LLM configuration'
+      message: 'Failed to save the image model'
     });
   }
 });

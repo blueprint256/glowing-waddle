@@ -115,7 +115,7 @@ export const canAssignToProject = (
 
   res.status(403).json({
     success: false,
-    message: 'Insufficient permissions to assign users to projects'
+    message: 'Insufficient permissions to assign users to themes'
   });
 };
 

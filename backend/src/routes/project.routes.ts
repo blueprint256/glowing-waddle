@@ -1,13 +1,16 @@
 import express, { Request, Response } from 'express';
+import { Task } from '../models/Task';
 import { Project, ProjectRole, ProjectStatus } from '../models/Project';
 import { Campaign } from '../models/Campaign';
 import { UserRole } from '../models/User';
 import { isAuthenticated } from '../middleware/auth';
 import { canCreateCampaign, canAssignToProject } from '../middleware/rbac';
 import { checkProjectOwnership } from '../middleware/ownership';
-import { validateProjectCreation, validateMongoId } from '../middleware/validation';
+import { validateProjectCreation, validateProjectUpdate, validateProjectAssignment, validateMongoId } from '../middleware/validation';
+import { User } from '../models/User';
 import { logAudit, logProjectAssignment } from '../utils/auditLogger';
 import { AuditAction } from '../models/AuditLog';
+import { searchRegex } from '../utils/regex';
 import mongoose from 'mongoose';
 
 const router = express.Router();
@@ -35,7 +38,7 @@ router.post('/', isAuthenticated, canCreateCampaign, validateProjectCreation, as
       if (campaign.createdBy.toString() !== req.user!._id.toString()) {
         return res.status(403).json({
           success: false,
-          message: 'Access denied: You can only create projects under campaigns you created'
+          message: 'Access denied: You can only create themes under campaigns you created'
         });
       }
     }
@@ -68,14 +71,14 @@ router.post('/', isAuthenticated, canCreateCampaign, validateProjectCreation, as
 
     res.status(201).json({
       success: true,
-      message: 'Project created successfully',
+      message: 'Theme created successfully',
       project: populatedProject
     });
   } catch (error: any) {
     console.error('Error creating project:', error);
     res.status(500).json({
       success: false,
-      message: 'Error creating project'
+      message: 'Error creating theme'
     });
   }
 });
@@ -123,11 +126,11 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
     }
 
     // Global search across project names and descriptions
-    if (req.query.search) {
-      const searchRegex = new RegExp(req.query.search as string, 'i');
+    const searchPattern = searchRegex(req.query.search);
+    if (searchPattern) {
       query.$or = [
-        { name: searchRegex },
-        { description: searchRegex }
+        { name: searchPattern },
+        { description: searchPattern }
       ];
     }
 
@@ -181,7 +184,7 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
     console.error('Error fetching projects:', error);
     res.status(500).json({
       success: false,
-      message: 'Error fetching projects'
+      message: 'Error fetching themes'
     });
   }
 });
@@ -202,7 +205,7 @@ router.get('/:id', isAuthenticated, validateMongoId('id'), checkProjectOwnership
     if (!project) {
       return res.status(404).json({
         success: false,
-        message: 'Project not found'
+        message: 'Theme not found'
       });
     }
 
@@ -214,7 +217,7 @@ router.get('/:id', isAuthenticated, validateMongoId('id'), checkProjectOwnership
     console.error('Error fetching project:', error);
     res.status(500).json({
       success: false,
-      message: 'Error fetching project'
+      message: 'Error fetching theme'
     });
   }
 });
@@ -224,13 +227,13 @@ router.get('/:id', isAuthenticated, validateMongoId('id'), checkProjectOwnership
  * @desc    Update project (with ownership check)
  * @access  Private (System Admin, Hybrid)
  */
-router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), checkProjectOwnership, async (req: Request, res: Response) => {
+router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), validateProjectUpdate, checkProjectOwnership, async (req: Request, res: Response) => {
   try {
     const project = await Project.findById(req.params.id);
     if (!project) {
       return res.status(404).json({
         success: false,
-        message: 'Project not found'
+        message: 'Theme not found'
       });
     }
 
@@ -262,15 +265,37 @@ router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), ch
 
     res.json({
       success: true,
-      message: 'Project updated successfully',
+      message: 'Theme updated successfully',
       project: updatedProject
     });
   } catch (error: any) {
     console.error('Error updating project:', error);
     res.status(500).json({
       success: false,
-      message: 'Error updating project'
+      message: 'Error updating theme'
     });
+  }
+});
+
+/**
+ * @route   DELETE /api/projects/:id
+ * @desc    Delete an empty theme. A theme that still has posts is refused: move or delete them first.
+ * @access  Private (System Admin, Hybrid owner)
+ */
+router.delete('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), checkProjectOwnership, async (req: Request, res: Response) => {
+  try {
+    const project = await Project.findById(req.params.id);
+    if (!project) return res.status(404).json({ success: false, message: 'Theme not found' });
+    const posts = await Task.countDocuments({ projectId: project._id });
+    if (posts > 0) {
+      return res.status(409).json({ success: false, message: `This theme still has ${posts} post${posts === 1 ? '' : 's'}. Move or delete them first.`, posts });
+    }
+    await project.deleteOne();
+    await logAudit({ action: AuditAction.PROJECT_UPDATED, userId: req.user!._id, targetType: 'Project', targetId: project._id, metadata: { deleted: true, name: project.name }, req });
+    res.json({ success: true, message: 'Theme deleted' });
+  } catch (error: any) {
+    console.error('Error deleting project:', error);
+    res.status(500).json({ success: false, message: 'Error deleting theme' });
   }
 });
 
@@ -283,10 +308,19 @@ router.post('/:id/assignments',
   isAuthenticated,
   validateMongoId('id'),
   canAssignToProject,
+  validateProjectAssignment,
   checkProjectOwnership,
   async (req: Request, res: Response) => {
     try {
       const { userId, role } = req.body;
+
+      const assignee = await User.findById(userId).select('isActive');
+      if (!assignee || !assignee.isActive) {
+        return res.status(404).json({
+          success: false,
+          message: 'User to assign not found or inactive'
+        });
+      }
 
       if (!userId || !role) {
         return res.status(400).json({
@@ -299,7 +333,7 @@ router.post('/:id/assignments',
       if (!project) {
         return res.status(404).json({
           success: false,
-          message: 'Project not found'
+          message: 'Theme not found'
         });
       }
 
@@ -311,7 +345,7 @@ router.post('/:id/assignments',
       if (existingAssignment) {
         return res.status(400).json({
           success: false,
-          message: 'User is already assigned to this project'
+          message: 'User is already assigned to this theme'
         });
       }
 
@@ -340,14 +374,14 @@ router.post('/:id/assignments',
 
       res.json({
         success: true,
-        message: 'User assigned to project successfully',
+        message: 'User assigned to theme successfully',
         project: updatedProject
       });
     } catch (error: any) {
       console.error('Error assigning user to project:', error);
       res.status(500).json({
         success: false,
-        message: 'Error assigning user to project'
+        message: 'Error assigning user to theme'
       });
     }
   }
@@ -371,7 +405,7 @@ router.delete('/:id/assignments/:userId',
       if (!project) {
         return res.status(404).json({
           success: false,
-          message: 'Project not found'
+          message: 'Theme not found'
         });
       }
 
@@ -394,13 +428,13 @@ router.delete('/:id/assignments/:userId',
 
       res.json({
         success: true,
-        message: 'User removed from project successfully'
+        message: 'User removed from theme successfully'
       });
     } catch (error: any) {
       console.error('Error removing user from project:', error);
       res.status(500).json({
         success: false,
-        message: 'Error removing user from project'
+        message: 'Error removing user from theme'
       });
     }
   }

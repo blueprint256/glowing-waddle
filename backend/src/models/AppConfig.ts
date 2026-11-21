@@ -26,9 +26,37 @@ export interface IAppConfig extends Document {
   defaultLLMProvider?: string; // 'openai' | 'anthropic' | 'grok' | 'gemini'
   defaultLLMModel?: string;
 
-  // Default Image LLM configuration (RESTRICTED: gpt-image-1.5 only)
+  // Image model (lib/imageModels.ts): one of SELECTABLE_IMAGE_MODELS; retired models fall back to the default
   defaultImageLLMProvider?: string; // 'openai' (only option)
-  defaultImageLLMModel?: string; // 'gpt-image-1.5' (only option)
+  defaultImageLLMModel?: string; // e.g. 'gpt-image-2.5-flare' (the default)
+
+  // Blue (in-app assistant) configuration
+  blueEnabled: boolean;
+  blueProvider?: 'anthropic' | 'openai' | 'grok';
+  blueModel?: string;
+  blueDailyMessageLimit: number; // per user per day; 0 = unlimited
+
+  // Library (Aggregator) configuration
+  libraryEnabled: boolean;
+  libraryProvider?: 'anthropic' | 'openai' | 'grok';
+  libraryModel?: string;
+  libraryMonthlyAiLimit: number; // AI-read items per user per month; 0 = unlimited
+  // Monthly AI allowance per account (admins have none); 0 = unlimited. Accounts can have their own.
+  /** AI pictures (designed posters and AI photos together) per account per month. */
+  aiImagesPerMonth: number;
+  /** Older separate poster allowance: no longer used (posters count as AI pictures). */
+  aiDesignsPerMonth: number;
+  blueMessagesPerMonth: number;
+  librarySemanticSearch: boolean; // embeddings (needs an OpenAI key)
+
+  // Publishing (social posting). Per-provider app credentials; secrets encrypted (publishing/secrets.ts).
+  publishingEnabled: boolean;
+  publishingTestMode: boolean; // lets users add test channels that simulate posting
+  publishingProviders: Record<string, { enabled?: boolean; clientId?: string; clientSecretEnc?: string; options?: Record<string, unknown>; updatedAt?: Date }>;
+
+  // Canva Connect (Edit in Canva). Falls back to CANVA_CLIENT_ID / CANVA_CLIENT_SECRET env vars.
+  canvaClientId?: string;
+  canvaClientSecretEnc?: string;
 
   createdAt: Date;
   updatedAt: Date;
@@ -106,7 +134,7 @@ const appConfigSchema = new Schema<IAppConfig>(
       default: 'gpt-4o-mini'
     },
 
-    // Default Image LLM configuration (RESTRICTED: gpt-image-1.5 only)
+    // Image model (lib/imageModels.ts)
     defaultImageLLMProvider: {
       type: String,
       enum: ['openai'],
@@ -114,7 +142,82 @@ const appConfigSchema = new Schema<IAppConfig>(
     },
     defaultImageLLMModel: {
       type: String,
-      default: 'gpt-image-1.5'
+      default: 'gpt-image-2.5-flare'
+    },
+
+    // Blue (in-app assistant) configuration
+    blueEnabled: {
+      type: Boolean,
+      default: true
+    },
+    blueProvider: {
+      type: String,
+      enum: ['anthropic', 'openai', 'grok']
+    },
+    blueModel: {
+      type: String,
+      trim: true
+    },
+    blueDailyMessageLimit: {
+      type: Number,
+      default: 100,
+      min: 0
+    },
+
+    // Library (Aggregator) configuration
+    libraryEnabled: {
+      type: Boolean,
+      default: true
+    },
+    libraryProvider: {
+      type: String,
+      enum: ['anthropic', 'openai', 'grok']
+    },
+    libraryModel: {
+      type: String,
+      trim: true
+    },
+    libraryMonthlyAiLimit: {
+      type: Number,
+      default: 500,
+      min: 0
+    },
+    aiImagesPerMonth: {
+      type: Number,
+      default: 30,
+      min: 0
+    },
+    blueMessagesPerMonth: {
+      type: Number,
+      default: 300,
+      min: 0
+    },
+    aiDesignsPerMonth: {
+      type: Number,
+      default: 12,
+      min: 0
+    },
+    publishingEnabled: {
+      type: Boolean,
+      default: true
+    },
+    publishingTestMode: {
+      type: Boolean,
+      default: true
+    },
+    publishingProviders: {
+      type: Schema.Types.Mixed,
+      default: {}
+    },
+    canvaClientId: {
+      type: String
+    },
+    canvaClientSecretEnc: {
+      type: String
+    },
+    librarySemanticSearch: {
+      type: Boolean,
+      default: true
     }
   },
   {

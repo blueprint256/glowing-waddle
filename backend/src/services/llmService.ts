@@ -7,6 +7,8 @@ import { AppConfig } from '../models/AppConfig';
 import mongoose from 'mongoose';
 import { downloadImageFromUrl, uploadBufferToS3 } from '../utils/s3Service';
 import { toFile } from 'openai/uploads';
+import { applyPlaceholderAliases, knownPlaceholderRegex } from '../lib/placeholders';
+import { editExtras, imageCost, isImageModelId, qualityFor, resolveImageModel, type ImagePurpose } from '../lib/imageModels';
 
 // Cache for LLM clients and keys
 let cachedOpenAI: { client: OpenAI; key: string; timestamp: number } | null = null;
@@ -27,7 +29,7 @@ export interface LLMConfig {
  * Get API key for a specific provider from database or environment variable
  * Priority: Database > Environment Variable
  */
-async function getProviderKey(provider: LLMProvider): Promise<string> {
+export async function getProviderKey(provider: LLMProvider): Promise<string> {
   try {
     const config = await AppConfig.getConfig();
 
@@ -39,7 +41,7 @@ async function getProviderKey(provider: LLMProvider): Promise<string> {
         if (process.env.OPENAI_API_KEY) {
           return process.env.OPENAI_API_KEY;
         }
-        throw new Error('OpenAI API key not configured. Please configure it in Settings → Integrations.');
+        throw new Error('OpenAI API key not configured. An admin adds it in Settings › AI.');
 
       case 'anthropic':
         if (config.anthropicApiKey) {
@@ -48,7 +50,7 @@ async function getProviderKey(provider: LLMProvider): Promise<string> {
         if (process.env.ANTHROPIC_API_KEY) {
           return process.env.ANTHROPIC_API_KEY;
         }
-        throw new Error('Anthropic API key not configured. Please configure it in Settings → Integrations.');
+        throw new Error('Anthropic API key not configured. An admin adds it in Settings › AI.');
 
       case 'grok':
         if (config.grokApiKey) {
@@ -57,7 +59,7 @@ async function getProviderKey(provider: LLMProvider): Promise<string> {
         if (process.env.GROK_API_KEY) {
           return process.env.GROK_API_KEY;
         }
-        throw new Error('Grok API key not configured. Please configure it in Settings → Integrations.');
+        throw new Error('Grok API key not configured. An admin adds it in Settings › AI.');
 
       case 'gemini':
         if (config.geminiApiKey) {
@@ -66,7 +68,7 @@ async function getProviderKey(provider: LLMProvider): Promise<string> {
         if (process.env.GEMINI_API_KEY) {
           return process.env.GEMINI_API_KEY;
         }
-        throw new Error('Gemini API key not configured. Please configure it in Settings → Integrations.');
+        throw new Error('Gemini API key not configured. An admin adds it in Settings › AI.');
 
       default:
         throw new Error(`Unknown provider: ${provider}`);
@@ -194,84 +196,94 @@ export async function getPromptByName(name: string): Promise<string | null> {
  * - Any custom placeholder that matches a key in the params
  */
 export function compileSuperPrompt(promptTemplate: string, params: SuperPromptParams): string {
-  let compiledPrompt = promptTemplate;
+  // New names ({brief}, {caption}, {brand} …) are written as the older names the code below fills.
+  let compiledPrompt = applyPlaceholderAliases(promptTemplate);
 
   // Replace {companyInfo} with formatted company information
   if (params.companyInfo) {
     const companyInfoStr = formatCompanyInfo(params.companyInfo);
-    compiledPrompt = compiledPrompt.replace(/\{companyInfo\}/g, companyInfoStr);
+    compiledPrompt = compiledPrompt.replace(/\{companyInfo\}/g, () => companyInfoStr);
   }
 
-  // Replace individual company fields
-  if (params.companyInfo?.companyName) {
-    compiledPrompt = compiledPrompt.replace(/\{companyName\}/g, params.companyInfo.companyName);
-  }
-  if (params.companyInfo?.sector) {
-    compiledPrompt = compiledPrompt.replace(/\{sector\}/g, params.companyInfo.sector);
-  }
-  if (params.companyInfo?.brandTone) {
-    compiledPrompt = compiledPrompt.replace(/\{brandTone\}/g, params.companyInfo.brandTone);
-  }
-
-  // Replace brand asset placeholders
-  if (params.companyInfo?.brandGuidelines) {
-    compiledPrompt = compiledPrompt.replace(/\{brandGuidelines\}/g, params.companyInfo.brandGuidelines);
-  }
-  if (params.companyInfo?.primaryLogoUrl) {
-    compiledPrompt = compiledPrompt.replace(/\{primaryLogo\}/g, params.companyInfo.primaryLogoUrl);
-  }
-  if (params.companyInfo?.secondaryLogoUrl) {
-    compiledPrompt = compiledPrompt.replace(/\{secondaryLogo\}/g, params.companyInfo.secondaryLogoUrl);
-  }
-  if (params.companyInfo?.tertiaryLogoUrl) {
-    compiledPrompt = compiledPrompt.replace(/\{tertiaryLogo\}/g, params.companyInfo.tertiaryLogoUrl);
+  // Replace individual company fields (values are read once, so the replacers below don't depend
+  // on narrowing inside callbacks).
+  const company = params.companyInfo || {};
+  const companyFields: [RegExp, unknown][] = [
+    [/\{companyName\}/g, company.companyName],
+    [/\{sector\}/g, company.sector],
+    [/\{brandTone\}/g, company.brandTone],
+    // Brand assets
+    [/\{brandGuidelines\}/g, company.brandGuidelines],
+    [/\{primaryLogo\}/g, company.primaryLogoUrl],
+    [/\{secondaryLogo\}/g, company.secondaryLogoUrl],
+    [/\{tertiaryLogo\}/g, company.tertiaryLogoUrl]
+  ];
+  for (const [pattern, value] of companyFields) {
+    if (value) {
+      const text = String(value);
+      compiledPrompt = compiledPrompt.replace(pattern, () => text);
+    }
   }
 
   // Replace {campaignDetails} with formatted campaign information
   if (params.campaignDetails) {
     const campaignDetailsStr = formatCampaignDetails(params.campaignDetails);
-    compiledPrompt = compiledPrompt.replace(/\{campaignDetails\}/g, campaignDetailsStr);
+    compiledPrompt = compiledPrompt.replace(/\{campaignDetails\}/g, () => campaignDetailsStr);
   }
 
   // Replace individual campaign fields
-  if (params.campaignDetails?.name) {
-    compiledPrompt = compiledPrompt.replace(/\{campaignName\}/g, params.campaignDetails.name);
-  }
-  if (params.campaignDetails?.coreMessages) {
-    compiledPrompt = compiledPrompt.replace(/\{coreMessages\}/g, params.campaignDetails.coreMessages);
-  }
-  if (params.campaignDetails?.hashtags) {
-    compiledPrompt = compiledPrompt.replace(/\{hashtags\}/g, params.campaignDetails.hashtags.join(', '));
+  const campaign = params.campaignDetails || {};
+  const campaignFields: [RegExp, unknown][] = [
+    [/\{campaignName\}/g, campaign.name],
+    [/\{coreMessages\}/g, campaign.coreMessages],
+    [/\{hashtags\}/g, Array.isArray(campaign.hashtags) && campaign.hashtags.length ? campaign.hashtags.join(', ') : '']
+  ];
+  for (const [pattern, value] of campaignFields) {
+    if (value) {
+      const text = String(value);
+      compiledPrompt = compiledPrompt.replace(pattern, () => text);
+    }
   }
 
   // Replace {taskDescription} if provided
   if (params.taskDescription) {
-    compiledPrompt = compiledPrompt.replace(/\{taskDescription\}/g, params.taskDescription);
+    const brief = String(params.taskDescription);
+    compiledPrompt = compiledPrompt.replace(/\{taskDescription\}/g, () => brief);
   }
 
   // Replace {baseImage} if provided (URL of the task's base/original image)
   if (params.baseImage) {
-    compiledPrompt = compiledPrompt.replace(/\{baseImage\}/g, params.baseImage);
+    const image = String(params.baseImage);
+    compiledPrompt = compiledPrompt.replace(/\{baseImage\}/g, () => image);
   }
 
   // Replace {previousOutput} if provided (for multi-step chains)
   if (params.previousOutput !== undefined) {
-    compiledPrompt = compiledPrompt.replace(/\{previousOutput\}/g, String(params.previousOutput));
+    const previous = String(params.previousOutput);
+    compiledPrompt = compiledPrompt.replace(/\{previousOutput\}/g, () => previous);
   }
 
   // Replace any custom placeholders
   Object.keys(params).forEach(key => {
     if (key !== 'companyInfo' && key !== 'campaignDetails' && key !== 'taskDescription' && key !== 'baseImage' && key !== 'previousOutput') {
+      if (params[key] === undefined || params[key] === null) return;
       const value = typeof params[key] === 'object'
         ? JSON.stringify(params[key], null, 2)
         : String(params[key]);
       const regex = new RegExp(`\\{${key}\\}`, 'g');
-      compiledPrompt = compiledPrompt.replace(regex, value);
+      compiledPrompt = compiledPrompt.replace(regex, () => value);
     }
   });
 
+  // Known placeholders with no data (e.g. a company without a logo) are removed rather than sent to
+  // the AI as literal "{primaryLogo}" text, which it would copy into posts.
+  compiledPrompt = compiledPrompt.replace(KNOWN_PLACEHOLDERS, '');
+
   return compiledPrompt;
 }
+
+// Every placeholder the app knows (old and new names; lib/placeholders.ts).
+const KNOWN_PLACEHOLDERS = knownPlaceholderRegex();
 
 /**
  * Format company information into a readable string
@@ -305,6 +317,9 @@ function formatCompanyInfo(companyInfo: SuperPromptParams['companyInfo']): strin
   if (companyInfo.globalRules) {
     parts.push(`Content Guidelines: ${companyInfo.globalRules}`);
   }
+  if (companyInfo.brandGuidelines) {
+    parts.push(`Brand Guidelines: ${companyInfo.brandGuidelines}`);
+  }
 
   return parts.join('\n');
 }
@@ -332,11 +347,16 @@ function formatCampaignDetails(campaignDetails: SuperPromptParams['campaignDetai
   if (campaignDetails.hashtags && campaignDetails.hashtags.length > 0) {
     parts.push(`Hashtags: ${campaignDetails.hashtags.join(', ')}`);
   }
-  if (campaignDetails.startDate) {
-    parts.push(`Start Date: ${campaignDetails.startDate.toLocaleDateString()}`);
+  // Campaign dates are calendar days (midnight UTC); written as YYYY-MM-DD so the AI can't misread them.
+  const day = (value: unknown) => {
+    const d = new Date(value as any);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+  };
+  if (campaignDetails.startDate && day(campaignDetails.startDate)) {
+    parts.push(`Start Date: ${day(campaignDetails.startDate)}`);
   }
-  if (campaignDetails.endDate) {
-    parts.push(`End Date: ${campaignDetails.endDate.toLocaleDateString()}`);
+  if (campaignDetails.endDate && day(campaignDetails.endDate)) {
+    parts.push(`End Date: ${day(campaignDetails.endDate)}`);
   }
 
   return parts.join('\n');
@@ -391,7 +411,7 @@ async function resolveLLMConfig(promptName?: string): Promise<LLMConfig> {
  * Calculate estimated cost based on provider, model and token usage
  * Pricing as of December 2024 (approximate, subject to change)
  */
-function calculateEstimatedCost(
+export function calculateEstimatedCost(
   provider: LLMProvider,
   model: string,
   promptTokens: number,
@@ -402,6 +422,11 @@ function calculateEstimatedCost(
     // OpenAI
     'gpt-4o': { input: 2.5, output: 10 },
     'gpt-4o-mini': { input: 0.15, output: 0.6 },
+    'gpt-4.1': { input: 2.0, output: 8.0 },
+    'gpt-4.1-mini': { input: 0.4, output: 1.6 },
+    'gpt-4.1-nano': { input: 0.1, output: 0.4 },
+    'gpt-5-mini': { input: 0.25, output: 2.0 },
+    'gpt-5-nano': { input: 0.05, output: 0.4 },
     'gpt-3.5-turbo': { input: 0.5, output: 1.5 },
 
     // Anthropic
@@ -456,6 +481,55 @@ async function logLLMUsage(
   } catch (error) {
     console.error('Error logging LLM usage:', error);
     // Don't throw - logging failure shouldn't break the main flow
+  }
+}
+
+/** Image quality from IMAGE_QUALITY in the server's .env (lib/imageModels.ts: medium by default). */
+export function imageQuality(model: string = resolveImageModel('create')): any {
+  return qualityFor(model, process.env.IMAGE_QUALITY);
+}
+
+/** The image model to call for making (create) or editing pictures (Settings › AI, lib/imageModels.ts). */
+export async function currentImageModel(purpose: ImagePurpose): Promise<string> {
+  try {
+    const config = await AppConfig.getConfig();
+    return resolveImageModel(purpose, config.defaultImageLLMModel);
+  } catch {
+    return resolveImageModel(purpose);
+  }
+}
+
+/** Records an image generation with its real token usage and cost. Logged as "openai/<model>". */
+async function logImageUsage(
+  userId: mongoose.Types.ObjectId | undefined,
+  promptName: string,
+  response: any,
+  duration: number,
+  success: boolean,
+  errorMessage?: string,
+  model: string = resolveImageModel('create')
+): Promise<void> {
+  if (!userId) return;
+  try {
+    const u = response?.usage || {};
+    const input = Number(u.input_tokens) || 0;
+    const output = Number(u.output_tokens) || 0;
+    const imageIn = Number(u.input_tokens_details?.image_tokens) || 0;
+    const textIn = Number(u.input_tokens_details?.text_tokens) || Math.max(0, input - imageIn);
+    await LLMUsage.create({
+      userId,
+      promptName,
+      llmModel: `openai/${model}`,
+      promptTokens: input,
+      completionTokens: output,
+      totalTokens: Number(u.total_tokens) || input + output,
+      estimatedCost: imageCost(model, { textIn, imageIn, out: output }),
+      success,
+      errorMessage,
+      requestDuration: duration
+    });
+  } catch (error) {
+    console.error('Error logging image usage:', error);
   }
 }
 
@@ -676,6 +750,55 @@ export async function generateWithPrompt(
 }
 
 /**
+ * Makes or edits one picture and returns it as a PNG buffer (nothing is stored; the caller trims it,
+ * adds the logo and saves it). With `images`, the edit endpoint is used and the pictures are sent in
+ * the order given. The model comes from Settings › AI (lib/imageModels.ts): making uses the default
+ * (GPT-Image-2.5 Flare), editing uses Sunburst. Usage is logged for the AI allowance.
+ */
+export async function renderImage(options: {
+  prompt: string;
+  images?: { buffer: Buffer; name: string; contentType: string }[];
+  size: string;
+  /** "high" keeps the attached pictures as close as possible (only sent to models that take it). */
+  fidelity?: 'high' | 'low';
+  /** "edit" (Change image, blending) uses the editing model; default "create". */
+  purpose?: ImagePurpose;
+  /** PNG with a mask: only the transparent areas may change (edit endpoint only). */
+  mask?: { buffer: Buffer; name: string; contentType: string };
+  userId?: mongoose.Types.ObjectId;
+  promptName: string;
+}): Promise<Buffer> {
+  const startTime = Date.now();
+  const model = await currentImageModel(options.purpose || 'create');
+  try {
+    const openai = await getOpenAIClient();
+    const files = await Promise.all(
+      (options.images || []).map((img, i) => toFile(img.buffer, `${i + 1}-${img.name.replace(/[^\w.-]+/g, '_') || 'picture'}`, { type: img.contentType }))
+    );
+    const mask = options.mask ? await toFile(options.mask.buffer, options.mask.name || 'mask.png', { type: 'image/png' }) : undefined;
+    const response: any = files.length
+      ? await openai.images.edit({
+          model,
+          image: files,
+          prompt: options.prompt,
+          n: 1,
+          size: options.size,
+          quality: imageQuality(model),
+          ...(mask ? { mask } : {}),
+          ...editExtras(model, options.fidelity)
+        } as any)
+      : await openai.images.generate({ model, prompt: options.prompt, n: 1, size: options.size, quality: imageQuality(model) } as any);
+    const b64 = response?.data?.[0]?.b64_json;
+    if (!b64) throw new Error('No image came back from the image AI');
+    await logImageUsage(options.userId, options.promptName, response, Date.now() - startTime, true, undefined, model);
+    return Buffer.from(b64, 'base64');
+  } catch (error: any) {
+    await logImageUsage(options.userId, options.promptName, null, Date.now() - startTime, false, error?.message, model);
+    throw error;
+  }
+}
+
+/**
  * Generate an image using an image generation LLM with a compiled prompt
  */
 export async function generateImageWithPrompt(
@@ -684,7 +807,7 @@ export async function generateImageWithPrompt(
   options?: {
     model?: string;
     size?: '1024x1024' | '1792x1024' | '1024x1792';
-    quality?: 'standard' | 'hd'; // Deprecated: not supported by gpt-image-1.5
+    quality?: 'standard' | 'hd'; // Deprecated: not used (quality comes from IMAGE_QUALITY)
     userId?: mongoose.Types.ObjectId;
   }
 ): Promise<{ imageUrl: string; compiledPrompt: string }> {
@@ -698,7 +821,8 @@ export async function generateImageWithPrompt(
     }
 
     // Parse the prompt template to detect which image placeholders are referenced
-    const promptTemplate = prompt.details;
+    // ({image} / {referenceImage1} count as {baseImage} / {attachedImage1}).
+    const promptTemplate = applyPlaceholderAliases(prompt.details);
     const referencedImages: string[] = [];
 
     // Define known image placeholders
@@ -736,22 +860,20 @@ export async function generateImageWithPrompt(
     // Fetch and compile the prompt
     const compiledPrompt = await fetchAndCompilePrompt(promptName, params);
 
-    // CRITICAL: Image generation is RESTRICTED to gpt-image-1.5 ONLY (as of late 2025)
-    // All other models/providers are deprecated and not supported
-    const imageModel = 'gpt-image-1.5';
+    // The image model comes from Settings › AI (lib/imageModels.ts); retired models are never called.
+    const imageModel = await currentImageModel('create');
     const imageProvider = 'openai';
 
     // Map size to supported values for image.edit API
     // Valid sizes: "256x256" | "512x512" | "1024x1024" | "1536x1024" | "1024x1536" | "auto"
-    const requestedSize = options?.size || '1024x1024';
+    const requestedSize = options?.size || (typeof params.__size === 'string' ? params.__size : '') || '1024x1024';
     const validEditSizes = ['256x256', '512x512', '1024x1024', '1536x1024', '1024x1536', 'auto'];
     const size: '256x256' | '512x512' | '1024x1024' | '1536x1024' | '1024x1536' | 'auto' =
       validEditSizes.includes(requestedSize) ? requestedSize as any : '1024x1024';
-    // NOTE: quality parameter not supported by gpt-image-1.5
 
     // Log if prompt tried to use a different model (for debugging/migration purposes)
-    if (prompt?.imageLLMModel && prompt.imageLLMModel !== 'gpt-image-1.5') {
-      console.log(`⚠️  Prompt "${promptName}" configured for "${prompt.imageLLMModel}" but enforcing gpt-image-1.5`);
+    if (prompt?.imageLLMModel && prompt.imageLLMModel !== imageModel) {
+      console.log(`⚠️  Prompt "${promptName}" configured for "${prompt.imageLLMModel}" but using ${imageModel}`);
     }
     if (prompt?.imageLLMProvider && prompt.imageLLMProvider !== 'openai') {
       console.log(`⚠️  Prompt "${promptName}" configured for provider "${prompt.imageLLMProvider}" but enforcing openai`);
@@ -768,6 +890,15 @@ export async function generateImageWithPrompt(
       } else {
         console.log(`⚠️  Prompt references {${placeholder}} but no URL provided`);
       }
+    }
+
+    // Post v2: the post's reference pictures are always sent (after any the prompt names), so they
+    // work with an admin's own "generate-poster" prompt too.
+    const extraImages: unknown = params.__extraImages;
+    if (Array.isArray(extraImages)) {
+      extraImages.forEach((url, i) => {
+        if (typeof url === 'string' && url && !imagesToDownload.some((x) => x.url === url)) imagesToDownload.push({ placeholder: `reference${i + 1}`, url });
+      });
     }
 
     console.log(`\n📥 Downloading ${imagesToDownload.length} referenced image(s)...\n`);
@@ -802,7 +933,7 @@ export async function generateImageWithPrompt(
     console.log('🖼️  IMAGE LLM REQUEST');
     console.log('========================================');
     console.log('Provider:', imageProvider, '(ENFORCED)');
-    console.log('Model:', imageModel, '(ENFORCED - gpt-image-1.5 only)');
+    console.log('Model:', imageModel);
     console.log('Prompt Name:', promptName);
     console.log('Referenced Images:', imageFiles.length, '(from prompt template)');
     console.log('Image Size:', size);
@@ -818,7 +949,7 @@ export async function generateImageWithPrompt(
     console.log('📡 Sending request to OpenAI Images API...');
 
     // Generate or edit image based on whether we have input images
-    // NOTE: gpt-image-1.5 does NOT support 'response_format' parameter
+    // GPT image models don't take 'response_format':
     // It always returns base64-encoded images (b64_json format)
     let response;
     if (imageFiles.length > 0) {
@@ -831,9 +962,9 @@ export async function generateImageWithPrompt(
         image: imageFiles, // Array of ONLY referenced images (prompt-driven)
         prompt: compiledPrompt,
         n: 1,
-        size: size
-        // NOTE: response_format is NOT supported by gpt-image-1.5
-      });
+        size: size,
+        quality: imageQuality(imageModel)
+      } as any);
     } else {
       console.log('✨ Using images.generate endpoint (no images referenced in prompt)');
 
@@ -842,12 +973,12 @@ export async function generateImageWithPrompt(
         model: imageModel,
         prompt: compiledPrompt,
         n: 1,
-        size: size
-        // NOTE: quality and response_format are NOT supported by gpt-image-1.5
-      });
+        size: size,
+        quality: imageQuality(imageModel)
+      } as any);
     }
 
-    // gpt-image-1.5 returns base64-encoded images, not URLs
+    // GPT image models return base64-encoded images, not URLs
     const base64Image = response.data?.[0]?.b64_json;
 
     if (!base64Image) {
@@ -879,18 +1010,7 @@ export async function generateImageWithPrompt(
     console.log('========================================\n');
 
     // Log usage if userId provided
-    if (options?.userId) {
-      await LLMUsage.create({
-        userId: options.userId,
-        llmModel: `${imageProvider}/${imageModel}`,
-        promptTokens: 0, // Image generation doesn't use token-based pricing
-        completionTokens: 0,
-        totalTokens: 0,
-        estimatedCost: 0, // Could calculate based on model and size
-        promptName,
-        createdAt: new Date()
-      });
-    }
+    await logImageUsage(options?.userId, promptName, response, duration, true, undefined, imageModel);
 
     return {
       imageUrl,
@@ -898,6 +1018,7 @@ export async function generateImageWithPrompt(
     };
   } catch (error: any) {
     const duration = Date.now() - startTime;
+    await logImageUsage(options?.userId, promptName, null, duration, false, error.message);
 
     console.log('\n========================================');
     console.log('❌ IMAGE LLM ERROR');
@@ -1010,8 +1131,8 @@ export async function executeCommandChain(
         promptName = step.description;
 
         // Detect image generation based on model name
-        // gpt-image-1.5 is the image generation model
-        isImageGeneration = step.model === 'gpt-image-1.5';
+        // Any GPT image model (gpt-image-*) makes this an image step
+        isImageGeneration = isImageModelId(step.model);
 
         console.log('Prompt Type: Embedded (from Chain)');
         console.log('Step Description:', step.description);
@@ -1064,8 +1185,12 @@ export async function executeCommandChain(
         console.log(`Skipping image carry-forward (disabled for this step)`);
       }
 
-      // Compile prompt for this step
-      const compiledPrompt = compileSuperPrompt(promptText, stepParams);
+      // Compile prompt for this step. When the app sends rules the answer must follow ({instruction},
+      // e.g. Plan with AI's period and output shape) and the admin's prompt doesn't place them, they
+      // go at the end of the first step, so the feature still works with any prompt.
+      let compiledPrompt = compileSuperPrompt(promptText, stepParams);
+      const appendix = typeof (stepParams as any).__appendInstruction === 'string' ? (stepParams as any).__appendInstruction : '';
+      if (i === 0 && appendix && !/\{instruction\}/.test(promptText)) compiledPrompt = `${compiledPrompt}\n\n${appendix}`;
       compiledPrompts.push(compiledPrompt);
 
       console.log('Compiled Prompt Length:', compiledPrompt.length, 'characters');
@@ -1083,7 +1208,7 @@ export async function executeCommandChain(
 
         if (step.isEmbedded) {
           // For embedded prompts, handle image generation inline
-          console.log('🎨 Image generation with embedded prompt (gpt-image-1.5)');
+          console.log('🎨 Image generation with embedded prompt');
 
           // Collect available images based on carryForwardImages setting
           const imagePlaceholders = [
@@ -1145,10 +1270,11 @@ export async function executeCommandChain(
 
           // Initialize OpenAI client
           const openai = await getOpenAIClient();
-          const imageModel = 'gpt-image-1.5';
-          const size = '1024x1024';
+          const imageModel = await currentImageModel(imagesToUse.length ? 'edit' : 'create');
+          const size = typeof stepParams.__size === 'string' && /^\d+x\d+$/.test(stepParams.__size) ? stepParams.__size : '1024x1024';
 
           // Generate or edit image
+          const imageStart = Date.now();
           let response;
           if (imageFiles.length > 0) {
             console.log(`🎨 Using images.edit with ${imageFiles.length} image(s)`);
@@ -1157,18 +1283,21 @@ export async function executeCommandChain(
               image: imageFiles,
               prompt: compiledPrompt,
               n: 1,
-              size: size
-            });
+              size: size,
+              quality: imageQuality(imageModel)
+            } as any);
           } else {
             console.log('✨ Using images.generate (no images referenced)');
             response = await openai.images.generate({
               model: imageModel,
               prompt: compiledPrompt,
               n: 1,
-              size: size
-              // NOTE: quality parameter not supported by gpt-image-1.5
-            });
+              size: size,
+              quality: imageQuality(imageModel)
+            } as any);
           }
+
+          await logImageUsage(options?.userId, promptName, response, Date.now() - imageStart, true, undefined, imageModel);
 
           // Get base64 image and upload to S3
           const base64Image = response.data?.[0]?.b64_json;

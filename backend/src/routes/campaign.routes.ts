@@ -1,15 +1,21 @@
 import express, { Request, Response } from 'express';
+import { onCampaignArchived } from '../services/lifecycle';
 import { Campaign, CampaignStatus } from '../models/Campaign';
 import { User, UserRole } from '../models/User';
-import { Project, ProjectStatus } from '../models/Project';
-import { Task, TaskStatus } from '../models/Task';
-import { CommandMapping } from '../models/CommandMapping';
+import mongoose from 'mongoose';
+import { Task } from '../models/Task';
+import { SocialPost } from '../models/SocialPost';
+import { LibraryAsset } from '../models/LibraryAsset';
+import { normalizePostStatus } from '../services/postStatus';
+import { applyCampaignPlan, draftCampaignPlan, validatePlan, type PlanOptions } from '../services/campaignPlan';
+import { aiErrorMessage } from '../services/postAI';
 import { isAuthenticated } from '../middleware/auth';
 import { canCreateCampaign } from '../middleware/rbac';
-import { validateCampaignCreation, validateMongoId } from '../middleware/validation';
+import { validateCampaignCreation, validateCampaignFields, validateMongoId } from '../middleware/validation';
 import { logAudit } from '../utils/auditLogger';
 import { AuditAction } from '../models/AuditLog';
-import { fetchAndCompilePrompt, generateWithPrompt, executeCommandChain } from '../services/llmService';
+import { searchRegex } from '../utils/regex';
+import { generateWithPrompt } from '../services/llmService';
 
 const router = express.Router();
 
@@ -18,7 +24,7 @@ const router = express.Router();
  * @desc    Create a new campaign
  * @access  Private (System Admin, Hybrid)
  */
-router.post('/', isAuthenticated, canCreateCampaign, validateCampaignCreation, async (req: Request, res: Response) => {
+router.post('/', isAuthenticated, canCreateCampaign, validateCampaignCreation, validateCampaignFields, async (req: Request, res: Response) => {
   try {
     const { name, description, status, startDate, endDate, goals, coreMessages, hashtags } = req.body;
 
@@ -99,11 +105,11 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
     }
 
     // Global search across campaign names and descriptions
-    if (req.query.search) {
-      const searchRegex = new RegExp(req.query.search as string, 'i');
+    const searchPattern = searchRegex(req.query.search);
+    if (searchPattern) {
       query.$or = [
-        { name: searchRegex },
-        { description: searchRegex }
+        { name: searchPattern },
+        { description: searchPattern }
       ];
     }
 
@@ -127,8 +133,8 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
     }
 
     // Pagination parameters
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 1000; // Higher default for comprehensive views
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(5000, Math.max(1, parseInt(req.query.limit as string) || 1000)); // Higher default for comprehensive views
     const skip = (page - 1) * limit;
 
     // Get total count for pagination metadata
@@ -140,9 +146,33 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
       .skip(skip)
       .limit(limit);
 
+    // ?include=counts: posts by status and the next post day, for the campaign cards.
+    let counts: Record<string, { posts: number; byStatus: Record<string, number>; nextDay: Date | null }> | undefined;
+    if (String(req.query.include || '').split(',').includes('counts') && campaigns.length) {
+      const ids = campaigns.map((c) => c._id);
+      const [byStatus, next] = await Promise.all([
+        Task.aggregate([{ $match: { campaignId: { $in: ids } } }, { $group: { _id: { c: '$campaignId', s: '$status' }, n: { $sum: 1 } } }]),
+        Task.aggregate([
+          { $match: { campaignId: { $in: ids }, taskDate: { $gte: new Date(new Date().toISOString().slice(0, 10)) } } },
+          { $group: { _id: '$campaignId', d: { $min: '$taskDate' } } }
+        ])
+      ]);
+      counts = {};
+      for (const c of campaigns) counts[String(c._id)] = { posts: 0, byStatus: {}, nextDay: null };
+      for (const r of byStatus) {
+        const e = counts[String(r._id.c)];
+        if (!e) continue;
+        const s = normalizePostStatus(r._id.s) || String(r._id.s);
+        e.byStatus[s] = (e.byStatus[s] || 0) + r.n;
+        e.posts += r.n;
+      }
+      for (const r of next) if (counts[String(r._id)]) counts[String(r._id)].nextDay = r.d;
+    }
+
     res.json({
       success: true,
       campaigns,
+      ...(counts ? { counts } : {}),
       pagination: {
         total,
         page,
@@ -177,8 +207,10 @@ router.get('/:id', isAuthenticated, validateMongoId('id'), async (req: Request, 
     }
 
     // CRITICAL: Hybrid Users can ONLY access campaigns they own
+    // (createdBy may be null after population if the creator record no longer exists)
     if (req.user!.role === UserRole.HYBRID) {
-      if (campaign.createdBy._id.toString() !== req.user!._id.toString()) {
+      const ownerId = (campaign.createdBy as any)?._id ?? campaign.createdBy;
+      if (!ownerId || ownerId.toString() !== req.user!._id.toString()) {
         return res.status(403).json({
           success: false,
           message: 'Access denied: You can only view campaigns you created'
@@ -204,7 +236,7 @@ router.get('/:id', isAuthenticated, validateMongoId('id'), async (req: Request, 
  * @desc    Update campaign (with ownership check for Hybrid Users)
  * @access  Private (System Admin, Hybrid)
  */
-router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), async (req: Request, res: Response) => {
+router.put('/:id', isAuthenticated, canCreateCampaign, validateMongoId('id'), validateCampaignFields, async (req: Request, res: Response) => {
   try {
     const campaign = await Campaign.findById(req.params.id);
     if (!campaign) {
@@ -294,6 +326,8 @@ router.put('/:id/archive', isAuthenticated, canCreateCampaign, validateMongoId('
     // Archive campaign
     campaign.archived = true;
     await campaign.save();
+    // Posts of an archived campaign that haven't gone out are cancelled (see services/lifecycle.ts).
+    const { cancelledPosts } = await onCampaignArchived(campaign._id as any, req.user!._id as any);
 
     // Log archive action
     await logAudit({
@@ -310,7 +344,8 @@ router.put('/:id/archive', isAuthenticated, canCreateCampaign, validateMongoId('
 
     res.json({
       success: true,
-      message: 'Campaign archived successfully',
+      message: cancelledPosts ? `Campaign archived. ${cancelledPosts} scheduled post${cancelledPosts === 1 ? ' was' : 's were'} cancelled.` : 'Campaign archived successfully',
+      cancelledPosts,
       campaign: archivedCampaign
     });
   } catch (error: any) {
@@ -318,6 +353,57 @@ router.put('/:id/archive', isAuthenticated, canCreateCampaign, validateMongoId('
     res.status(500).json({
       success: false,
       message: 'Error archiving campaign'
+    });
+  }
+});
+
+/**
+ * @route   PUT /api/campaigns/:id/unarchive
+ * @desc    Restore an archived campaign (with ownership check for Hybrid Users)
+ * @access  Private (System Admin, Hybrid)
+ */
+router.put('/:id/unarchive', isAuthenticated, canCreateCampaign, validateMongoId('id'), async (req: Request, res: Response) => {
+  try {
+    const campaign = await Campaign.findById(req.params.id);
+    if (!campaign) {
+      return res.status(404).json({
+        success: false,
+        message: 'Campaign not found'
+      });
+    }
+
+    if (req.user!.role === UserRole.HYBRID && campaign.createdBy.toString() !== req.user!._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied: You can only restore campaigns you created'
+      });
+    }
+
+    campaign.archived = false;
+    await campaign.save();
+
+    await logAudit({
+      action: AuditAction.CAMPAIGN_UPDATED,
+      userId: req.user!._id,
+      targetType: 'Campaign',
+      targetId: campaign._id,
+      metadata: { archived: false },
+      req
+    });
+
+    const restoredCampaign = await Campaign.findById(campaign._id)
+      .populate('createdBy', 'firstName lastName email');
+
+    res.json({
+      success: true,
+      message: 'Campaign restored successfully',
+      campaign: restoredCampaign
+    });
+  } catch (error: any) {
+    console.error('Error restoring campaign:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error restoring campaign'
     });
   }
 });
@@ -355,9 +441,37 @@ router.delete('/:id', isAuthenticated, validateMongoId('id'), async (req: Reques
       }
     }
 
+    // ?keepPosts=true: delete the campaign itself; its posts stay, without a campaign (campaigns are
+    // only a way to group posts). Nothing is cancelled: scheduled posts still go out.
+    if (req.query.keepPosts === 'true') {
+      const moved = await Task.updateMany({ campaignId: campaign._id }, { $set: { campaignId: null, projectId: null } });
+      await Promise.all([
+        SocialPost.updateMany({ campaignId: campaign._id }, { $set: { campaignId: null } }),
+        LibraryAsset.updateMany({ 'links.campaignId': campaign._id }, { $set: { 'links.campaignId': null, 'links.projectId': null } }),
+        mongoose.connection.collection('projects').deleteMany({ campaignId: campaign._id })
+      ]);
+      await Campaign.deleteOne({ _id: campaign._id });
+      await logAudit({
+        action: AuditAction.CAMPAIGN_DELETED,
+        userId: req.user!._id,
+        targetType: 'Campaign',
+        targetId: campaign._id,
+        metadata: { keptPosts: moved.modifiedCount, name: campaign.name },
+        req
+      });
+      const n = moved.modifiedCount;
+      return res.json({
+        success: true,
+        message: n ? `Campaign deleted. Its ${n} post${n === 1 ? ' is' : 's are'} kept, without a campaign.` : 'Campaign deleted',
+        keptPosts: n
+      });
+    }
+
     // Archive campaign (soft delete)
     campaign.archived = true;
     await campaign.save();
+    // Posts of an archived campaign that haven't gone out are cancelled (see services/lifecycle.ts).
+    const { cancelledPosts } = await onCampaignArchived(campaign._id as any, req.user!._id as any);
 
     // Log deletion
     await logAudit({
@@ -370,7 +484,8 @@ router.delete('/:id', isAuthenticated, validateMongoId('id'), async (req: Reques
 
     res.json({
       success: true,
-      message: 'Campaign archived successfully'
+      message: cancelledPosts ? `Campaign archived. ${cancelledPosts} scheduled post${cancelledPosts === 1 ? ' was' : 's were'} cancelled.` : 'Campaign archived successfully',
+      cancelledPosts
     });
   } catch (error: any) {
     console.error('Error deleting campaign:', error);
@@ -441,7 +556,7 @@ router.post('/:id/generate-tasks', isAuthenticated, async (req: Request, res: Re
 
       res.json({
         success: true,
-        message: 'Tasks generated successfully with AI',
+        message: 'Posts generated successfully with AI',
         content: result.content,
         compiledPrompt: result.compiledPrompt,
         usage: result.usage,
@@ -482,273 +597,122 @@ router.post('/:id/generate-tasks', isAuthenticated, async (req: Request, res: Re
     console.error('Error in generate-tasks:', error);
     res.status(500).json({
       success: false,
-      message: 'Error generating tasks',
+      message: 'Error generating posts',
       error: error.message
     });
   }
 });
 
+/** The campaign, if this person may plan for it (owner, or a System Admin). Sends the error otherwise. */
+async function campaignForPlanning(req: Request, res: Response) {
+  const campaign = await Campaign.findById(req.params.id);
+  if (!campaign) {
+    res.status(404).json({ success: false, message: 'Campaign not found' });
+    return null;
+  }
+  if (req.user!.role !== UserRole.SYSTEM_ADMIN && campaign.createdBy.toString() !== req.user!._id.toString()) {
+    res.status(403).json({ success: false, message: 'Access denied: You can only plan campaigns you created' });
+    return null;
+  }
+  if (campaign.archived) {
+    res.status(409).json({ success: false, message: 'This campaign is archived. Restore it to plan posts.' });
+    return null;
+  }
+  return campaign;
+}
+
+const planOptions = (body: any): PlanOptions => ({
+  notes: typeof body?.notes === 'string' ? body.notes : undefined,
+  from: typeof body?.from === 'string' ? body.from : undefined,
+  to: typeof body?.to === 'string' ? body.to : undefined,
+  perWeek: body?.perWeek !== undefined && body?.perWeek !== null && body?.perWeek !== '' ? Number(body.perWeek) : undefined,
+  command: typeof body?.command === 'string' && body.command.trim() ? body.command.trim() : undefined
+});
+
+/**
+ * @route   POST /api/campaigns/:id/plan
+ * @desc    Plan with AI, step 1: a list of posts to review. Nothing is saved.
+ *          Body: { notes?, from?, to?, perWeek?, command? }
+ * @access  Private (campaign owner or System Admin; AI on)
+ */
+router.post('/:id/plan', isAuthenticated, validateMongoId('id'), async (req: Request, res: Response) => {
+  try {
+    const campaign = await campaignForPlanning(req, res);
+    if (!campaign) return;
+    const draft = await draftCampaignPlan(campaign, planOptions(req.body), req.user!._id as any);
+    res.json({ success: true, ...draft });
+  } catch (error: any) {
+    console.error('Error planning campaign:', error);
+    const { status, message } = aiErrorMessage(error, 'The AI couldn’t plan this campaign. Try again.');
+    res.status(status).json({ success: false, message });
+  }
+});
+
+/**
+ * @route   POST /api/campaigns/:id/plan/apply
+ * @desc    Plan with AI, step 2: creates the reviewed posts. Body: { posts: PlanPost[] }
+ * @access  Private (campaign owner or System Admin)
+ */
+router.post('/:id/plan/apply', isAuthenticated, validateMongoId('id'), async (req: Request, res: Response) => {
+  try {
+    const campaign = await campaignForPlanning(req, res);
+    if (!campaign) return;
+    const posts = validatePlan(req.body || {});
+    const result = await applyCampaignPlan(campaign, posts, req.user!._id as any);
+    await logAudit({
+      action: AuditAction.CAMPAIGN_UPDATED,
+      userId: req.user!._id,
+      targetType: 'Campaign',
+      targetId: campaign._id,
+      metadata: { action: 'plan_with_ai', posts: result.postCount },
+      req
+    });
+    res.status(201).json({
+      success: true,
+      message: `Created ${result.postCount} post${result.postCount === 1 ? '' : 's'}.`,
+      ...result
+    });
+  } catch (error: any) {
+    console.error('Error creating the plan:', error);
+    const { status, message } = aiErrorMessage(error, 'Couldn’t create the posts. Try again.');
+    res.status(status).json({ success: false, message });
+  }
+});
+
 /**
  * @route   POST /api/campaigns/:id/generate
- * @desc    Generate projects and tasks for campaign using LLM (Hybrid User only, owner verification)
- * @access  Private (Hybrid User - must own campaign)
+ * @desc    Plan with AI in one step (draft + create), for the connector's generate_campaign_content.
+ *          Body: { command?, notes?, from?, to?, perWeek? }
+ * @access  Private (campaign owner or System Admin; AI on)
  */
 router.post('/:id/generate', isAuthenticated, validateMongoId('id'), async (req: Request, res: Response) => {
   try {
-    const { command } = req.body;
-
-    if (!command || typeof command !== 'string' || command.trim().length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Command is required'
-      });
-    }
-
-    // Get campaign
-    const campaign = await Campaign.findById(req.params.id);
-    if (!campaign) {
-      return res.status(404).json({
-        success: false,
-        message: 'Campaign not found'
-      });
-    }
-
-    // CRITICAL: Hybrid users can only generate for their own campaigns
-    // System Admins can generate for any campaign
-    if (req.user!.role === UserRole.HYBRID && campaign.createdBy.toString() !== req.user!._id.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied: You can only generate content for campaigns you created'
-      });
-    }
-
-    // Get user with company info
-    const user = await User.findById(req.user!._id);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-
-    // Look up command mapping (supports prompts, chains, and legacy steps)
-    const commandMapping = await CommandMapping.findOne({ command: command.trim() })
-      .populate('promptId', 'name details')
-      .populate('chainId')
-      .populate('steps.promptId');
-
-    if (!commandMapping) {
-      return res.status(404).json({
-        success: false,
-        message: `Command '${command.trim()}' is not configured. Please contact your administrator to set up this command.`
-      });
-    }
-
-    if (!commandMapping.promptId && !commandMapping.chainId && (!commandMapping.steps || commandMapping.steps.length === 0)) {
-      return res.status(500).json({
-        success: false,
-        message: 'Command mapping is invalid - no prompt, chain, or steps configured'
-      });
-    }
-
-    // Prepare parameters for prompt compilation
-    const promptParams = {
-      companyInfo: user.companyInfo || {},
-      campaignDetails: {
-        name: campaign.name,
-        description: campaign.description,
-        goals: campaign.goals,
-        coreMessages: campaign.coreMessages,
-        hashtags: campaign.hashtags,
-        startDate: campaign.startDate,
-        endDate: campaign.endDate
-      }
-    };
-
-    try {
-      // Execute command using chain execution (supports single prompts, chains, and legacy steps)
-      const result = await executeCommandChain(commandMapping, promptParams, {
-        userId: req.user!._id
-      });
-
-      // Parse JSON response from LLM
-      let projectsData: any[];
-      try {
-        // Try to extract JSON from the response
-        // LLM might return JSON wrapped in markdown code blocks or plain text
-        const content = result.content.trim();
-
-        // Remove markdown code blocks if present
-        let jsonString = content;
-        if (content.startsWith('```json')) {
-          jsonString = content.replace(/^```json\n/, '').replace(/\n```$/, '');
-        } else if (content.startsWith('```')) {
-          jsonString = content.replace(/^```\n/, '').replace(/\n```$/, '');
-        }
-
-        projectsData = JSON.parse(jsonString);
-
-        if (!Array.isArray(projectsData)) {
-          throw new Error('Expected an array of projects');
-        }
-      } catch (parseError: any) {
-        console.error('JSON parse error:', parseError);
-        return res.status(500).json({
-          success: false,
-          message: 'Failed to parse AI response. The prompt should return a JSON array of projects with tasks.',
-          error: parseError.message,
-          rawContent: result.content
-        });
-      }
-
-      // Helper function to normalize project status from LLM response
-      const normalizeProjectStatus = (status: any): ProjectStatus => {
-        if (!status || typeof status !== 'string') return ProjectStatus.PLANNING;
-
-        const normalized = status.toLowerCase().trim();
-        switch (normalized) {
-          case 'planning':
-            return ProjectStatus.PLANNING;
-          case 'in progress':
-          case 'in-progress':
-          case 'inprogress':
-            return ProjectStatus.IN_PROGRESS;
-          case 'completed':
-            return ProjectStatus.COMPLETED;
-          case 'on hold':
-          case 'on-hold':
-          case 'onhold':
-            return ProjectStatus.ON_HOLD;
-          default:
-            return ProjectStatus.PLANNING;
-        }
-      };
-
-      // Helper function to normalize task status from LLM response
-      const normalizeTaskStatus = (status: any): TaskStatus => {
-        if (!status || typeof status !== 'string') return TaskStatus.PENDING;
-
-        const normalized = status.toLowerCase().trim();
-        switch (normalized) {
-          case 'pending':
-            return TaskStatus.PENDING;
-          case 'in progress':
-          case 'in-progress':
-          case 'inprogress':
-            return TaskStatus.IN_PROGRESS;
-          case 'completed':
-            return TaskStatus.COMPLETED;
-          default:
-            return TaskStatus.PENDING;
-        }
-      };
-
-      // Create projects and tasks
-      const createdProjects: any[] = [];
-      const createdTasksCount: number[] = [];
-
-      for (const projectData of projectsData) {
-        if (!projectData.projectName || typeof projectData.projectName !== 'string') {
-          console.warn('Skipping project with invalid name:', projectData);
-          continue;
-        }
-
-        // Create the project
-        const project = await Project.create({
-          name: projectData.projectName,
-          description: projectData.projectDescription || '',
-          campaignId: campaign._id,
-          createdBy: req.user!._id,
-          status: normalizeProjectStatus(projectData.status),
-          startDate: projectData.startDate ? new Date(projectData.startDate) : undefined,
-          dueDate: projectData.dueDate ? new Date(projectData.dueDate) : undefined,
-          assignments: [] // No assignments initially
-        });
-
-        let taskCount = 0;
-
-        // Create tasks for this project
-        if (Array.isArray(projectData.tasks)) {
-          for (const taskData of projectData.tasks) {
-            if (!taskData.taskName || typeof taskData.taskName !== 'string') {
-              console.warn('Skipping task with invalid name:', taskData);
-              continue;
-            }
-
-            await Task.create({
-              name: taskData.taskName,
-              description: taskData.taskDescription || taskData.description || '',
-              projectId: project._id,
-              campaignId: campaign._id,
-              createdBy: req.user!._id,
-              status: normalizeTaskStatus(taskData.status),
-              taskDate: taskData.taskDate ? new Date(taskData.taskDate) : undefined,
-              content: taskData.content || ''
-            });
-
-            taskCount++;
-          }
-        }
-
-        createdProjects.push(project);
-        createdTasksCount.push(taskCount);
-      }
-
-      // Log the generation
-      await logAudit({
-        action: AuditAction.CAMPAIGN_UPDATED,
-        userId: req.user!._id,
-        targetType: 'Campaign',
-        targetId: campaign._id,
-        metadata: {
-          action: 'generate_campaign_content',
-          command: command.trim(),
-          mappingType: commandMapping.chainId ? 'chain' : (commandMapping.promptId ? 'prompt' : 'steps'),
-          projectsCreated: createdProjects.length,
-          tasksCreated: createdTasksCount.reduce((a, b) => a + b, 0),
-          tokens: result.usage.total_tokens
-        },
-        req
-      });
-
-      res.json({
-        success: true,
-        message: `Successfully generated ${createdProjects.length} project(s) with ${createdTasksCount.reduce((a, b) => a + b, 0)} task(s)`,
-        projects: createdProjects,
-        taskCounts: createdTasksCount,
-        campaignId: campaign._id,
-        campaignName: campaign.name,
-        usage: result.usage
-      });
-    } catch (error: any) {
-      console.error('Error generating campaign content:', error);
-
-      if (error.message.includes('not found')) {
-        return res.status(404).json({
-          success: false,
-          message: `Command '${command.trim()}' mapping not found or invalid. Please contact your administrator.`
-        });
-      } else if (error.message.includes('API key')) {
-        return res.status(500).json({
-          success: false,
-          message: 'OpenAI API is not configured. Please contact your administrator.'
-        });
-      } else if (error.message.includes('rate limit')) {
-        return res.status(429).json({
-          success: false,
-          message: error.message
-        });
-      }
-
-      throw error;
-    }
+    const campaign = await campaignForPlanning(req, res);
+    if (!campaign) return;
+    const draft = await draftCampaignPlan(campaign, planOptions(req.body), req.user!._id as any);
+    const result = await applyCampaignPlan(campaign, draft.posts, req.user!._id as any);
+    await logAudit({
+      action: AuditAction.CAMPAIGN_UPDATED,
+      userId: req.user!._id,
+      targetType: 'Campaign',
+      targetId: campaign._id,
+      metadata: { action: 'generate_campaign_content', source: draft.source, posts: result.postCount },
+      req
+    });
+    const created = await Task.find({ _id: { $in: result.postIds } }).select('name taskDate status').sort({ taskDate: 1 }).lean();
+    res.json({
+      success: true,
+      message: `Created ${result.postCount} post${result.postCount === 1 ? '' : 's'}.`,
+      posts: created.map((t) => ({ id: String(t._id), name: t.name, day: t.taskDate ? new Date(t.taskDate).toISOString().slice(0, 10) : null, status: t.status })),
+      from: draft.from,
+      to: draft.to,
+      campaignId: campaign._id,
+      campaignName: campaign.name
+    });
   } catch (error: any) {
     console.error('Error in generate campaign:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error generating campaign content',
-      error: error.message
-    });
+    const { status, message } = aiErrorMessage(error, 'The AI couldn’t plan this campaign. Try again.');
+    res.status(status).json({ success: false, message });
   }
 });
 

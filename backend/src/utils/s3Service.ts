@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
@@ -304,4 +304,100 @@ export async function uploadImageFromUrl(imageUrl: string, folder: string = 'gen
 
     throw new Error(`Failed to upload image from URL: ${error.message}`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Private object helpers (Library). Library files are never public: the app serves them through
+// short-lived signed links, so unreleased client work can't be reached by URL.
+// ---------------------------------------------------------------------------
+
+/** Upload a buffer or stream without any public ACL. */
+export async function putPrivateObject(key: string, body: Buffer | NodeJS.ReadableStream, contentType: string, contentLength: number): Promise<void> {
+  await s3Client.send(
+    new PutObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key,
+      Body: body as any,
+      ContentType: contentType,
+      ContentLength: contentLength
+    })
+  );
+}
+
+/** Download an object fully into memory (only used for files we cap in size). */
+export async function getObjectBuffer(key: string, maxBytes = 60 * 1024 * 1024): Promise<Buffer> {
+  const res = await s3Client.send(new GetObjectCommand({ Bucket: BUCKET_NAME, Key: key }));
+  const body: any = res.Body;
+  if (!body) throw new Error('Empty object');
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of body as AsyncIterable<Uint8Array>) {
+    total += chunk.length;
+    if (total > maxBytes) throw new Error('Object is too large to process');
+    chunks.push(Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
+}
+
+/**
+ * Signed GET link. The signing time is rounded down to the hour so the same link is reused within the
+ * hour, letting browsers cache thumbnails instead of downloading them on every page view.
+ */
+export async function signedObjectUrl(key: string, opts: { downloadName?: string; contentType?: string } = {}): Promise<string> {
+  const hour = new Date();
+  hour.setMinutes(0, 0, 0);
+  const command = new GetObjectCommand({
+    Bucket: BUCKET_NAME,
+    Key: key,
+    ...(opts.downloadName
+      ? { ResponseContentDisposition: `attachment; filename="${opts.downloadName.replace(/["\\\r\n]/g, '_')}"` }
+      : {}),
+    ...(opts.contentType ? { ResponseContentType: opts.contentType } : {})
+  });
+  return getSignedUrl(s3Client, command, { expiresIn: 2 * 60 * 60, signingDate: hour });
+}
+
+/** If a URL points into our bucket, return its object key (so existing files can be reused). */
+export function objectKeyFromUrl(url: string): string | null {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.toLowerCase();
+    const bucket = BUCKET_NAME.toLowerCase();
+    if (host === `${bucket}.s3.amazonaws.com` || (host.startsWith(`${bucket}.s3.`) && host.endsWith('.amazonaws.com'))) {
+      return decodeURIComponent(u.pathname.replace(/^\/+/, '')) || null;
+    }
+    if (/^s3[.-]/.test(host) && host.endsWith('.amazonaws.com')) {
+      const [first, ...rest] = u.pathname.replace(/^\/+/, '').split('/');
+      if (first.toLowerCase() === bucket && rest.length) return decodeURIComponent(rest.join('/'));
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Size and type of a stored object, without downloading it. */
+export async function headObjectInfo(key: string): Promise<{ size: number; contentType: string }> {
+  const res = await s3Client.send(new HeadObjectCommand({ Bucket: BUCKET_NAME, Key: key }));
+  return { size: Number(res.ContentLength || 0), contentType: res.ContentType || 'application/octet-stream' };
+}
+
+/** Read one byte range of an object (inclusive end), so large videos are uploaded in chunks, never held whole in memory. */
+export async function getObjectRange(key: string, start: number, end: number): Promise<Buffer> {
+  const res = await s3Client.send(new GetObjectCommand({ Bucket: BUCKET_NAME, Key: key, Range: `bytes=${start}-${end}` }));
+  const body: any = res.Body;
+  if (!body) throw new Error('Empty object');
+  const chunks: Buffer[] = [];
+  for await (const chunk of body as AsyncIterable<Uint8Array>) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks);
+}
+
+/** The objects under a folder (e.g. "design-backgrounds/"), page by page. */
+export async function* listObjects(prefix: string): AsyncGenerator<{ key: string; lastModified: Date }> {
+  let token: string | undefined;
+  do {
+    const page: any = await s3Client.send(new ListObjectsV2Command({ Bucket: BUCKET_NAME, Prefix: prefix, ContinuationToken: token, MaxKeys: 1000 }));
+    for (const o of page.Contents || []) if (o.Key) yield { key: o.Key, lastModified: o.LastModified ? new Date(o.LastModified) : new Date() };
+    token = page.IsTruncated ? page.NextContinuationToken : undefined;
+  } while (token);
 }

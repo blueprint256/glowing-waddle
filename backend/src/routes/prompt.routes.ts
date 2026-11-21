@@ -3,8 +3,59 @@ import { Prompt } from '../models/Prompt';
 import { isAuthenticated } from '../middleware/auth';
 import { isSystemAdmin } from '../middleware/rbac';
 import { validateMongoId } from '../middleware/validation';
+import mongoose from 'mongoose';
+import { Task } from '../models/Task';
+import { PLACEHOLDERS, checkPlaceholders } from '../lib/placeholders';
+import { formatNote, isCorner, isFormat, logoNote, referenceNotes } from '../lib/postPicture';
+import { compileSuperPrompt } from '../services/llmService';
+import { CAPTION_STYLES, postContext } from '../services/postAI';
 
 const router = express.Router();
+
+/**
+ * Prompt editor helpers (decision 22): the list of {placeholders}, a check for names that don't
+ * exist, and a preview of the prompt filled in with a real post. Defined before '/:id'.
+ */
+router.get('/placeholders', isAuthenticated, isSystemAdmin, (_req: Request, res: Response) => {
+  res.json({ success: true, placeholders: PLACEHOLDERS });
+});
+
+router.post('/check', isAuthenticated, isSystemAdmin, (req: Request, res: Response) => {
+  const template = typeof req.body?.template === 'string' ? req.body.template : '';
+  res.json({ success: true, ...checkPlaceholders(template) });
+});
+
+router.post('/preview', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
+  try {
+    const template = typeof req.body?.template === 'string' ? req.body.template : '';
+    const taskId = typeof req.body?.taskId === 'string' ? req.body.taskId : '';
+    if (!template.trim()) return res.status(400).json({ success: false, message: 'Write the prompt first.' });
+    if (!mongoose.isValidObjectId(taskId)) return res.status(400).json({ success: false, message: 'Choose a post to preview with.' });
+    const task = await Task.findById(taskId);
+    if (!task) return res.status(404).json({ success: false, message: 'Post not found' });
+    const { campaign, companyInfo } = await postContext(task, req.user!._id as mongoose.Types.ObjectId);
+    const refs = task.references || [];
+    const data: Record<string, unknown> = {
+      taskName: task.name,
+      taskDescription: task.description || '',
+      taskContent: task.content || '',
+      instruction: CAPTION_STYLES.improve.instruction,
+      platform: '',
+      ...(task.designedImage ? { baseImage: task.designedImage } : {}),
+      ...Object.fromEntries(refs.map((r, i) => [`attachedImage${i + 1}`, r.url])),
+      references: referenceNotes(refs.map((r) => ({ role: r.role, name: r.name }))) || 'None.',
+      format: formatNote(isFormat(task.pictureOptions?.format) ? task.pictureOptions!.format : 'square'),
+      logoNote: logoNote(isCorner(task.pictureOptions?.logo) ? task.pictureOptions!.logo : null),
+      ...(campaign ? { campaignDetails: campaign } : {}),
+      ...(companyInfo ? { companyInfo } : {})
+    };
+    const compiled = compileSuperPrompt(template, data as any);
+    res.json({ success: true, compiled, post: { id: task._id, name: task.name }, ...checkPlaceholders(template) });
+  } catch (error) {
+    console.error('Error previewing prompt:', error);
+    res.status(500).json({ success: false, message: 'Couldn’t preview the prompt.' });
+  }
+});
 
 /**
  * @route   GET /api/prompts
@@ -47,7 +98,7 @@ router.get('/', isAuthenticated, isSystemAdmin, async (req: Request, res: Respon
  * @desc    Get prompt by name
  * @access  Private (authenticated users)
  */
-router.get('/name/:name', isAuthenticated, async (req: Request, res: Response) => {
+router.get('/name/:name', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
   try {
     const prompt = await Prompt.findOne({ name: req.params.name });
 
@@ -107,7 +158,7 @@ router.get('/:id', isAuthenticated, isSystemAdmin, validateMongoId('id'), async 
  */
 router.post('/', isAuthenticated, isSystemAdmin, async (req: Request, res: Response) => {
   try {
-    const { name, details } = req.body;
+    const { name, details, llmProvider, llmModel, imageLLMProvider, imageLLMModel } = req.body;
 
     if (!name || !details) {
       return res.status(400).json({
@@ -125,7 +176,15 @@ router.post('/', isAuthenticated, isSystemAdmin, async (req: Request, res: Respo
       });
     }
 
-    const prompt = await Prompt.create({ name, details });
+    // Keep the model settings sent with a new prompt (they used to be dropped until a later edit).
+    const prompt = await Prompt.create({
+      name,
+      details,
+      ...(llmProvider ? { llmProvider } : {}),
+      ...(llmModel ? { llmModel } : {}),
+      ...(imageLLMProvider ? { imageLLMProvider } : {}),
+      ...(imageLLMModel ? { imageLLMModel } : {})
+    });
 
     res.status(201).json({
       success: true,

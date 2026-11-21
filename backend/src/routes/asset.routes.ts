@@ -83,7 +83,7 @@ router.post('/', isAuthenticated, canManageTasks, upload.single('file'), async (
     if (!taskId && !projectId && !campaignId) {
       return res.status(400).json({
         success: false,
-        message: 'Asset must be associated with a task, project, or campaign'
+        message: 'Asset must be associated with a post, theme, or campaign'
       });
     }
 
@@ -93,19 +93,19 @@ router.post('/', isAuthenticated, canManageTasks, upload.single('file'), async (
 
       if (taskId) {
         const task = await Task.findById(taskId);
-        if (!task) {
+        if (!task || String(task.ownerId) !== String(req.user!._id)) {
           return res.status(404).json({
             success: false,
-            message: 'Task not found'
+            message: 'Post not found'
           });
         }
-        targetCampaignId = task.campaignId;
+        targetCampaignId = task.campaignId || null;
       } else if (projectId) {
         const project = await Project.findById(projectId);
         if (!project) {
           return res.status(404).json({
             success: false,
-            message: 'Project not found'
+            message: 'Theme not found'
           });
         }
         targetCampaignId = project.campaignId;
@@ -113,20 +113,22 @@ router.post('/', isAuthenticated, canManageTasks, upload.single('file'), async (
         targetCampaignId = new mongoose.Types.ObjectId(campaignId);
       }
 
-      // Check campaign ownership
-      const campaign = await Campaign.findById(targetCampaignId);
-      if (!campaign) {
-        return res.status(404).json({
-          success: false,
-          message: 'Campaign not found'
-        });
-      }
+      // Check campaign ownership (a post was checked by its owner above)
+      if (!taskId) {
+        const campaign = await Campaign.findById(targetCampaignId);
+        if (!campaign) {
+          return res.status(404).json({
+            success: false,
+            message: 'Campaign not found'
+          });
+        }
 
-      if (campaign.createdBy.toString() !== req.user!._id.toString()) {
-        return res.status(403).json({
-          success: false,
-          message: 'Access denied: You can only upload assets to resources under campaigns you created'
-        });
+        if (campaign.createdBy.toString() !== req.user!._id.toString()) {
+          return res.status(403).json({
+            success: false,
+            message: 'Access denied: You can only upload assets to resources under campaigns you created'
+          });
+        }
       }
     }
 
@@ -262,9 +264,11 @@ router.get('/:id/download', isAuthenticated, async (req: Request, res: Response)
       // For private S3 buckets, generate signed URL
       try {
         const signedUrl = await getSignedDownloadUrl(asset.path);
+        res.set('Cross-Origin-Resource-Policy', 'cross-origin'); // the app may run on another address than the API (e.g. localhost:3000 vs :5000); without this, browsers refuse to show the image
         res.redirect(signedUrl);
       } catch (error) {
         // If signed URL fails, try direct location (for public buckets)
+        res.set('Cross-Origin-Resource-Policy', 'cross-origin');
         res.redirect(asset.location);
       }
     } else {

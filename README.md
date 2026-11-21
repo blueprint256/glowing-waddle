@@ -535,3 +535,23 @@ For questions or issues, please create an issue in the repository or contact the
 ## Access modes (Part one / Part two)
 
 A System Admin assigns each user Part one (AI generation enabled) or Part two (AI generation off; manual upload, Canva import and, later, connectors). The app and data are identical. See [docs/ACCESS_MODES.md](docs/ACCESS_MODES.md).
+
+## Claude connector (MCP)
+
+Users can connect Claude to their account and manage campaigns, projects, tasks and comments from a chat, with exactly their own permissions. Sign-in uses OAuth 2.1 against the app itself. System Admins can turn the connector off per user. Setup, local testing with a tunnel, the tool list and the security model are in [docs/MCP_CONNECTOR.md](docs/MCP_CONNECTOR.md).
+
+## Blue (in-app assistant)
+
+Blue is a chat assistant built into the app: users type what they need ("create a task for Friday's sale with a caption") and Blue does it, showing the results as cards. It runs on the organisation's AI keys, acts with each user's own permissions, asks before deleting anything, and can be switched off globally or per user. See [docs/BLUE_ASSISTANT.md](docs/BLUE_ASSISTANT.md).
+
+## Library (Aggregator)
+
+The Library brings a client's past and present work into the app: posters, photos, logos, captions, drafts, documents and videos, uploaded as files, whole folders or zip files, or imported from the app's own task images and logos. An AI reads each item once (describes it, reads text in images, dates it, tags it), every file keeps a full version history, and a timeline index (years → months → events) lets users, Blue and Claude go straight to "that Women's Day poster from around March" without rescanning anything. System Admins can switch it off globally or per user and set a monthly AI allowance. See [docs/AGGREGATOR.md](docs/AGGREGATOR.md).
+
+## Publishing and Edit in Canva
+
+Tasks can be published to X, LinkedIn, Facebook, Instagram, TikTok and YouTube, now or on a schedule, from the task page or by asking Blue. The full engine is built (scheduling, retries, status, each platform's posting rules). Each platform is switched on in Settings by pasting the keys of the developer app it approved. Until then, "post by hand" reminders and test accounts work with no approvals. **Edit in Canva** sends a task image or Library picture to the user's own Canva and brings the edited design back as a new version. See [docs/PUBLISHING.md](docs/PUBLISHING.md).
+
+## Inbox and Outreach
+
+Every user has an **Inbox** for reminders that need a decision (posts due by hand, failed posts, accounts to reconnect, Library reviews), updates (posts going out tomorrow, messages from the Blueprint team) and conversations with the team. Items are answered with buttons or a typed reply ("yes", "remind me later"), and reminders close themselves when dealt with elsewhere. System Admins get **Outreach**: message users by sector, tags, part or name (now or scheduled), offer "Create a post from this", see who read and acted, answer support conversations, and keep templates. See [docs/INBOX.md](docs/INBOX.md) and the system review in [docs/SYSTEM_REVIEW.md](docs/SYSTEM_REVIEW.md).

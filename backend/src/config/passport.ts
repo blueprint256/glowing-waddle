@@ -110,6 +110,8 @@ passport.serializeUser((user: any, done) => {
 passport.deserializeUser(async (id: string, done) => {
   try {
     const user = await User.findById(id).select('-password');
+    // Deactivated (or deleted) accounts lose their existing sessions immediately.
+    if (!user || !user.isActive) return done(null, false);
     done(null, user);
   } catch (error) {
     done(error);

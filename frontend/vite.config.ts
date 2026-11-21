@@ -20,9 +20,7 @@ export default defineConfig({
         manualChunks: {
           react: ['react', 'react-dom', 'react-router-dom'],
           mui: ['@mui/material', '@emotion/react', '@emotion/styled'],
-          icons: ['@mui/icons-material'],
-          calendar: ['react-big-calendar', 'moment'],
-          dates: ['date-fns', '@mui/x-date-pickers']
+          icons: ['@mui/icons-material']
         }
       }
     }

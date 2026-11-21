@@ -129,7 +129,7 @@ router.post('/generate-campaign-tasks', isAuthenticated, isSystemAdmin, async (r
 
     res.json({
       success: true,
-      message: 'Campaign tasks generated successfully',
+      message: 'Campaign posts generated successfully',
       content: result.content,
       compiledPrompt: result.compiledPrompt,
       usage: result.usage,
@@ -158,7 +158,7 @@ router.post('/generate-campaign-tasks', isAuthenticated, isSystemAdmin, async (r
 
     res.status(500).json({
       success: false,
-      message: 'Error generating campaign tasks',
+      message: 'Error generating campaign posts',
       error: error.message
     });
   }

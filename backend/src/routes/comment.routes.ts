@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import { Comment } from '../models/Comment';
 import { Project } from '../models/Project';
 import { Campaign } from '../models/Campaign';
+import { Task } from '../models/Task';
 import { UserRole } from '../models/User';
 import { isAuthenticated } from '../middleware/auth';
 import { validateCommentCreation, validateMongoId } from '../middleware/validation';
@@ -9,64 +10,81 @@ import mongoose from 'mongoose';
 
 const router = express.Router();
 
+type CommentTarget = { field: 'taskId' | 'projectId' | 'campaignId'; id: mongoose.Types.ObjectId };
+
+/**
+ * Resolve which campaign/project/task a comment request is about and check the user may access it
+ * (System Admins: everything; Hybrid users: only resources under campaigns they created).
+ */
+async function resolveTarget(
+  req: Request,
+  source: { taskId?: unknown; projectId?: unknown; campaignId?: unknown }
+): Promise<{ ok: true; target: CommentTarget } | { ok: false; status: number; message: string }> {
+  const pick = (['taskId', 'projectId', 'campaignId'] as const).find((f) => source[f]);
+  if (!pick) {
+    return { ok: false, status: 400, message: 'Specify the post, theme or campaign (taskId, projectId or campaignId)' };
+  }
+  const rawId = source[pick];
+  if (typeof rawId !== 'string' || !mongoose.isValidObjectId(rawId)) {
+    return { ok: false, status: 400, message: `Valid ${pick} is required` };
+  }
+
+  let campaignId: unknown;
+  if (pick === 'taskId') {
+    // A post belongs to an account, with or without a campaign.
+    const task = await Task.findById(rawId).select('ownerId');
+    if (!task || (req.user!.role !== UserRole.SYSTEM_ADMIN && String(task.ownerId) !== String(req.user!._id))) {
+      return { ok: false, status: 404, message: 'Post not found' };
+    }
+    return { ok: true, target: { field: pick, id: new mongoose.Types.ObjectId(rawId) } };
+  } else if (pick === 'projectId') {
+    const project = await Project.findById(rawId).select('campaignId');
+    if (!project) return { ok: false, status: 404, message: 'Theme not found' };
+    campaignId = project.campaignId;
+  } else {
+    campaignId = rawId;
+  }
+
+  const campaign = await Campaign.findById(campaignId).select('createdBy');
+  if (!campaign) return { ok: false, status: 404, message: 'Campaign not found' };
+
+  if (req.user!.role !== UserRole.SYSTEM_ADMIN && campaign.createdBy.toString() !== req.user!._id.toString()) {
+    return { ok: false, status: 403, message: 'Access denied: You can only access comments on resources under campaigns you created' };
+  }
+
+  return { ok: true, target: { field: pick, id: new mongoose.Types.ObjectId(rawId) } };
+}
+
 /**
  * @route   POST /api/comments
- * @desc    Create a new comment
+ * @desc    Create a new comment on a task, project or campaign
  * @access  Private
  */
 router.post('/', isAuthenticated, validateCommentCreation, async (req: Request, res: Response) => {
   try {
-    const { content, projectId, campaignId, mentions, parentCommentId } = req.body;
+    const { content, taskId, projectId, campaignId, mentions, parentCommentId } = req.body;
 
-    // At least one target is required
-    if (!projectId && !campaignId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Comment must be attached to a project or campaign'
-      });
+    const resolved = await resolveTarget(req, { taskId, projectId, campaignId });
+    if (!resolved.ok) {
+      return res.status(resolved.status).json({ success: false, message: resolved.message });
     }
 
-    // CRITICAL: Verify ownership through parent campaign (Hybrid users only)
-    if (req.user!.role === UserRole.HYBRID) {
-      let targetCampaignId = null;
-
-      if (projectId) {
-        const project = await Project.findById(projectId);
-        if (!project) {
-          return res.status(404).json({
-            success: false,
-            message: 'Project not found'
-          });
-        }
-        targetCampaignId = project.campaignId;
-      } else if (campaignId) {
-        targetCampaignId = new mongoose.Types.ObjectId(campaignId);
-      }
-
-      // Check campaign ownership
-      const campaign = await Campaign.findById(targetCampaignId);
-      if (!campaign) {
-        return res.status(404).json({
-          success: false,
-          message: 'Campaign not found'
-        });
-      }
-
-      if (campaign.createdBy.toString() !== req.user!._id.toString()) {
-        return res.status(403).json({
-          success: false,
-          message: 'Access denied: You can only comment on resources under campaigns you created'
-        });
+    if (parentCommentId !== undefined && parentCommentId !== null && parentCommentId !== '') {
+      if (!mongoose.isValidObjectId(parentCommentId) || !(await Comment.exists({ _id: parentCommentId }))) {
+        return res.status(400).json({ success: false, message: 'Comment being replied to was not found' });
       }
     }
 
-    // Create comment
+    const mentionIds = Array.isArray(mentions)
+      ? mentions.filter((m: unknown) => typeof m === 'string' && mongoose.isValidObjectId(m))
+          .map((m: string) => new mongoose.Types.ObjectId(m))
+      : [];
+
     const comment = await Comment.create({
       content,
-      projectId: projectId ? new mongoose.Types.ObjectId(projectId) : undefined,
-      campaignId: campaignId ? new mongoose.Types.ObjectId(campaignId) : undefined,
+      [resolved.target.field]: resolved.target.id,
       authorId: req.user!._id,
-      mentions: mentions ? mentions.map((id: string) => new mongoose.Types.ObjectId(id)) : [],
+      mentions: mentionIds,
       parentCommentId: parentCommentId ? new mongoose.Types.ObjectId(parentCommentId) : undefined
     });
 
@@ -90,22 +108,22 @@ router.post('/', isAuthenticated, validateCommentCreation, async (req: Request, 
 });
 
 /**
- * @route   GET /api/comments
- * @desc    Get comments (filtered by project/campaign)
+ * @route   GET /api/comments?taskId=|projectId=|campaignId=
+ * @desc    Get comments for one task, project or campaign the user can access
  * @access  Private
  */
 router.get('/', isAuthenticated, async (req: Request, res: Response) => {
   try {
-    let query: any = {};
-
-    // Filter by entity
-    if (req.query.projectId) {
-      query.projectId = req.query.projectId;
-    } else if (req.query.campaignId) {
-      query.campaignId = req.query.campaignId;
+    const resolved = await resolveTarget(req, {
+      taskId: req.query.taskId,
+      projectId: req.query.projectId,
+      campaignId: req.query.campaignId
+    });
+    if (!resolved.ok) {
+      return res.status(resolved.status).json({ success: false, message: resolved.message });
     }
 
-    const comments = await Comment.find(query)
+    const comments = await Comment.find({ [resolved.target.field]: resolved.target.id })
       .populate('authorId', 'firstName lastName email role')
       .populate('mentions', 'firstName lastName email')
       .populate('parentCommentId')

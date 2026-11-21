@@ -13,6 +13,7 @@ import {
 } from '@mui/material';
 import GoogleIcon from '@mui/icons-material/Google';
 import { useAuthStore } from '../store/authStore';
+import { getReturnTo } from '../utils/returnTo';
 
 export default function SignupPage() {
   const navigate = useNavigate();
@@ -33,14 +34,14 @@ export default function SignupPage() {
     const authStatus = searchParams.get('auth');
     if (authStatus === 'success') {
       checkAuth().then(() => {
-        navigate('/');
+        navigate(getReturnTo() || '/');
       });
     }
   }, [searchParams, checkAuth, navigate]);
 
-  if (isAuthenticated) {
-    navigate('/');
-  }
+  useEffect(() => {
+    if (isAuthenticated) navigate(getReturnTo() || '/', { replace: true });
+  }, [isAuthenticated, navigate]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
@@ -73,7 +74,7 @@ export default function SignupPage() {
 
     try {
       await signup(formData.email, formData.password, formData.firstName, formData.lastName);
-      navigate('/');
+      navigate(getReturnTo() || '/');
     } catch (err: any) {
       setError(err.response?.data?.message || 'Signup failed');
     } finally {
@@ -98,7 +99,7 @@ export default function SignupPage() {
       >
         <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
           <Typography variant="h4" component="h1" gutterBottom align="center">
-            Campaign Management
+            Blueprint
           </Typography>
           <Typography variant="subtitle1" gutterBottom align="center" color="text.secondary">
             Create your account
@@ -137,6 +138,7 @@ export default function SignupPage() {
               label="Email"
               name="email"
               type="email"
+              autoComplete="email"
               value={formData.email}
               onChange={handleChange}
               margin="normal"
@@ -147,6 +149,7 @@ export default function SignupPage() {
               label="Password"
               name="password"
               type="password"
+              autoComplete="new-password"
               value={formData.password}
               onChange={handleChange}
               margin="normal"
@@ -158,6 +161,7 @@ export default function SignupPage() {
               label="Confirm Password"
               name="confirmPassword"
               type="password"
+              autoComplete="new-password"
               value={formData.confirmPassword}
               onChange={handleChange}
               margin="normal"

@@ -13,6 +13,7 @@ import {
 } from '@mui/material';
 import GoogleIcon from '@mui/icons-material/Google';
 import { useAuthStore } from '../store/authStore';
+import { getReturnTo } from '../utils/returnTo';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -28,14 +29,15 @@ export default function LoginPage() {
     const authStatus = searchParams.get('auth');
     if (authStatus === 'success') {
       checkAuth().then(() => {
-        navigate('/');
+        navigate(getReturnTo() || '/');
       });
     }
   }, [searchParams, checkAuth, navigate]);
 
-  if (isAuthenticated) {
-    navigate('/');
-  }
+  useEffect(() => {
+    // Already signed in (or just signed in): continue to where the user was going.
+    if (isAuthenticated) navigate(getReturnTo() || '/', { replace: true });
+  }, [isAuthenticated, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,7 +46,7 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
-      navigate('/');
+      navigate(getReturnTo() || '/');
     } catch (err: any) {
       setError(err.response?.data?.message || 'Login failed');
     } finally {
@@ -69,7 +71,7 @@ export default function LoginPage() {
       >
         <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
           <Typography variant="h4" component="h1" gutterBottom align="center">
-            Campaign Management
+            Blueprint
           </Typography>
           <Typography variant="subtitle1" gutterBottom align="center" color="text.secondary">
             Sign in to your account
@@ -86,6 +88,7 @@ export default function LoginPage() {
               fullWidth
               label="Email"
               type="email"
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               margin="normal"
@@ -96,6 +99,7 @@ export default function LoginPage() {
               fullWidth
               label="Password"
               type="password"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               margin="normal"
@@ -133,6 +137,8 @@ export default function LoginPage() {
               Sign in with Google
             </Button>
 
+            {/* Demo logins are only shown when VITE_SHOW_DEMO_LOGINS=true (never on a shared or live app). */}
+            {import.meta.env.VITE_SHOW_DEMO_LOGINS === 'true' && (
             <Box sx={{ mt: 3 }}>
               <Typography variant="caption" color="text.secondary">
                 Demo credentials:
@@ -147,6 +153,7 @@ export default function LoginPage() {
                 Marketer: marketer@example.com / password123
               </Typography>
             </Box>
+            )}
 
             <Box sx={{ mt: 3, textAlign: 'center' }}>
               <Typography variant="body2" color="text.secondary">
