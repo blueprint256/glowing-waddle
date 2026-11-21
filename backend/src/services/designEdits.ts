@@ -12,7 +12,7 @@ import { renderDesign } from '../design/renderer';
 import { applyEdits, applyTextEdits, editPrompt, EDIT_SYSTEM, EDIT_TOOL, type EditOp, type TextEdits } from '../design/edits';
 import { callClaudeTool, DESIGN_MODELS } from '../design/claude';
 import { editableAreas, hasErrors } from '../design/checks';
-import { CONCEPT_SIZE, POSTER_ASPECT, brandColors, placeFromCrop, repairScene, templateForDoc, type Box, type PhotoLayer, type SceneDoc } from '../design/scene';
+import { CONCEPT_SIZE, POSTER_ASPECT, brandColors, keepGutters, placeFromCrop, repairScene, separateText, templateForDoc, type Box, type PhotoLayer, type SceneDoc } from '../design/scene';
 import type { BrandKit, FormatId } from '../design/types';
 
 /**
@@ -124,6 +124,8 @@ export async function docForFormat(doc: SceneDoc, format: FormatId, userId?: Id)
       } else l.box = box;
     }
     s.aspect = target;
+    separateText(s);
+    keepGutters(s);
   } catch (error: any) {
     if (userId) await logUsage(userId, 'Design · new shape', `anthropic/${DESIGN_MODELS.quick}`, { input: 0, output: 0 }, 0, Date.now() - started, false, error?.message);
   }
@@ -223,6 +225,8 @@ async function renderAndKeep(task: ITask, doc0: SceneDoc, kit: BrandKit, o: { pr
   if (hasErrors(result.report.issues)) {
     const fixed = repairScene(doc.scene, result.report.issues, doc.photos);
     if (fixed) {
+      separateText(fixed);
+      keepGutters(fixed);
       const again: SceneDoc = { ...doc, scene: fixed, text: fixed.copy };
       const r2 = await renderDesign(templateForDoc(again)!, again, kit, loader, { type: 'jpeg', quality: 90 });
       if (!hasErrors(r2.report.issues)) {
@@ -280,6 +284,8 @@ export async function exportSizes(task: ITask, ref: string): Promise<{ sizes: { 
     if (hasErrors(result.report.issues)) {
       const fixed = repairScene(doc.scene, result.report.issues, doc.photos);
       if (fixed) {
+        separateText(fixed);
+        keepGutters(fixed);
         doc = { ...doc, scene: fixed, text: fixed.copy };
         result = await renderDesign(templateForDoc(doc)!, doc, kit, loader, { type: 'jpeg' });
       }

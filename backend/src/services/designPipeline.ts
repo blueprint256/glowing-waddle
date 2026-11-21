@@ -18,7 +18,7 @@ import { isFormatId } from '../design/formats';
 import { findFocal, photoStats } from '../design/assets';
 import { callClaudeTool, DESIGN_MODELS, type ClaudeImage } from '../design/claude';
 import { copyWithoutAI } from '../design/brief';
-import { POSTER_ASPECT, fallbackScene, repairScene, sceneDoc, sceneTemplate, type SceneDoc } from '../design/scene';
+import { POSTER_ASPECT, fallbackScene, keepGutters, repairScene, sceneDoc, sceneTemplate, separateText, type SceneDoc } from '../design/scene';
 import { sceneOptions, type SceneOption } from './designScene';
 import { CRITIC_SYSTEM, CRITIC_TOOL, applyRanking, type CriticRanking } from '../design/critic';
 import { checkScore, editableAreas, hasErrors } from '../design/checks';
@@ -288,6 +288,8 @@ export async function runDesignJob(job: IDesignJob): Promise<void> {
     for (const r of rendered.filter((x) => hasErrors(x.result.report.issues))) {
       const next = repairScene(r.option.doc.scene, r.result.report.issues, photoInfo(r.option));
       if (!next) continue;
+      separateText(next);
+      keepGutters(next);
       const doc: SceneDoc = { ...JSON.parse(JSON.stringify(r.option.doc)), text: next.copy, scene: next };
       const again = await renderOption({ ...r.option, doc, design: sceneTemplate(next, doc.designId, format, doc.photos) }, kit);
       if (checkScore(again.result.report.issues) >= checkScore(r.result.report.issues)) rendered = rendered.map((x) => (x === r ? again : x));

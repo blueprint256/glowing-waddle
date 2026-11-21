@@ -917,6 +917,10 @@
         why = [];
         if (box && overflows(box)) why.push('box ' + box.scrollHeight + '/' + box.clientHeight + ' ' + box.scrollWidth + '/' + box.clientWidth);
         if (el.scrollWidth > el.clientWidth + 2) why.push('w ' + el.scrollWidth + '/' + el.clientWidth);
+        // Words that spill out of their own box downwards (a block of detail lines, say) land on
+        // whatever is below. Tight leading lets glyphs overhang their line box: that's not overflow.
+        var vslack = Math.max(2, m.fontSize * 0.35); // a script face can overhang its line box a long way
+        if (el.scrollHeight > el.clientHeight + vslack) why.push('h ' + el.scrollHeight + '/' + el.clientHeight);
         m.overflow = why.length > 0;
         // Text cut off by a clipping parent counts as overflow too (tight leading may overhang a
         // little above and below the lines: that's allowed).

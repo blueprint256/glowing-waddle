@@ -40,6 +40,7 @@ import {
   placeFromCrop,
   repairScene,
   reshapeScene,
+  separateText,
   sceneDoc,
   sceneTemplate,
   type Box,
@@ -287,7 +288,7 @@ async function main() {
     const plain = await renderDesign(design, doc, kit, loader, { scale: 1 });
     const own = await renderDesign(design, doc, ownKit as any, loader, { scale: 1 });
     fs.writeFileSync(path.join(out, 'custom-font.png'), own.file);
-    check(formatsOk && stackOk && cssOk && pageOk && Buffer.compare(plain.file, own.file) !== 0 && !hasErrors(own.report.issues), 'uploaded font is detected and used on the poster');
+    check(formatsOk && stackOk && cssOk && pageOk && Buffer.compare(plain.file, own.file) !== 0 && !hasErrors(own.report.issues), `uploaded font is detected and used on the poster${hasErrors(own.report.issues) ? ` [${own.report.issues.filter((i) => i.level === 'error').map((i) => `${i.code}(${i.key})`).join(',')}]` : ''}${formatsOk ? '' : ' [format]'}${stackOk ? '' : ' [stack]'}${cssOk ? '' : ' [css]'}${pageOk ? '' : ' [page]'}`);
   }
 
   // Current Claude models refuse forced tool use: the call offers the tool ("auto") and asks once more.
@@ -442,6 +443,26 @@ async function main() {
     check(
       photo1.scrim?.side === 'bottom' && photo1.scrim.size > 40 && head1.panel === 'none' && head1.color === 'paper' && photo2.scrim!.amount > photo1.scrim.amount && sub.color === 'auto' && trimmed === 'Rotaract Club of Kampala East with The Great Lakers',
       `words over a photo: the photo is shaded (${Math.round(photo1.scrim!.size)}% up, ${photo1.scrim!.amount} → ${photo2.scrim!.amount}), no box; words trimmed whole ("${trimmed}")`
+    );
+  }
+
+  // Words never sit on each other: the tidy pass moves the lower block down, or shortens the upper
+  // one, and leaves logos and partner strips where they are.
+  {
+    const s: Scene = {
+      version: 2,
+      aspect: A,
+      backdrop: { kind: 'color', color: 'primary' },
+      layers: [T('details', { x: 7, y: 60, w: 50, h: 20 }), T('cta', { x: 7, y: 74, w: 40, h: 8 }), logo({ x: 55, y: 76, w: 38, h: 8 })],
+      copy: { headline: 'x' }
+    };
+    const before = JSON.parse(JSON.stringify(s.layers.find((l: any) => l.id === 'logo')));
+    separateText(s);
+    const box = (id: string) => (s.layers.find((l: any) => l.id === id) as any).box;
+    const apart = (a: any, b: any) => a.y + a.h <= b.y + 0.01 || b.y + b.h <= a.y + 0.01 || a.x + a.w <= b.x || b.x + b.w <= a.x;
+    check(
+      apart(box('details'), box('cta')) && apart(box('cta'), box('logo')) && JSON.stringify(box('logo')) === JSON.stringify(before.box) && box('details').h >= 3,
+      `words are kept apart (details ${Math.round(box('details').y)}–${Math.round(box('details').y + box('details').h)}, button ${Math.round(box('cta').y)}), the logo stays put`
     );
   }
 

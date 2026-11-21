@@ -27,7 +27,7 @@ import {
   type SceneDoc
 } from '../design/scene';
 import { organicMask, refinePlace } from '../design/sceneFit';
-import { keepGutters, keepPeopleInFrame } from '../design/scene';
+import { keepGutters, keepPeopleInFrame, separateText } from '../design/scene';
 import type { BrandKit, DesignTemplate, FormatId, PhotoSlot, SponsorSlot } from '../design/types';
 
 type Id = mongoose.Types.ObjectId;
@@ -177,6 +177,7 @@ async function oneScene(input: SceneInput, index: number): Promise<SceneOption |
     const ref = refs[found.layer.photo];
     keepPeopleInFrame(found.layer, found.box, aspect, { width: ref.slot.width, height: ref.slot.height });
   }
+  separateText(scene);
   keepGutters(scene);
 
   // No art after all: the reader's ground colour stands in (the scene stays usable).

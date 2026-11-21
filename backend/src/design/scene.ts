@@ -558,7 +558,8 @@ export function cleanScene(raw: any, opts: { partners: number; photos: number; a
         upper: Boolean(r.upper),
         weight: pick(r.weight, ['regular', 'bold', 'black'] as const, role === 'headline' ? 'black' : role === 'cta' || role === 'eyebrow' || role === 'details' ? 'bold' : 'regular'),
         font: pick(r.font, ['display', 'text', 'accent'] as const, role === 'subhead' ? 'text' : 'display'),
-        lines: Math.round(num(r.lines, 1, 8, role === 'headline' ? 3 : role === 'subhead' ? 3 : 2)),
+        // A button with a long call to action needs two lines; the reader often asks for one.
+        lines: Math.max(role === 'cta' && (copy.cta || '').length > 18 ? 2 : 1, Math.round(num(r.lines, 1, 8, role === 'headline' ? 3 : role === 'subhead' ? 3 : 2))),
         emphasis: COLORS.includes(r.emphasis) ? (r.emphasis as ColorRole) : undefined
       });
     } else if (r.type === 'logo' && !logo) {
@@ -675,7 +676,7 @@ const TEXT_ROLE: Partial<Record<TextRole, { field: TextField; min: number; max: 
   headline: { field: 'headline', min: 4.2, max: 16, order: 1, tag: 'h1' },
   subhead: { field: 'subhead', min: 2.6, max: 5, order: 2, tag: 'p' },
   eyebrow: { field: 'eyebrow', min: 2.1, max: 3.4, order: 4, tag: 'p' },
-  cta: { field: 'cta', min: 2.5, max: 4, order: 3, tag: 'p' }
+  cta: { field: 'cta', min: 2.2, max: 4, order: 3, tag: 'p' }
 };
 
 const colorVar = (c: ColorRole) => `var(--c-${c})`;
@@ -1020,6 +1021,45 @@ function shrinkToShowPeople(layer: PhotoLayer, people: Box01, canvasAspect: numb
 export type Box01 = { x: number; y: number; w: number; h: number };
 
 /**
+ * No two blocks of words sit on each other. Boxes come from a reading of a picture, and two can
+ * overlap by a few percent; nothing in the checks can rescue a button printed over a date. The
+ * lower block gives way downwards where there's room, otherwise the upper one is shortened. Logos
+ * and partner strips hold their place; words move around them.
+ */
+export function separateText(scene: Scene): void {
+  const GAP = 1;
+  const fixed = (l: SceneLayer) => l.type === 'logo' || l.type === 'partners';
+  const blocks = scene.layers.filter((l): l is TextLayer | LogoLayer | PartnersLayer => l.type === 'text' || l.type === 'logo' || l.type === 'partners');
+  for (let pass = 0; pass < 3; pass++) {
+    let touched = false;
+    const sorted = [...blocks].sort((a, b) => a.box.y - b.box.y || a.box.h - b.box.h);
+    for (let i = 0; i < sorted.length; i++) {
+      for (let j = i + 1; j < sorted.length; j++) {
+        const a = sorted[i];
+        const b = sorted[j];
+        if (!meets(a.box, b.box)) continue;
+        const want = a.box.y + a.box.h + GAP;
+        const room = 97 - b.box.h;
+        if (!fixed(b) && want <= room) {
+          b.box.y = want;
+          touched = true;
+        } else if (!fixed(a) && b.box.y - GAP - a.box.y >= 3) {
+          a.box.h = b.box.y - GAP - a.box.y;
+          touched = true;
+        } else if (!fixed(b)) {
+          // No room below and the upper block can't give: the lower one takes what's left.
+          const y = Math.min(want, room);
+          b.box.h = Math.max(3, Math.min(b.box.h, 97 - y));
+          b.box.y = y;
+          touched = true;
+        }
+      }
+    }
+    if (!touched) break;
+  }
+}
+
+/**
  * Room between words and a photo's hard edge: words, logos and partners that start (or end) within
  * 3% of a hard frame edge inside the poster move off it, giving up width (never below 15%).
  */
@@ -1273,42 +1313,59 @@ export function fallbackScene(o: { copy: DesignText; photos: PhotoSlot[]; partne
   const v = (o.variant || 0) % 2;
   const photo = o.photos.length > 0;
   const layers: SceneLayer[] = [];
-  const end = o.partners ? 84 : 95; // the bottom row (button, logo) ends here
   const rowH = 7;
-  const nDetails = o.copy.details?.length || 0;
-  if (photo) {
-    const ph = v ? 64 : 52;
-    if (!v) layers.push({ type: 'shape', id: 's1', box: { x: 0, y: ph - 1, w: 100, h: 102 - ph }, color: 'primary', opacity: 1, shape: 'rect' });
-    layers.push({ type: 'photo', id: 'p1', photo: 0, frame: { x: 0, y: 0, w: 100, h: ph }, shape: 'rect', fade: v ? { side: 'bottom', size: 30 } : undefined });
-  } else {
-    layers.push(v ? { type: 'shape', id: 's1', box: { x: 64, y: -14, w: 58, h: 40 }, color: 'accent', opacity: 0.95, shape: 'circle' } : { type: 'shape', id: 's1', box: { x: 7, y: 19, w: 14, h: 1.2 }, color: 'accent', opacity: 1, shape: 'rect' });
-  }
-  // The words, top to bottom, sized to the room left above the bottom row.
-  const top = photo ? (v ? 52 : 56) : 24;
-  const room = end - rowH - 2 - top;
+  const logoW = 40;
+  // The bottom block first (button and logo), so the words only ever take the room left above it.
+  const floor = o.partners ? 81 : 95;
+  const ctaW = o.copy.cta ? Math.max(34, Math.min(86, o.copy.cta.length * 1.9 + 10)) : 0;
+  const sideBySide = !!o.copy.cta && ctaW + 4 + logoW <= 86;
+  const stacked = !!o.copy.cta && !sideBySide;
+  const bottomH = stacked ? rowH * 2 + 6 : rowH + 1;
+  const bottomTop = floor - bottomH;
+  if (o.copy.cta) layers.push({ type: 'text', id: 'cta', role: 'cta', box: { x: 7, y: floor - rowH + 0.5, w: Math.min(ctaW, 86), h: rowH - 1 }, align: 'center', color: 'ink', panel: 'accent', radius: 50, weight: 'bold', font: 'display', lines: 2 });
+  layers.push({
+    type: 'logo',
+    id: 'logo',
+    box: sideBySide ? { x: 93 - logoW, y: floor - rowH - 0.5, w: logoW, h: rowH + 1 } : { x: 7, y: bottomTop, w: 44, h: rowH + 1 },
+    align: sideBySide ? 'right' : 'left'
+  });
+  if (o.partners) layers.push({ type: 'partners', id: 'partners', box: { x: 5, y: 86.5, w: 90, h: 10 }, align: 'center', panel: 'paper', radius: 6 });
+
+  // How much room the words need, so the picture can take what's left (a poster with partners and
+  // a stacked button has far less room than one without).
   const want = {
     eyebrow: !photo && o.copy.eyebrow ? 4 : 0,
     headline: photo ? 15 : 26,
     subhead: !photo && o.copy.subhead ? 9 : 0,
-    details: nDetails ? nDetails * 4.4 : 0
+    details: o.copy.details?.length ? o.copy.details.length * 4.4 : 0
   };
-  const total = want.eyebrow + want.headline + want.subhead + want.details + 1.5 * [want.eyebrow, want.subhead, want.details].filter(Boolean).length;
+  const gaps = 1.5 * [want.eyebrow, want.subhead, want.details].filter(Boolean).length;
+  const total = want.eyebrow + want.headline + want.subhead + want.details + gaps;
+  const wordsBottom = bottomTop - 4; // the logo needs clear space above it
+  const top = photo ? Math.max(30, Math.min(62, wordsBottom - total)) + 3 : 24;
+
+  // The picture, or a graphic shape where there is none.
+  if (photo) {
+    const ph = top - 3;
+    if (!v) layers.unshift({ type: 'shape', id: 's1', box: { x: 0, y: ph - 1, w: 100, h: 102 - ph }, color: 'primary', opacity: 1, shape: 'rect' });
+    layers.unshift({ type: 'photo', id: 'p1', photo: 0, frame: { x: 0, y: 0, w: 100, h: v ? ph + 8 : ph }, shape: 'rect', fade: v ? { side: 'bottom', size: 30 } : undefined });
+  } else {
+    layers.unshift(v ? { type: 'shape', id: 's1', box: { x: 64, y: -14, w: 58, h: 40 }, color: 'accent', opacity: 0.95, shape: 'circle' } : { type: 'shape', id: 's1', box: { x: 7, y: 19, w: 14, h: 1.2 }, color: 'accent', opacity: 1, shape: 'rect' });
+  }
+
+  // The words, top to bottom, scaled to the room between the picture and the bottom block.
+  const room = Math.max(10, wordsBottom - top);
   const k = total > room ? room / total : 1;
   let y = top;
-  const ink: ColorRole | 'auto' = 'auto';
   const put = (role: TextRole, h: number, extra: Partial<TextLayer> = {}, w = 86) => {
     if (!h) return;
-    layers.push({ type: 'text', id: role, role, box: { x: 7, y, w, h: h * k }, align: 'left', color: ink, panel: 'none', weight: role === 'headline' ? 'black' : 'bold', font: 'display', lines: role === 'headline' ? 3 : 2, ...extra });
+    layers.push({ type: 'text', id: role, role, box: { x: 7, y, w, h: h * k }, align: 'left', color: 'auto', panel: 'none', weight: role === 'headline' ? 'black' : 'bold', font: 'display', lines: role === 'headline' ? 3 : 2, ...extra });
     y += h * k + 1.5 * k;
   };
-  put('eyebrow', want.eyebrow, { color: 'auto', upper: true, lines: 1 });
+  put('eyebrow', want.eyebrow, { upper: true, lines: 1 });
   put('headline', want.headline);
   put('subhead', want.subhead, { weight: 'regular', font: 'text', lines: 3 });
   put('details', want.details, {}, 80);
-  const row = end - rowH;
-  if (o.copy.cta) layers.push({ type: 'text', id: 'cta', role: 'cta', box: { x: 7, y: row + 0.5, w: 40, h: rowH - 1 }, align: 'center', color: 'ink', panel: 'accent', radius: 50, weight: 'bold', font: 'display', lines: 1 });
-  layers.push({ type: 'logo', id: 'logo', box: { x: o.copy.cta ? 55 : 7, y: row, w: o.copy.cta ? 38 : 40, h: rowH }, align: o.copy.cta ? 'right' : 'left' });
-  if (o.partners) layers.push({ type: 'partners', id: 'partners', box: { x: 5, y: 87, w: 90, h: 10 }, align: 'center', panel: 'paper', radius: 6 });
   return { version: 2, aspect: o.aspect, backdrop: { kind: 'color', color: 'primary' }, layers, copy: o.copy };
 }
 
