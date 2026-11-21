@@ -223,3 +223,13 @@ settings (`roomy` on the settings that give the words more room), add it to
 `library/index.ts`, and run the self-test until every shape passes with ordinary words and six
 partners. The art director reads each design's description to decide when to use it, so write it
 as a designer would brief one.
+
+### Concepts with the user's own photos
+
+When a post has photos (up to 3), the image model designs the concept *with* them as references
+(crop, fade, overlap; never adding or changing people). One image edit then removes the words and
+paints each photo's area a key colour (#00FF00, #FF00FF, #00FFFF). `design/photoFit.ts` turns that
+into the art layer with transparent holes (soft fades un-mixed) and finds where each real photo sits
+by matching it against the concept (no AI call). The poster draws the real photos under the art
+layer, so the finished poster always shows the photos' own pixels. Cost per option: 2 image calls and
+1 Claude reading, the same as a concept without photos.

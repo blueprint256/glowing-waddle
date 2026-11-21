@@ -355,6 +355,32 @@ async function main() {
     if (!ok) failures++;
   }
 
+  // Real photos used the way a concept used them: the key colour becomes a hole (soft fades
+  // un-mixed, a purple panel elsewhere untouched), and the real photo is found where it was drawn.
+  {
+    const { keyMasks, placePhoto } = await import('../design/photoFit');
+    const W = 400, H = 600;
+    const real = await sharp({ create: { width: 800, height: 600, channels: 3, background: '#7a6a55' } })
+      .composite([{ input: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><circle cx="300" cy="250" r="120" fill="#e0b090"/><rect x="420" y="80" width="200" height="420" fill="#203040"/><rect x="0" y="480" width="800" height="120" fill="#b0c040"/></svg>') }])
+      .jpeg().toBuffer();
+    // Concept: the photo at 500 px wide, at (-50, 250); a purple panel at the top.
+    const placed = await sharp(real).resize(500, 375).extract({ left: 50, top: 0, width: 400, height: 350 }).toBuffer();
+    const panel = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="120"><rect width="400" height="120" fill="#7b2d8e"/></svg>');
+    const base = () => sharp({ create: { width: W, height: H, channels: 3, background: '#0f2a5c' } });
+    const concept = await base().composite([{ input: placed, left: 0, top: 250 }, { input: panel, left: 0, top: 0 }]).jpeg().toBuffer();
+    const fade = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="350"><defs><linearGradient id="f" x2="0" y2="1"><stop offset="0" stop-color="#00ff00" stop-opacity="0"/><stop offset=".2" stop-color="#00ff00"/></linearGradient></defs><rect width="400" height="350" fill="url(#f)"/></svg>');
+    const keyed = await base().composite([{ input: fade, left: 0, top: 250 }, { input: panel, left: 0, top: 0 }]).png().toBuffer();
+    const k = await keyMasks(keyed, 2);
+    const px = async (x: number, y: number) => { const { data } = await sharp(k.artPng).extract({ left: x, top: y, width: 1, height: 1 }).raw().toBuffer({ resolveWithObject: true }); return [...data]; };
+    const solid = await px(200, 500), panelPx = await px(200, 50), mid = await px(200, 280);
+    const p = await placePhoto({ concept, mask: k.masks[0], maskWidth: k.width, maskHeight: k.height, photo: real, photoWidth: 800, photoHeight: 600 });
+    const near = (a: number, b: number, t: number) => Math.abs(a - b) <= t;
+    const ok = solid[3] === 0 && panelPx[3] === 255 && mid[3] > 20 && mid[3] < 235 && mid[1] < 120 && k.areas[1] === 0 &&
+      !!p && p.matched && near(p.x, -12.5, 3) && near(p.y, 41.7, 3) && near(p.w, 125, 6);
+    console.log(`${ok ? '✓' : '✗'} photo areas from key colours, and the real photo placed where the concept drew it (${p && [p.x, p.y, p.w, p.score].map((v) => Math.round(v * 10) / 10).join(', ')})`);
+    if (!ok) failures++;
+  }
+
   // The brand's own words reach the art director.
   {
     const v = voiceText({ about: 'A Kampala café', tone: 'Warm', rules: 'Say “Ugandan coffee”' });

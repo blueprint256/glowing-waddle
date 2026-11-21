@@ -47,6 +47,8 @@ export interface ConceptBlueprint {
   regions: ConceptRegion[];
   /** The concept picture's width / height: positions are read on it, then fitted to the poster. */
   aspect?: number;
+  /** Real photos placed under the art, showing through where the concept used them (percent of the concept; may reach past the edges). */
+  photoLayers?: { index: number; x: number; y: number; w: number; h: number; matched?: boolean }[];
   /** Where the real photo goes ("photo" region); "keep" leaves the concept's imagery there. */
   photoUse?: 'real' | 'keep';
   /** A soft fade behind the words, if the art needs one for contrast. */
@@ -149,6 +151,26 @@ export function conceptPrompt(a: ConceptAsk): string {
   ].join('\n');
 }
 
+/** Added to the concept's words when the real photos are given to the image model. */
+export function photosNote(n: number): string {
+  return [
+    `The ${n > 1 ? `${n} attached photographs are` : 'attached photograph is'} the real photography for this poster (from the organisation's own event). Design with ${n > 1 ? 'them' : 'it'} like a professional designer: crop and scale freely, let a photo bleed off the edges, fade it into a colour field, run a panel or words across parts that have no faces.`,
+    `Keep each photograph's content as it is: the same people, faces, poses and scene. Never add, remove or replace people, and never change a face. Show each photograph once, as one continuous piece (you may leave one out if the design is stronger without it).`
+  ].join(' ');
+}
+
+/** The keyed art layer: words and logos removed, and each photograph's area painted a key colour. */
+export function keyedArtPrompt(n: number): string {
+  const names = ['bright green #00FF00', 'magenta #FF00FF', 'cyan #00FFFF'];
+  const which = n > 1 ? Array.from({ length: n }, (_, i) => `the photograph that comes from reference picture ${i + 1}: ${names[i]}`).join('; ') : names[0];
+  return [
+    'Make exactly these changes to this poster and nothing else:',
+    '1. Remove every word, letter, number, logo, logo placeholder, badge and button, filling each area with what is naturally behind it (the same colour field, texture, gradient or panel).',
+    `2. Paint every part of the poster where a photograph shows with a flat, solid colour, with no shading, texture or outline (${which}). Include every visible part of the photograph, also where people from it overlap panels or edges. Keep fades and soft edges as soft edges of that colour.`,
+    '3. Keep everything else exactly the same: panels, shapes, illustrations, colours and their edges.'
+  ].join('\n');
+}
+
 /** The art layer: the concept with every word and logo taken out. */
 export const ART_LAYER_PROMPT =
   'Remove every word, letter, number, logo, logo placeholder, badge and button from this poster. Fill each of those areas with what would naturally be behind it (the same colour field, texture, sky, gradient or panel), so it looks finished and empty. Keep every other part exactly the same: the imagery, composition, colours, shapes and lighting. No text of any kind.';
@@ -161,7 +183,7 @@ Read the concept's intent and improve on it:
 - Brand: colours are only the brand's (primary, secondary, accent, ink, paper). Fonts are the brand's display (headlines), text (body) and accent (a word or two at most).
 - Positions are percentages of the poster's width (x, w) and height (y, h). Boxes must not overlap, except text sitting inside a panel or over the art. Give each text box room for its words at a readable size: a headline box is usually 12–30% of the height; details 3–5% per line; partner strip 8–14% high.
 - Positions are read on the concept picture as given; the engine fits them to the poster's exact shape.
-- The main logo is always placed ("logo"), at least 6% of the poster's shorter side high, on a calm area. If partners are given, place one "partners" strip wide enough for all of them in one row (they're sized evenly). If there's a real photo, it replaces the concept's main image: place one "photo" region covering that whole image area (edge to edge where the image bleeds off the poster; rounded or circle only if the concept's image is that shape), and set photoUse "real". Never place the real photo as a small inset next to the concept's own subject, and never let words sit on the photo's faces. If there's no real photo, set photoUse "keep" and don't add a photo region: the concept's imagery stays in the art.
+- The main logo is always placed ("logo"), at least 6% of the poster's shorter side high, on a calm area. If partners are given, place one "partners" strip wide enough for all of them in one row (they're sized evenly). If photos are "placed by the engine", don't add any photo region: they already show where the concept used them; just keep words off their faces. Otherwise, if there's a real photo, it replaces the concept's main image: place one "photo" region covering that whole image area (edge to edge where the image bleeds off the poster; rounded or circle only if the concept's image is that shape), and set photoUse "real". Never place the real photo as a small inset next to the concept's own subject, and never let words sit on the photo's faces. If there's no real photo, set photoUse "keep" and don't add a photo region: the concept's imagery stays in the art.
 - Dates: today's date is given. If a weekday doesn't match its date (in the coming year), leave the weekday out and say so in "message"; also say so if a date has already passed. Don't correct silently.
 - Words: write the real copy from the brief only. Use facts exactly as given; never invent dates, places, names, numbers or prices. Headline at most about 8 words. Use the poster facts lines if the brief has them. Only include fields that have something true to say.
 - color "auto" picks light or dark text for what's behind it; prefer it for text over imagery. Use a brand colour where the concept clearly uses one.
@@ -225,13 +247,13 @@ export const CONCEPT_TOOL = {
   }
 };
 
-export function conceptReaderPrompt(o: { brief: string; facts?: string; brand: string; partners: string[]; otherLogos: number; photos: number; format: FormatId; today?: Date }): string {
+export function conceptReaderPrompt(o: { brief: string; facts?: string; brand: string; partners: string[]; otherLogos: number; photos: number; format: FormatId; today?: Date; photosPlaced?: boolean }): string {
   const today = (o.today || new Date()).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
   return [
     `Today is ${today}. Poster shape: ${o.format}.`,
     `Brief:\n${o.brief.slice(0, 2500)}`,
     o.brand,
-    `Real content: the main logo${o.otherLogos ? ` and ${o.otherLogos} other logo${o.otherLogos > 1 ? 's' : ''}` : ''}; ${o.partners.length ? `${o.partners.length} partner logos (${o.partners.join(', ')})` : 'no partners'}; ${o.photos ? `${o.photos} real photo${o.photos > 1 ? 's' : ''} (shown after the concept)` : 'no real photo'}.`,
+    `Real content: the main logo${o.otherLogos ? ` and ${o.otherLogos} other logo${o.otherLogos > 1 ? 's' : ''}` : ''}; ${o.partners.length ? `${o.partners.length} partner logos (${o.partners.join(', ')})` : 'no partners'}; ${o.photos ? `${o.photos} real photo${o.photos > 1 ? 's' : ''} (shown after the concept)${o.photosPlaced ? ', placed by the engine exactly where the concept shows them' : ''}` : 'no real photo'}.`,
     'The first picture is the concept. Write the blueprint.'
   ].join('\n\n');
 }
@@ -413,7 +435,16 @@ const colorVar = (c: ColorRole) => `var(--c-${c})`;
 export function conceptTemplate(bp: ConceptBlueprint, id: string, format: FormatId): DesignTemplate {
   const details = bp.copy.details?.length || 2;
   const regions = fitToPoster(bp.regions, bp.aspect, POSTER_ASPECT[format] || 0.8);
-  const parts: string[] = ['<div class="cx-art d-fill" data-bg></div>'];
+  // Real photos first (they show through the art's transparent areas), then the art on top.
+  const layers = fitToPoster(
+    (bp.photoLayers || []).map((l) => ({ role: 'photo' as RegionRole, x: l.x, y: l.y, w: l.w, h: l.h, align: 'left' as const })),
+    bp.aspect,
+    POSTER_ASPECT[format] || 0.8
+  );
+  const parts: string[] = [
+    ...layers.map((l, i) => `<div class="cx-pl" data-photo="${(bp.photoLayers![i].index || 0) + 1}" style="position:absolute;left:${l.x}%;top:${l.y}%;width:${l.w}%;height:${l.h}%"></div>`),
+    '<div class="cx-art d-fill" data-bg></div>'
+  ];
   if (bp.scrim) parts.push('<div class="cx-scrim d-fill"></div>');
   const css: string[] = [
     `#poster { background: var(--c-paper); }`,
@@ -485,7 +516,7 @@ export function conceptTemplate(bp: ConceptBlueprint, id: string, format: Format
     tags: ['concept'],
     formats: tall ? [format, 'a4', 'a3'] : [format],
     fields,
-    photos: { min: 0, max: regions.some((r) => r.role === 'photo') ? 1 : 0 },
+    photos: { min: 0, max: Math.max(regions.some((r) => r.role === 'photo') ? 1 : 0, ...(bp.photoLayers || []).map((l) => l.index + 1)) },
     sponsors: { min: 0, max: regions.some((r) => r.role === 'partners') ? 12 : 0 },
     background: 'required',
     params: [],
@@ -514,7 +545,7 @@ export function conceptDoc(o: {
     format: o.format,
     params: {},
     text: o.bp.copy,
-    photos: o.bp.photoUse === 'real' ? o.photos.slice(0, 1) : [],
+    photos: o.bp.photoLayers?.length ? o.photos : o.bp.photoUse === 'real' ? o.photos.slice(0, 1) : [],
     logos: { primary: o.primaryLogo, campaign: o.campaignLogos },
     sponsors: o.bp.regions.some((r) => r.role === 'partners') ? o.sponsors : [],
     background: { url: o.art.url, width: o.art.width, height: o.art.height, prompt: 'concept art layer' },

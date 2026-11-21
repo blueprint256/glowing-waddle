@@ -15,8 +15,11 @@ import {
   conceptDoc,
   conceptPrompt,
   conceptReaderPrompt,
-  conceptTemplate
+  conceptTemplate,
+  keyedArtPrompt,
+  photosNote
 } from '../design/concept';
+import { keyMasks, placePhoto } from '../design/photoFit';
 import type { BrandKit, FormatId, PhotoSlot, SponsorSlot } from '../design/types';
 
 type Id = mongoose.Types.ObjectId;
@@ -73,21 +76,29 @@ async function oneConcept(input: ConceptInput, index: number): Promise<ConceptOp
     direction: CONCEPT_DIRECTIONS[index % CONCEPT_DIRECTIONS.length]
   };
 
-  // 1) The concept, from words only.
+  // With photos, the image model designs with them (at most 3); the engine later shows the real
+  // ones exactly where and how it used them.
+  const refs = input.photos.slice(0, 3);
+  const withPhotos = refs.length > 0;
+
+  // 1) The concept.
   let t0 = Date.now();
   let concept: Buffer;
   try {
-    concept = await renderImage({ prompt: conceptPrompt(ask), size, userId: input.userId, promptName: 'Design · concept' });
+    const prompt = withPhotos ? `${conceptPrompt({ ...ask, photos: [] })}\n${photosNote(refs.length)}` : conceptPrompt(ask);
+    const images = await Promise.all(refs.map(async (p, i) => ({ buffer: await sharp(p.buffer).rotate().resize({ width: 1024, height: 1024, fit: 'inside' }).jpeg({ quality: 88 }).toBuffer(), name: `photo-${i + 1}.jpg`, contentType: 'image/jpeg' })));
+    concept = await renderImage({ prompt, images, size, fidelity: withPhotos ? 'high' : undefined, userId: input.userId, promptName: 'Design · concept' });
   } catch (error: any) {
     console.error('[design] Concept failed:', error?.message);
     return null;
   }
   const conceptUrl = await uploadBufferToS3(await sharp(concept).jpeg({ quality: 85 }).toBuffer(), 'image/jpeg', 'design-backgrounds');
 
-  // 2) The art layer (words and logos removed) and 3) the blueprint, side by side.
+  // 2) The art layer (words and logos removed; with photos, their areas in key colours) and
+  // 3) the blueprint, side by side.
   t0 = Date.now();
   const art = renderImage({
-    prompt: ART_LAYER_PROMPT,
+    prompt: withPhotos ? keyedArtPrompt(refs.length) : ART_LAYER_PROMPT,
     images: [{ buffer: concept, name: 'concept.png', contentType: 'image/png' }],
     size,
     purpose: 'edit',
@@ -99,7 +110,7 @@ async function oneConcept(input: ConceptInput, index: number): Promise<ConceptOp
     return null;
   });
   const images: ClaudeImage[] = [{ ...(await small(concept)), label: 'The concept:' }];
-  for (const [i, p] of input.photos.slice(0, 1).entries()) images.push({ ...(await small(p.buffer, 768)), label: `Real photo ${i + 1}:` });
+  for (const [i, p] of refs.entries()) images.push({ ...(await small(p.buffer, 640)), label: `Real photo ${i + 1}:` });
   const read = callClaudeTool<any>({
     apiKey: input.apiKey,
     model: DESIGN_MODELS.director,
@@ -110,7 +121,8 @@ async function oneConcept(input: ConceptInput, index: number): Promise<ConceptOp
       brand: '',
       partners: input.sponsors.map((s) => s.name || 'partner'),
       otherLogos: input.campaignLogoIds.length,
-      photos: input.photos.length ? 1 : 0,
+      photos: withPhotos ? refs.length : 0,
+      photosPlaced: withPhotos,
       format
     }),
     images,
@@ -129,16 +141,41 @@ async function oneConcept(input: ConceptInput, index: number): Promise<ConceptOp
   const [artBuf, raw] = await Promise.all([art, read]);
   if (!artBuf || !raw) return null;
 
-  const bp = cleanBlueprint(raw, { partners: input.sponsors.length, photos: input.photos.length });
+  const bp = cleanBlueprint(raw, { partners: input.sponsors.length, photos: withPhotos ? 0 : input.photos.length });
   const [cw, ch] = size.split('x').map(Number);
   bp.aspect = cw / ch;
+  let artFile: { buffer: Buffer; type: string } = { buffer: await sharp(artBuf).jpeg({ quality: 90 }).toBuffer(), type: 'image/jpeg' };
+  if (withPhotos) {
+    // Where each real photo shows (the key colours), and where it sits (matched on the concept).
+    const keyed = await keyMasks(artBuf, refs.length);
+    const layers: NonNullable<typeof bp.photoLayers> = [];
+    for (let i = 0; i < refs.length; i++) {
+      if (!keyed.areas[i]) continue;
+      const place = await placePhoto({
+        concept,
+        mask: keyed.masks[i],
+        maskWidth: keyed.width,
+        maskHeight: keyed.height,
+        photo: refs[i].buffer,
+        photoWidth: refs[i].slot.width,
+        photoHeight: refs[i].slot.height,
+        focal: refs[i].slot.focal
+      });
+      if (place) layers.push({ index: i, x: place.x, y: place.y, w: place.w, h: place.h, matched: place.matched });
+    }
+    if (!layers.length) {
+      console.error('[design] The keyed art showed no photo areas; this option is dropped.');
+      return null;
+    }
+    bp.photoLayers = layers;
+    artFile = { buffer: keyed.artPng, type: 'image/png' };
+  }
   if (bp.regions.some((r) => r.role === 'contact')) {
     if (kit.contact?.social) bp.copy.social = kit.contact.social;
     if (kit.contact?.web) bp.copy.web = kit.contact.web.replace(/^https?:\/\//, '').replace(/\/$/, '');
   }
-  const artJpeg = await sharp(artBuf).jpeg({ quality: 90 }).toBuffer();
-  const meta = await sharp(artJpeg).metadata();
-  const artUrl = await uploadBufferToS3(artJpeg, 'image/jpeg', 'design-backgrounds');
+  const meta = await sharp(artFile.buffer).metadata();
+  const artUrl = await uploadBufferToS3(artFile.buffer, artFile.type, 'design-backgrounds');
   const id = `concept-${Date.now().toString(36)}${index}`;
   const design = conceptTemplate(bp, id, format);
   const primary = kit.logos.find((l) => l.role === 'primary');
