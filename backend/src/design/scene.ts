@@ -22,6 +22,7 @@ import type { BrandKit, DesignDoc, DesignTemplate, DesignText, DetailLine, Forma
 
 export type ColorRole = 'primary' | 'secondary' | 'accent' | 'ink' | 'paper';
 export type TextRole = 'eyebrow' | 'headline' | 'subhead' | 'details' | 'cta' | 'badge' | 'contact';
+export type FadeSide = 'left' | 'right' | 'top' | 'bottom' | 'edges';
 export type FrameShape = 'rect' | 'rounded' | 'circle' | 'arch' | 'slant-left' | 'slant-right' | 'blob' | 'organic';
 
 export interface Box {
@@ -56,8 +57,8 @@ export interface PhotoLayer {
   crop?: { x: number; y: number; w: number };
   /** The whole photo's box on the poster (computed: covers the frame exactly). */
   place?: Box;
-  /** Soft edge into what's behind. */
-  fade?: { side: 'left' | 'right' | 'top' | 'bottom' | 'edges'; size: number };
+  /** Soft edge into what's behind (`also`: more sides with the same size). */
+  fade?: { side: FadeSide; size: number; also?: FadeSide[] };
   tint?: { color: ColorRole; amount: number; mode: 'tint' | 'duotone' | 'darken' };
   /** The people stand in front of what's above the photo, past the frame's top (or all edges). */
   breakout?: 'top' | 'all' | null;
@@ -228,7 +229,7 @@ export const SCENE_READER_SYSTEM = `You are a senior designer turning a poster c
 Layers, back to front (later layers sit on top):
 - backdrop: "art" only if the concept has imagery worth keeping behind everything (illustration, texture, scenery, a complex gradient); the engine then keeps the concept's picture with words, logos and photos removed. If the background is flat colour or a simple two-colour gradient, use "color" or "gradient" (crisp, free, editable) and draw its colour blocks as shape layers.
 - shape: colour blocks, bands, circles, pills, slanted panels, arches. With a "color"/"gradient" backdrop draw every colour block of the concept as shapes. With "art", only add shapes that must sit in front of a photo (a band across it) or behind words.
-- photo: where a real photo shows. frame = the area it fills; shape = rect, rounded, circle, arch, slant-left/slant-right (one slanted side), blob (soft organic), or organic (an irregular cut-out shape the others can't describe); crop = which part of the REAL photo shows in the frame (x, y = its top-left, w = its width, as shares 0–1 of the real photo; look at the real photo given after the concept); fade = a soft edge into what's behind (side and size in % of the frame); tint = a brand-colour wash (tint, duotone or darken; amount 0–1); breakout "top" when the concept's people rise above the frame's top edge (heads over a band or panel), "all" when they overlap every edge; subject = a few words for who stands out ("the woman holding the baby"). A full-bleed photo is a rect frame covering the whole poster (0,0,100,100).
+- photo: where a real photo shows. frame = the area it fills; shape = rect, rounded, circle, arch, slant-left/slant-right (one slanted side), blob (soft organic), or organic (an irregular cut-out shape the others can't describe); crop = which part of the REAL photo shows in the frame (x, y = its top-left, w = its width, as shares 0–1 of the real photo; look at the real photo given after the concept); fade = soft edges: every side where the photo melts into the colour or art behind it (sides; size in % of the frame) — look closely, a photo often fades on two sides; tint = a brand-colour wash (tint, duotone or darken; amount 0–1); breakout "top" when the concept's people rise above the frame's top edge (heads over a band or panel), "all" when they overlap every edge; subject = a few words for who matters in the photo ("the woman holding the baby"), always: the engine keeps them uncut. A full-bleed photo is a rect frame covering the whole poster (0,0,100,100).
 - text: role eyebrow, headline, subhead, details, cta, badge or contact.
 - logo: the main logo (always one, at least 6% of the poster's shorter side high, on a calm area).
 - partners: one strip for all partner logos in one row (only if partners are given), 8–14% high.
@@ -290,7 +291,11 @@ export const SCENE_TOOL = {
             lines: { type: 'integer' },
             photo: { type: 'integer', description: 'photo: which real photo (1 = the first)' },
             crop: { type: 'object', properties: { x: { type: 'number' }, y: { type: 'number' }, w: { type: 'number' } } },
-            fade: { type: 'object', properties: { side: { type: 'string', enum: ['left', 'right', 'top', 'bottom', 'edges'] }, size: { type: 'number' } } },
+            fade: {
+              type: 'object',
+              description: 'soft edges: every side where the photo melts into what is behind it',
+              properties: { sides: { type: 'array', items: { type: 'string', enum: ['left', 'right', 'top', 'bottom', 'edges'] } }, size: { type: 'number' } }
+            },
             tint: { type: 'object', properties: { color: { type: 'string', enum: COLORS }, amount: { type: 'number' }, mode: { type: 'string', enum: ['tint', 'duotone', 'darken'] } } },
             breakout: { type: 'string', enum: ['top', 'all', 'none'] },
             subject: { type: 'string' },
@@ -407,7 +412,9 @@ export function cleanScene(raw: any, opts: { partners: number; photos: number; a
       if (index >= opts.photos || seenPhoto.has(index)) continue;
       seenPhoto.add(index);
       const crop = r.crop && typeof r.crop === 'object' ? { x: num(r.crop.x, 0, 0.95, 0), y: num(r.crop.y, 0, 0.95, 0), w: num(r.crop.w, 0.05, 1, 1) } : undefined;
-      const fadeSide = r.fade && typeof r.fade === 'object' ? pick(r.fade.side, ['left', 'right', 'top', 'bottom', 'edges'] as const, 'bottom') : null;
+      const SIDES = ['left', 'right', 'top', 'bottom', 'edges'] as const;
+      const fadeSides: FadeSide[] =
+        r.fade && typeof r.fade === 'object' ? Array.from(new Set<FadeSide>((Array.isArray(r.fade.sides) ? r.fade.sides : [r.fade.side]).filter((x: any) => SIDES.includes(x)))) : [];
       const breakout = r.breakout === 'top' || r.breakout === 'all' ? r.breakout : null;
       layers.push({
         type: 'photo',
@@ -417,10 +424,10 @@ export function cleanScene(raw: any, opts: { partners: number; photos: number; a
         shape: pick(r.shape, FRAMES, 'rect'),
         radius: num(r.radius, 0, 50, 0),
         crop,
-        fade: fadeSide ? { side: fadeSide, size: num(r.fade.size, 5, 70, 25) } : undefined,
+        fade: fadeSides.length ? { side: fadeSides[0], size: num(r.fade.size, 5, 70, 25), also: fadeSides.length > 1 ? fadeSides.slice(1) : undefined } : undefined,
         tint: r.tint && typeof r.tint === 'object' && r.tint.color ? { color: pick(r.tint.color, COLORS, 'primary'), amount: num(r.tint.amount, 0, 0.9, 0.35), mode: pick(r.tint.mode, ['tint', 'duotone', 'darken'] as const, 'tint') } : undefined,
         breakout,
-        subject: breakout ? str(r.subject, 120) : undefined,
+        subject: str(r.subject, 120),
         border: r.border && typeof r.border === 'object' && r.border.color ? { color: pick(r.border.color, COLORS, 'paper'), width: num(r.border.width, 0.2, 3, 0.8) } : undefined
       });
     } else if (r.type === 'text') {
@@ -582,14 +589,21 @@ function frameClip(shape: FrameShape | ShapeLayer['shape'], radius = 0, minSide 
   }
 }
 
+/** Sides a photo fades on. */
+export const fadeSides = (f?: PhotoLayer['fade']): FadeSide[] => (f ? [f.side, ...(f.also || [])] : []);
+
 function fadeMask(f: PhotoLayer['fade']): string {
   if (!f) return '';
   const s = Math.max(5, Math.min(70, f.size));
-  const g =
-    f.side === 'edges'
+  const one = (side: FadeSide) =>
+    side === 'edges'
       ? `radial-gradient(ellipse at center, #000 ${100 - s * 1.4}%, transparent 100%)`
-      : `linear-gradient(${{ left: 'to right', right: 'to left', top: 'to bottom', bottom: 'to top' }[f.side]}, transparent 0, #000 ${s}%)`;
-  return `-webkit-mask-image:${g};mask-image:${g};`;
+      : `linear-gradient(${{ left: 'to right', right: 'to left', top: 'to bottom', bottom: 'to top' }[side]}, transparent 0, #000 ${s}%)`;
+  const sides = Array.from(new Set(fadeSides(f)));
+  const g = sides.map(one).join(', ');
+  // Several sides: each gradient keeps its own edge soft (intersected).
+  const compose = sides.length > 1 ? `-webkit-mask-composite:source-in;mask-composite:intersect;` : '';
+  return `-webkit-mask-image:${g};mask-image:${g};${compose}`;
 }
 
 /** The scene as the runtime draws it, fitted to one poster shape. */
@@ -659,10 +673,15 @@ export function sceneTemplate(scene: Scene, id: string, format: FormatId, photos
         parts.push(`<div class="sc-r ${c}" data-fit-box${personOk}><${tr.tag} data-field="${tr.field}" data-fit data-min="${tr.min}" data-max="${tr.max}" data-lines="${layer.lines || 2}" data-fit-order="${tr.order}"${toneAttr} style="line-height:${layer.role === 'headline' ? 1.02 : 1.25}"></${tr.tag}></div>`);
       } else if (layer.role === 'details') {
         parts.push(`<div class="sc-r ${c}"${toneAttr} data-details><template><div class="d-detail sc-detail"><span data-detail-icon></span><span data-detail-text></span></div></template></div>`);
-        // As large as reads well, but each line fits the box's width on one line (icon included).
+        // As large as reads well: one line per detail, or two when the box is tall enough and that
+        // makes the words bigger. Sizes in cqw (the poster's width), from the box's height and width.
+        const n = Math.max(1, details);
         const longest = Math.max(8, ...(scene.copy.details || []).map((d) => d.text.length));
-        const byWidth = ((b.w * 0.94) / (longest * 0.58 + 1.6)).toFixed(2);
-        css.push(`.${c} { gap: 0.6em; } .${c} .sc-detail { display: flex; align-items: center; gap: 0.5em; font-family: var(--f-display); font-weight: 700; font-size: clamp(2.1cqmin, min(${((b.h / Math.max(1, details)) * 0.5).toFixed(2)}cqh, ${byWidth}cqw), 4.6cqmin); line-height: 1.2; justify-content: ${align}; }`);
+        const per = b.h / n / pa; // each detail's share of the height, in cqw
+        const one = Math.min(per * 0.5, (b.w * 0.94) / (longest * 0.56 + 1.6));
+        const two = Math.min(per / 2.7, (b.w * 0.94) / (longest * 0.3 + 1.6));
+        const size = Math.max(one, two);
+        css.push(`.${c} { gap: ${(per * 0.18).toFixed(2)}cqw; } .${c} .sc-detail { display: flex; align-items: flex-start; gap: 0.5em; font-family: var(--f-display); font-weight: 700; font-size: clamp(2.1cqmin, ${size.toFixed(2)}cqw, 4.8cqmin); line-height: 1.18; justify-content: ${align}; } .${c} .sc-detail svg { margin-top: 0.1em; }`);
         css.push(`.${c} .sc-detail svg { width: 1em; height: 1em; flex: none; }`);
       } else if (layer.role === 'badge') {
         parts.push(`<div class="sc-r ${c}" data-badge style="align-items:center;text-align:center"><span data-badge-top></span><span data-badge-main style="font-size:2.2em;line-height:1;font-weight:900"></span><span data-badge-bottom></span></div>`);
@@ -738,6 +757,120 @@ function breakoutsLater(scene: Scene, _l: SceneLayer): boolean {
 function cutBox(place: Box, p?: PhotoInfo): Box {
   const b = p?.cutout?.box || { x: 0, y: 0, w: 1, h: 1 };
   return { x: place.x + b.x * place.w, y: place.y + b.y * place.h, w: b.w * place.w, h: b.h * place.h };
+}
+
+// -------------------------------------------------------------------------- people and gutters
+
+/**
+ * Nobody is cut by a hard edge: where the people in a photo (their box in the photo, from SAM 3)
+ * cross a frame's edge inside the poster, the photo is moved, then shown wider, to keep them in;
+ * if they still don't fit, that edge fades softly instead. Returns what it did, for the record.
+ */
+export function keepPeopleInFrame(layer: PhotoLayer, people: Box01, canvasAspect: number, photo: { width: number; height: number }): string[] {
+  const done: string[] = [];
+  const pa = photo.width / photo.height;
+  const f = layer.frame;
+  const inside = { left: f.x > 0.5, right: f.x + f.w < 99.5, top: f.y > 0.5, bottom: f.y + f.h < 99.5 };
+  const soft = new Set(fadeSides(layer.fade));
+  if (soft.has('edges') || !layer.place) return done;
+  const span = (p: Box) => ({ x0: p.x + people.x * p.w, x1: p.x + (people.x + people.w) * p.w, y0: p.y + people.y * p.h, y1: p.y + (people.y + people.h) * p.h });
+  // Small overhangs (a hand, an elbow) are fine: 4% of the people's own size.
+  const cuts = (p: Box) => {
+    const b = span(p);
+    const tx = (b.x1 - b.x0) * 0.04;
+    const ty = (b.y1 - b.y0) * 0.04;
+    return {
+      left: inside.left && !soft.has('left') && b.x0 < f.x - tx,
+      right: inside.right && !soft.has('right') && b.x1 > f.x + f.w + tx,
+      top: inside.top && !soft.has('top') && b.y0 < f.y - ty,
+      bottom: inside.bottom && !soft.has('bottom') && b.y1 > f.y + f.h + ty
+    };
+  };
+  const c0 = cuts(layer.place);
+  if (!c0.left && !c0.right && !c0.top && !c0.bottom) return done;
+  // Wider view first when the people are bigger than the frame (the least zoom that covers it).
+  let place = layer.place;
+  // People may run off the poster's own edge by up to 12% of their size (a shoulder, not half a group).
+  const fits = (p: Box) => {
+    const b = span(p);
+    const w = b.x1 - b.x0;
+    const h = b.y1 - b.y0;
+    const roomX = f.w * 1.04 + (inside.left ? 0 : w * 0.12) + (inside.right ? 0 : w * 0.12);
+    const roomY = f.h * 1.04 + (inside.top ? 0 : h * 0.12) + (inside.bottom ? 0 : h * 0.12);
+    return { x: w <= roomX, y: h <= roomY };
+  };
+  if (!fits(place).x || !fits(place).y) {
+    const least = placeFromCrop(f, canvasAspect, photo);
+    if (least.w < place.w - 0.5) {
+      place = { ...least };
+      done.push('shown wider');
+    }
+  }
+  // Each direction: people that fit are moved in; people that don't stay centred on the frame.
+  const b = span(place);
+  const ok = fits(place);
+  const cx = (b.x0 + b.x1) / 2;
+  const cy = (b.y0 + b.y1) / 2;
+  let dx = 0;
+  let dy = 0;
+  if (ok.x) {
+    if (b.x1 > f.x + f.w && inside.right) dx = f.x + f.w - b.x1;
+    if (b.x0 + dx < f.x && inside.left) dx = f.x - b.x0;
+  } else dx = f.x + f.w / 2 - cx;
+  if (ok.y) {
+    if (b.y1 > f.y + f.h && inside.bottom) dy = f.y + f.h - b.y1;
+    if (b.y0 + dy < f.y && inside.top) dy = f.y - b.y0;
+  } else dy = f.y + f.h * 0.45 - cy;
+  place = { ...place, x: Math.max(f.x + f.w - place.w, Math.min(f.x, place.x + dx)), y: Math.max(f.y + f.h - place.h, Math.min(f.y, place.y + dy)) };
+  if (place.x !== layer.place.x || place.y !== layer.place.y || place.w !== layer.place.w) {
+    layer.place = place;
+    layer.crop = undefined;
+    if (!done.length) done.push('moved');
+  }
+  // Still cut: soften those edges.
+  const c = cuts(layer.place);
+  const sides = (['left', 'right', 'top', 'bottom'] as const).filter((k) => c[k]);
+  if (sides.length) {
+    const all = Array.from(new Set([...fadeSides(layer.fade), ...sides]));
+    layer.fade = { side: all[0], size: Math.max(layer.fade?.size || 0, 22), also: all.length > 1 ? all.slice(1) : undefined };
+    done.push(`faded ${sides.join(' and ')}`);
+  }
+  return done;
+}
+
+/** A box in shares of a photo (0–1). */
+export type Box01 = { x: number; y: number; w: number; h: number };
+
+/**
+ * Room between words and a photo's hard edge: words, logos and partners that start (or end) within
+ * 3% of a hard frame edge inside the poster move off it, giving up width (never below 15%).
+ */
+export function keepGutters(scene: Scene): void {
+  const G = 3;
+  for (const l of scene.layers) {
+    if (l.type !== 'text' && l.type !== 'logo' && l.type !== 'partners') continue;
+    if (l.type === 'text' && l.panel && l.panel !== 'none') continue;
+    for (const p of scene.layers) {
+      if (p.type !== 'photo') continue;
+      const f = p.frame;
+      const soft = new Set(fadeSides(p.fade));
+      if (soft.has('edges') || p.shape === 'circle' || p.shape === 'blob' || p.shape === 'organic') continue;
+      const vertical = l.box.y < f.y + f.h && f.y < l.box.y + l.box.h;
+      if (!vertical) continue;
+      const R = f.x + f.w;
+      if (R < 99.5 && !soft.has('right') && l.box.x > R - 8 && l.box.x < R + G) {
+        const nx = R + G;
+        const nw = l.box.w - (nx - l.box.x);
+        if (nw >= 15) l.box = { ...l.box, x: nx, w: nw };
+      }
+      const L = f.x;
+      const right = l.box.x + l.box.w;
+      if (L > 0.5 && !soft.has('left') && right < L + 8 && right > L - G) {
+        const nw = L - G - l.box.x;
+        if (nw >= 15) l.box = { ...l.box, w: nw };
+      }
+    }
+  }
 }
 
 // ------------------------------------------------------------------------------------ new shapes

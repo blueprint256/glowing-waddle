@@ -29,7 +29,10 @@ import {
   POSTER_ASPECT,
   cleanScene,
   coverFrame,
+  fadeSides,
   fallbackScene,
+  keepGutters,
+  keepPeopleInFrame,
   placeFromCrop,
   repairScene,
   reshapeScene,
@@ -355,6 +358,21 @@ async function main() {
     const fixed = repairScene(zoomed, [{ level: 'error', code: 'photo-small' }], [p as any]);
     const fp = fixed?.layers[0] as PhotoLayer | undefined;
     check(!!fp?.place && covers(fp.place, frame) && fp.place.w < a.w * 3, 'a photo too enlarged is shown less zoomed');
+  }
+
+  // Nobody is cut by a hard edge (moved, shown wider, or faded), and words keep off a hard edge.
+  {
+    const photo = { width: 1600, height: 1600 };
+    const live = (): PhotoLayer => ({ type: 'photo', id: 'p1', photo: 0, frame: { x: 0, y: 0, w: 62, h: 76 }, shape: 'rect', fade: { side: 'bottom', size: 30 }, place: { x: -11.4, y: 0, w: 114, h: 76 } });
+    const a = live();
+    keepPeopleInFrame(a, { x: 0.15, y: 0.09, w: 0.6, h: 0.91 }, A, photo);
+    const pr = a.place!.x + 0.75 * a.place!.w;
+    const b = live();
+    keepPeopleInFrame(b, { x: 0.02, y: 0.05, w: 0.96, h: 0.9 }, A, photo);
+    const scene: Scene = { version: 2, aspect: A, backdrop: { kind: 'color', color: 'primary' }, layers: [live(), T('headline', { x: 61, y: 18, w: 34, h: 23 })], copy: { headline: 'x' } };
+    keepGutters(scene);
+    const head = scene.layers[1] as any;
+    check(pr <= 62.5 && covers(a.place!, a.frame) && fadeSides(b.fade).includes('right') && head.box.x >= 65, `people kept in the frame (right edge ${pr.toFixed(1)}), a group too wide fades, words off the edge (x ${head.box.x})`);
   }
 
   // Repairs: unreadable words get "auto", then a panel; partners that outweigh the logo get smaller.

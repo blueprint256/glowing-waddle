@@ -23,6 +23,7 @@ import {
   type SceneDoc
 } from '../design/scene';
 import { organicMask, refinePlace } from '../design/sceneFit';
+import { keepGutters, keepPeopleInFrame } from '../design/scene';
 import type { BrandKit, DesignTemplate, FormatId, PhotoSlot, SponsorSlot } from '../design/types';
 
 type Id = mongoose.Types.ObjectId;
@@ -155,7 +156,19 @@ async function oneScene(input: SceneInput, index: number): Promise<SceneOption |
       if (c) slots[layer.photo].cutout = { url: c.url, width: c.width, height: c.height, edges: c.edges, box: c.box };
       else layer.breakout = null;
     });
-  const [backdrop] = await Promise.all([backdropJob, ...placeJobs, ...cutJobs]);
+  // Where the photo's main people are (SAM 3 with the reader's words for them, cached), to keep them uncut.
+  const peopleJobs = photoLayers.map(async (layer) => {
+    if (layer.shape === 'organic') return;
+    const c = await cutout(refs[layer.photo].buffer, storeCutout, { subject: layer.subject || 'person', userId: input.userId }).catch(() => null);
+    return c ? { layer, box: c.box } : undefined;
+  });
+  const [backdrop, ...rest] = await Promise.all([backdropJob, ...placeJobs, ...cutJobs, ...peopleJobs]);
+  for (const found of rest.slice(placeJobs.length + cutJobs.length) as ({ layer: PhotoLayer; box: { x: number; y: number; w: number; h: number } } | undefined)[]) {
+    if (!found) continue;
+    const ref = refs[found.layer.photo];
+    keepPeopleInFrame(found.layer, found.box, aspect, { width: ref.slot.width, height: ref.slot.height });
+  }
+  keepGutters(scene);
 
   // No art after all: the reader's ground colour stands in (the scene stays usable).
   if (scene.backdrop.kind === 'art' && !backdrop) scene.backdrop = { kind: 'color', color: 'primary' };
